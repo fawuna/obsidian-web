@@ -1,14 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=31";
-import { initCanvas } from "./canvas.js?v=31";
-import { initCollab } from "./collab.js?v=31";
-import { initPlugins } from "./plugins.js?v=31";
-import { exportPdfFile } from "./pdf.js?v=31";
-import { initLive } from "./live.js?v=31";
+import { initGraph } from "./graph.js?v=32";
+import { initCanvas } from "./canvas.js?v=32";
+import { initCollab } from "./collab.js?v=32";
+import { initPlugins } from "./plugins.js?v=32";
+import { exportPdfFile } from "./pdf.js?v=32";
+import { initLive } from "./live.js?v=32";
+import { initDaily } from "./daily.js?v=32";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v31";
+const BUILD = "v32";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -42,6 +43,7 @@ const state = {
 
 let liveApi = null;
 let livePath = null;
+let dailyApi = null;
 
 /* ---------------- events ---------------- */
 function on(event, fn) {
@@ -1091,10 +1093,10 @@ function renderPalette() {
 let switcherMode = "open";
 let linkPos = null;
 function showSwitcher(mode) {
-  switcherMode = mode === "link" ? "link" : "open";
+  switcherMode = mode === "link" ? "link" : mode === "template" ? "template" : "open";
   linkPos = null;
   $("switcherInput").value = "";
-  $("switcherInput").placeholder = switcherMode === "link" ? "Вставити [[посилання]] на…" : "Перейти до нотатки…";
+  $("switcherInput").placeholder = switcherMode === "link" ? "Вставити [[посилання]] на…" : switcherMode === "template" ? "Вставити шаблон…" : "Перейти до нотатки…";
   switcherActive = 0;
   renderSwitcher();
   openModal("switcher");
@@ -1103,6 +1105,11 @@ function showSwitcher(mode) {
 function chooseSwitcherItem(path) {
   if (!path) return;
   closeModals();
+  if (switcherMode === "template") {
+    switcherMode = "open";
+    if (dailyApi) dailyApi.insertTemplate(path);
+    return;
+  }
   if (switcherMode === "link") {
     const link = "[[" + path.replace(/\.(md|canvas)$/, "") + "]]";
     if (state.mode === "live" && liveApi && linkPos !== null) liveApi.insertAt(linkPos, link);
@@ -1117,7 +1124,8 @@ function renderSwitcher() {
   const q = $("switcherInput").value.trim().toLowerCase();
   const list = $("switcherList");
   list.innerHTML = "";
-  const scored = state.files
+  const source = switcherMode === "template" ? (dailyApi ? dailyApi.templateFiles() : []) : state.files;
+  const scored = source
     .map((path) => {
       const name = path.split("/").pop().replace(/\.(md|canvas)$/, "").toLowerCase();
       let score = 0;
@@ -1134,14 +1142,14 @@ function renderSwitcher() {
   switcherActive = Math.min(switcherActive, Math.max(0, switcherItems.length - 1));
   switcherItems.slice(0, 80).forEach((path, i) => {
     const item = el("div", "item" + (i === switcherActive ? " active" : ""));
-    item.appendChild(el("span", null, path.endsWith(".canvas") ? "🎨" : "📄"));
-    item.appendChild(el("span", null, path.replace(/\.(md|canvas)$/, "")));
+    item.appendChild(el("span", null, switcherMode === "template" ? "🧾" : path.endsWith(".canvas") ? "🎨" : "📄"));
+    item.appendChild(el("span", null, switcherMode === "template" ? path.replace(/\.md$/, "") : path.replace(/\.(md|canvas)$/, "")));
     item.onclick = () => {
       chooseSwitcherItem(path);
     };
     list.appendChild(item);
   });
-  if (!switcherItems.length) list.appendChild(el("div", "empty", "нічого не знайдено"));
+  if (!switcherItems.length) list.appendChild(el("div", "empty", switcherMode === "template" ? "нема шаблонів у теці" : "нічого не знайдено"));
 }
 
 /* ---------------- panes / modes ---------------- */
@@ -1199,7 +1207,7 @@ export const Vault = {
   state, api, ghGet, ghPut, ghPutRaw, ghDelete, b64encode, b64decode,
   contentsPath, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
-  renderTree, renderTabs, paint, renderPreview, renderContext, renderTags, showPane,
+  renderTree, renderTabs, paint, renderPreview, renderContext, renderTags, showPane, showSwitcher,
   moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote,
   exportPdfFile: (opts = {}) => exportPdfFile($("preview"), (currentFile()?.path || "note").split("/").pop().replace(/\.md$/, ""), opts),
   get files() { return state.files; },
@@ -1812,6 +1820,9 @@ async function connect(repo, branch, token, remember) {
     $("login").style.display = "none";
     $("app").classList.add("ready");
     await loadTree();
+    if (dailyApi) await dailyApi.loadConfigs();
+    else dailyApi = await initDaily(Vault);
+    window.__daily = dailyApi;
     const first = state.files.find((p) => p.endsWith(".md"));
     if (first) await openNote(first);
     showPane("files");
