@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=71">
+<link rel="stylesheet" href="styles.css?v=72">
 </head>
 <body>
 
@@ -365,12 +365,22 @@
   <div class="foot"><button class="ghost-border" id="recoveryClose">Закрити</button></div>
 </div>
 
+<div class="modal" id="workspacesModal">
+  <div class="pane-head"><span class="title">Workspaces</span></div>
+  <div class="body" id="workspacesList" style="max-height:440px;overflow:auto;padding:10px"></div>
+  <div class="foot">
+    <button class="ghost-border" id="workspacesSave">Зберегти поточний</button>
+    <div style="flex:1"></div>
+    <button class="ghost-border" id="workspacesClose">Закрити</button>
+  </div>
+</div>
+
 <div id="pagePreview" class="popover hover-popover" aria-hidden="true"></div>
 <div id="dropHint">Відпусти, щоб вставити картинку</div>
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=71"></script>
-<script type="module" src="app.js?v=71"></script>
+<script src="vendor/marked.min.js?v=72"></script>
+<script type="module" src="app.js?v=72"></script>
 </body>
 </html>

@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=71";
-import { initCanvas } from "./canvas.js?v=71";
-import { initCollab } from "./collab.js?v=71";
-import { initPlugins } from "./plugins.js?v=71";
-import { exportPdfFile } from "./pdf.js?v=71";
-import { initLive } from "./live.js?v=71";
-import { initDaily } from "./daily.js?v=71";
+import { initGraph } from "./graph.js?v=72";
+import { initCanvas } from "./canvas.js?v=72";
+import { initCollab } from "./collab.js?v=72";
+import { initPlugins } from "./plugins.js?v=72";
+import { exportPdfFile } from "./pdf.js?v=72";
+import { initLive } from "./live.js?v=72";
+import { initDaily } from "./daily.js?v=72";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v71";
+const BUILD = "v72";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -65,6 +65,8 @@ const CORE_PLUGINS = [
   { id: "canvas", label: "Canvas", desc: "Полотно", def: true },
   { id: "bases", label: "Bases", desc: "Табличні бази з нотаток", def: true },
   { id: "file-recovery", label: "File recovery", desc: "Історія версій нотатки", def: true },
+  { id: "workspaces", label: "Workspaces", desc: "Збережені розкладки", def: false },
+  { id: "random-note", label: "Random note", desc: "Випадкова нотатка", def: false },
   { id: "sync", label: "Sync / collab", desc: "Спільна робота", def: true },
 ];
 
@@ -3578,11 +3580,121 @@ function searchQueryMatches(parsed, path, text, caseSensitive) {
   return true;
 }
 
+/* ---------------- workspaces ---------------- */
+function readWorkspaces() {
+  try {
+    const data = JSON.parse(store.get("workspaces", "{}"));
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch { return {}; }
+}
+
+function snapshotWorkspace() {
+  const widths = state.groups.map((_, index) => {
+    if (index === 0) return null;
+    if (index === 1) {
+      const match = String($("pane2").style.flex || "").match(/(\d+)px/);
+      return match ? Number(match[1]) : null;
+    }
+    const pane = getPane(index);
+    const width = pane && pane.wrapper ? pane.wrapper.getBoundingClientRect().width : 0;
+    return width > 0 ? Math.round(width) : null;
+  });
+  return {
+    groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active })),
+    pane2Width: widths[1],
+    widths,
+    mode: state.mode,
+    leftTab: store.get("leftTab", "files"),
+    rightTab: store.get("rightTab", "backlink"),
+    noLeft: document.body.classList.contains("no-left"),
+    noRight: document.body.classList.contains("no-right"),
+    mobileGroup: state.mobileGroup,
+  };
+}
+
+function saveWorkspaceNamed(name) {
+  const clean = String(name || "").trim();
+  if (!clean) return false;
+  const map = readWorkspaces();
+  map[clean] = { at: Date.now(), layout: snapshotWorkspace() };
+  store.set("workspaces", JSON.stringify(map));
+  return true;
+}
+
+async function applyWorkspaceLayout(layout) {
+  if (!layout || !Array.isArray(layout.groups)) return false;
+  store.set("workspace", JSON.stringify({ v: 1, groups: layout.groups, pane2Width: layout.pane2Width, widths: layout.widths }));
+  const restored = await restoreWorkspace();
+  if (!restored) return false;
+  if (layout.mode) setMode(layout.mode);
+  if (layout.leftTab) showPane(layout.leftTab);
+  if (layout.rightTab) openRightTab(layout.rightTab);
+  document.body.classList.toggle("no-left", !!layout.noLeft);
+  document.body.classList.toggle("no-right", !!layout.noRight);
+  applyMobilePane();
+  return true;
+}
+
+async function loadWorkspaceNamed(name) {
+  const entry = readWorkspaces()[name];
+  if (!entry) { toast("Немає workspace: " + name); return false; }
+  const ok = await applyWorkspaceLayout(entry.layout);
+  if (ok) toast("workspace: " + name);
+  return ok;
+}
+
+function deleteWorkspaceNamed(name) {
+  const map = readWorkspaces();
+  delete map[name];
+  store.set("workspaces", JSON.stringify(map));
+}
+
+function renderWorkspaces() {
+  const host = $("workspacesList");
+  if (!host) return;
+  host.innerHTML = "";
+  const entries = Object.entries(readWorkspaces()).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
+  if (!entries.length) { host.appendChild(el("div", "empty", "Ще немає збережених розкладок.")); return; }
+  for (const [name, entry] of entries) {
+    const row = el("div", "recovery-row");
+    const meta = el("div", "recovery-meta");
+    meta.append(el("span", "recovery-time", name), el("span", "recovery-len", entry.at ? new Date(entry.at).toLocaleString() : ""));
+    const actions = el("div", "recovery-actions");
+    const open = el("button", "ghost-border", "Відкрити");
+    open.onclick = async () => { await loadWorkspaceNamed(name); closeModals(); };
+    const del = el("button", "ghost-border", "Видалити");
+    del.onclick = () => { deleteWorkspaceNamed(name); renderWorkspaces(); };
+    actions.append(open, del);
+    row.append(meta, actions);
+    host.appendChild(row);
+  }
+}
+
+function openWorkspacesModal() {
+  renderWorkspaces();
+  openModal("workspacesModal");
+}
+
+function saveCurrentWorkspace() {
+  const raw = prompt("Назва розкладки:", "Розкладка " + new Date().toLocaleDateString());
+  if (!raw || !raw.trim()) return;
+  if (saveWorkspaceNamed(raw)) {
+    renderWorkspaces();
+    toast("workspace збережено: " + raw.trim());
+  }
+}
+
+function openRandomNote() {
+  const notes = state.files.filter((path) => path.endsWith(".md"));
+  if (!notes.length) { toast("Немає нотаток"); return; }
+  openNote(notes[Math.floor(Math.random() * notes.length)]);
+}
+
 /* ---------------- palette / switcher ---------------- */
 let paletteItems = [], paletteActive = 0, switcherItems = [], switcherActive = 0;
 
 function openModal(id) { $("overlay").classList.add("show"); $(id).classList.add("show"); }
-function closeModals() { $("overlay").classList.remove("show"); ["palette", "switcher", "settings", "collabModal", "recoveryModal"].forEach((id) => $(id).classList.remove("show")); }
+function closeModals() { $("overlay").classList.remove("show"); ["palette", "switcher", "settings", "collabModal", "recoveryModal", "workspacesModal"].forEach((id) => $(id).classList.remove("show")); }
 
 function showPalette() {
   $("paletteInput").value = "";
@@ -3595,7 +3707,7 @@ function renderPalette() {
   const q = $("paletteInput").value.trim().toLowerCase();
   const list = $("paletteList");
   list.innerHTML = "";
-  paletteItems = state.commands.filter((c) => !q || c.label.toLowerCase().includes(q));
+  paletteItems = state.commands.filter((c) => (!c.plugin || isCoreEnabled(c.plugin)) && (!q || c.label.toLowerCase().includes(q)));
   paletteActive = Math.min(paletteActive, Math.max(0, paletteItems.length - 1));
   paletteItems.forEach((cmd, i) => {
     const item = el("div", "item" + (i === paletteActive ? " active" : ""), cmd.label);
@@ -4630,6 +4742,8 @@ $("openSwitcher").onclick = showSwitcher;
 $("openSettings").onclick = openSettings;
 $("closeSettings").onclick = closeModals;
 $("recoveryClose").onclick = closeModals;
+$("workspacesClose").onclick = closeModals;
+$("workspacesSave").onclick = saveCurrentWorkspace;
 $("stBacklinks").onclick = () => { if (currentFile()) openRightTab("backlink"); };
 document.addEventListener("wheel", (event) => {
   const bar = event.target && event.target.closest && event.target.closest(".tabs");
@@ -5087,6 +5201,9 @@ registerCommand({ id: "extract", label: "Note composer: витягнути ви�
 registerCommand({ id: "merge", label: "Note composer: обʼєднати з іншою нотаткою", run: () => showSwitcher("merge") });
 registerCommand({ id: "recovery", label: "File recovery: історія версій", run: openRecovery });
 registerCommand({ id: "collab", label: "Спільна робота (real-time)", hint: "👥", run: () => emit("collab:open") });
+registerCommand({ id: "workspaces-save", label: "Workspaces: зберегти поточний", plugin: "workspaces", run: saveCurrentWorkspace });
+registerCommand({ id: "workspaces-open", label: "Workspaces: відкрити", plugin: "workspaces", run: openWorkspacesModal });
+registerCommand({ id: "random-note", label: "Random note: випадкова нотатка", plugin: "random-note", run: openRandomNote });
 registerCommand({ id: "logout", label: "Забути токен і вийти", run: () => { store.del("token"); location.reload(); } });
 
 liveApi = initLive({
@@ -5162,4 +5279,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled };
