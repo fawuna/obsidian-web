@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=55";
-import { initCanvas } from "./canvas.js?v=55";
-import { initCollab } from "./collab.js?v=55";
-import { initPlugins } from "./plugins.js?v=55";
-import { exportPdfFile } from "./pdf.js?v=55";
-import { initLive } from "./live.js?v=55";
-import { initDaily } from "./daily.js?v=55";
+import { initGraph } from "./graph.js?v=56";
+import { initCanvas } from "./canvas.js?v=56";
+import { initCollab } from "./collab.js?v=56";
+import { initPlugins } from "./plugins.js?v=56";
+import { exportPdfFile } from "./pdf.js?v=56";
+import { initLive } from "./live.js?v=56";
+import { initDaily } from "./daily.js?v=56";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v55";
+const BUILD = "v56";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1450,6 +1450,7 @@ function paint() {
   }
   renderRightTabs();
   renderRightPanels();
+  scheduleBacklinkCount();
   syncHighlight();
   for (let index = 1; index < state.groups.length; index++) paintGroup(index);
   const words = file ? file.text.trim().split(/\s+/).filter(Boolean).length : 0;
@@ -2300,6 +2301,24 @@ function wireRendered(root, sourceText, lineOffset = 0) {
     });
   });
 
+  root.querySelectorAll("li").forEach((li) => {
+    const nested = li.querySelector(":scope > ul, :scope > ol");
+    if (!nested) return;
+    if (li.querySelector(":scope > .list-collapse-indicator")) return;
+    const indicator = document.createElement("span");
+    indicator.className = "list-collapse-indicator collapse-icon";
+    indicator.innerHTML = READING_TRIANGLE_SVG;
+    indicator.title = "Згорнути список";
+    const bullet = li.querySelector(":scope > .list-bullet");
+    if (bullet) bullet.before(indicator); else li.prepend(indicator);
+    indicator.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const collapsed = li.classList.toggle("is-collapsed");
+      indicator.classList.toggle("is-collapsed", collapsed);
+    };
+  });
+
   root.querySelectorAll(".internal-link[data-target]").forEach((a) => {
     a.onclick = (event) => {
       event.preventDefault();
@@ -2630,6 +2649,28 @@ function renderRightPanels() {
 }
 
 function noteName(path) { return String(path || "").split("/").pop().replace(/\.md$/, ""); }
+
+let backlinkCountTimer = null;
+function scheduleBacklinkCount() {
+  clearTimeout(backlinkCountTimer);
+  const node = $("stBacklinks");
+  if (!node) return;
+  const file = currentFile();
+  if (!file) { node.textContent = ""; return; }
+  node.textContent = "…";
+  backlinkCountTimer = setTimeout(async () => {
+    try { await ensureIndex(file.path); } catch { /* ignore */ }
+    const current = currentFile();
+    if (!current || current.path !== file.path) return;
+    let count = 0;
+    for (const [path, text] of state.index) {
+      if (path === file.path || !text) continue;
+      if (wikiLinks(text).some((link) => resolveLinkTarget(link.target) === file.path)) count++;
+    }
+    if (!currentFile() || currentFile().path !== file.path) return;
+    node.textContent = count ? count + (count === 1 ? " backlink" : " backlinks") : "No backlinks";
+  }, 300);
+}
 
 function escapeRegExp(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
@@ -3774,6 +3815,14 @@ $("openSwitcher").onclick = showSwitcher;
 $("openSettings").onclick = openSettings;
 $("closeSettings").onclick = closeModals;
 $("recoveryClose").onclick = closeModals;
+$("stBacklinks").onclick = () => { if (currentFile()) openRightTab("backlink"); };
+document.addEventListener("wheel", (event) => {
+  const bar = event.target && event.target.closest && event.target.closest(".tabs");
+  if (!bar || !event.deltaY || event.deltaX) return;
+  if (bar.scrollWidth <= bar.clientWidth) return;
+  event.preventDefault();
+  bar.scrollLeft += event.deltaY;
+}, { passive: false });
 $("newNote").onclick = newNote;
 $("splitBtn").onclick = () => {
   if (state.active) addPane(state.active);
