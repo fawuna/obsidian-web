@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=66";
-import { initCanvas } from "./canvas.js?v=66";
-import { initCollab } from "./collab.js?v=66";
-import { initPlugins } from "./plugins.js?v=66";
-import { exportPdfFile } from "./pdf.js?v=66";
-import { initLive } from "./live.js?v=66";
-import { initDaily } from "./daily.js?v=66";
+import { initGraph } from "./graph.js?v=67";
+import { initCanvas } from "./canvas.js?v=67";
+import { initCollab } from "./collab.js?v=67";
+import { initPlugins } from "./plugins.js?v=67";
+import { exportPdfFile } from "./pdf.js?v=67";
+import { initLive } from "./live.js?v=67";
+import { initDaily } from "./daily.js?v=67";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v66";
+const BUILD = "v67";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -4733,7 +4733,19 @@ $("mobBack").onclick = goBack;
 $("mobFwd").onclick = goFwd;
 $("mobSwitcher").onclick = () => showSwitcher();
 $("mobNew").onclick = newNote;
-$("mobMenu").onclick = showPalette;
+$("mobMenu").onclick = (event) => {
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  showCtx(rect.left, rect.top - 8, [
+    { label: "Палітра команд", run: showPalette },
+    { label: "Пошук", run: () => { showPane("search"); setTimeout(() => $("searchInput")?.focus(), 60); } },
+    { label: "Налаштування", run: openSettings },
+    { label: "Права панель", run: toggleRight },
+    { label: "Тема", run: toggleTheme },
+    { sep: true },
+    { label: "Зберегти", run: () => saveNote() },
+  ]);
+};
 
 window.addEventListener("beforeunload", (e) => { if (state.open.some((f) => f.dirty)) { e.preventDefault(); e.returnValue = ""; } });
 window.addEventListener("beforeunload", saveWorkspace);

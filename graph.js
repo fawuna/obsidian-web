@@ -258,8 +258,10 @@ function draw() {
   const arrows = document.getElementById("graphArrows")?.checked;
   const fade = Number(document.getElementById("graphTextFade")?.value) || 0;
   const labelThreshold = 0.55 + (fade / 100) * 1.6;
+  const nodeScale = (Number(document.getElementById("graphNodeSize")?.value) || 100) / 100;
+  const linkScale = (Number(document.getElementById("graphLinkWidth")?.value) || 100) / 100;
 
-  ctx.lineWidth = 1.2 / view.k;
+  ctx.lineWidth = 1.2 * linkScale / view.k;
   ctx.strokeStyle = line;
   for (const e of edges) {
     const a = byId.get(e.a), b = byId.get(e.b);
@@ -279,8 +281,8 @@ function draw() {
       const len = Math.hypot(dx, dy) || 1;
       const angle = Math.atan2(dy, dx);
       const size = 7 / view.k;
-      const tipX = b.x - (dx / len) * (b.r + 1);
-      const tipY = b.y - (dy / len) * (b.r + 1);
+      const tipX = b.x - (dx / len) * (b.r * nodeScale + 1);
+      const tipY = b.y - (dy / len) * (b.r * nodeScale + 1);
       ctx.beginPath();
       ctx.moveTo(tipX, tipY);
       ctx.lineTo(tipX - Math.cos(angle - 0.45) * size, tipY - Math.sin(angle - 0.45) * size);
@@ -297,7 +299,7 @@ function draw() {
     const isHover = n === hovered;
     const isTag = n.type === "tag";
     ctx.beginPath();
-    ctx.arc(n.x, n.y, n.r + (isHover ? 2 : 0), 0, Math.PI * 2);
+    ctx.arc(n.x, n.y, n.r * nodeScale + (isHover ? 2 : 0), 0, Math.PI * 2);
     ctx.fillStyle = isActive ? accent : isTag ? "#e0b458" : (n.folder ? "#5d7cff" : "#6cc9a8");
     ctx.globalAlpha = isActive || isHover ? 1 : 0.85;
     ctx.fill();
@@ -311,7 +313,7 @@ function draw() {
       ctx.fillStyle = isActive ? accent : text;
       ctx.globalAlpha = isHover || isActive ? 1 : 0.75;
       ctx.textAlign = "center";
-      ctx.fillText(n.label, n.x, n.y + n.r + 13 / view.k);
+      ctx.fillText(n.label, n.x, n.y + n.r * nodeScale + 13 / view.k);
       ctx.globalAlpha = 1;
     }
   }
@@ -327,9 +329,10 @@ function loop() {
 
 function nodeAt(world) {
   let best = null, bestD = Infinity;
+  const nodeScale = (Number(document.getElementById("graphNodeSize")?.value) || 100) / 100;
   for (const n of nodes) {
     const d = Math.hypot(n.x - world.x, n.y - world.y);
-    if (d < n.r + 8 / view.k && d < bestD) { best = n; bestD = d; }
+    if (d < n.r * nodeScale + 8 / view.k && d < bestD) { best = n; bestD = d; }
   }
   return best;
 }
@@ -357,6 +360,8 @@ export function initGraph(vault) {
     ["graphArrows", "checkbox"],
     ["graphTextFade", "range"],
     ["graphDistance", "range"],
+    ["graphNodeSize", "range"],
+    ["graphLinkWidth", "range"],
   ];
   for (const [id, type] of savedSettings) {
     const node = document.getElementById(id);
