@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=39";
-import { initCanvas } from "./canvas.js?v=39";
-import { initCollab } from "./collab.js?v=39";
-import { initPlugins } from "./plugins.js?v=39";
-import { exportPdfFile } from "./pdf.js?v=39";
-import { initLive } from "./live.js?v=39";
-import { initDaily } from "./daily.js?v=39";
+import { initGraph } from "./graph.js?v=40";
+import { initCanvas } from "./canvas.js?v=40";
+import { initCollab } from "./collab.js?v=40";
+import { initPlugins } from "./plugins.js?v=40";
+import { exportPdfFile } from "./pdf.js?v=40";
+import { initLive } from "./live.js?v=40";
+import { initDaily } from "./daily.js?v=40";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v39";
+const BUILD = "v40";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -156,6 +156,80 @@ function fileInAnyGroup(path) {
 }
 function syncSecond() {
   state.second = state.groups[1] ? state.groups[1].active : null;
+}
+
+let workspaceTimer = null;
+
+function saveWorkspace() {
+  const pane2 = $("pane2");
+  const match = pane2 ? String(pane2.style.flex || "").match(/(\d+)px/) : null;
+  const data = {
+    v: 1,
+    groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active })),
+    pane2Width: state.groups[1] && match ? Number(match[1]) : null,
+  };
+  store.set("workspace", JSON.stringify(data));
+}
+
+function scheduleWorkspaceSave() {
+  clearTimeout(workspaceTimer);
+  workspaceTimer = setTimeout(saveWorkspace, 250);
+}
+
+async function restoreWorkspace() {
+  let data = null;
+  try { data = JSON.parse(store.get("workspace", "")); } catch { data = null; }
+  if (!data || !Array.isArray(data.groups)) return false;
+  const valid = (path) => typeof path === "string" && path.endsWith(".md") && state.files.includes(path);
+  const specs = data.groups.slice(0, 2).map((group) => ({
+    tabs: Array.isArray(group.tabs) ? group.tabs.filter(valid) : [],
+    active: valid(group.active) ? group.active : null,
+  }));
+  if (!specs.length) return false;
+  const paths = [...new Set(specs.flatMap((group) => group.tabs))];
+  if (!paths.length) return false;
+  for (const path of paths) {
+    if (state.open.some((file) => file.path === path)) continue;
+    try {
+      const { text, sha } = await ghGet(path);
+      state.index.set(path, text);
+      state.open.push({ path, sha, text, dirty: false });
+    } catch { /* missing file */ }
+  }
+  const loaded = new Set(state.open.map((file) => file.path));
+  const build = (spec) => {
+    const tabs = spec.tabs.filter((path) => loaded.has(path));
+    return { tabs, active: tabs.includes(spec.active) ? spec.active : (tabs[0] || null) };
+  };
+  let groups = specs.map(build);
+  if (!groups[0] || !groups[0].tabs.length) {
+    if (groups[1] && groups[1].tabs.length) groups = [groups[1]];
+    else return false;
+  }
+  if (groups[1] && !groups[1].tabs.length) groups = [groups[0]];
+  state.groups = groups;
+  state.active = groups[0].active;
+  syncSecond();
+  if (groups[1]) {
+    document.body.classList.add("split");
+    const saved = Number(data.pane2Width);
+    if (Number.isFinite(saved) && saved > 120) {
+      const mainWidth = document.querySelector("main").getBoundingClientRect().width || window.innerWidth;
+      const width = Math.min(Math.round(saved), Math.max(120, Math.round(mainWidth * 0.85)));
+      $("pane2").style.flex = "0 0 " + width + "px";
+    } else {
+      $("pane2").style.flex = "";
+    }
+  } else {
+    document.body.classList.remove("split");
+    $("pane2").style.flex = "";
+  }
+  setView("note");
+  renderTabs();
+  renderTree();
+  paint();
+  updateSplitButtons();
+  return true;
 }
 
 function theme() { document.documentElement.dataset.theme = store.get("theme", "dark"); }
@@ -600,6 +674,7 @@ function renderPane2Tabs() {
     else reorderGroupTabs(1, moved, null, false);
   };
   syncSecond();
+  scheduleWorkspaceSave();
 }
 
 function moveTabToSecond(path) {
@@ -822,6 +897,7 @@ function renderTabs() {
     else reorderGroupTabs(0, moved, null, false);
   };
   renderPane2Tabs();
+  scheduleWorkspaceSave();
 }
 
 function paint() {
@@ -1846,6 +1922,7 @@ $("splitter").addEventListener("mousedown", (e) => {
   const up = () => {
     window.removeEventListener("mousemove", move);
     window.removeEventListener("mouseup", up);
+    scheduleWorkspaceSave();
   };
   window.addEventListener("mousemove", move);
   window.addEventListener("mouseup", up);
@@ -2091,6 +2168,7 @@ $("saveSettings").onclick = () => {
 };
 
 window.addEventListener("beforeunload", (e) => { if (state.open.some((f) => f.dirty)) { e.preventDefault(); e.returnValue = ""; } });
+window.addEventListener("beforeunload", saveWorkspace);
 
 /* ---------------- global drag&drop hint ---------------- */
 let dragDepth = 0;
@@ -2115,8 +2193,11 @@ async function connect(repo, branch, token, remember) {
     if (dailyApi) await dailyApi.loadConfigs();
     else dailyApi = await initDaily(Vault);
     window.__daily = dailyApi;
-    const first = state.files.find((p) => p.endsWith(".md"));
-    if (first) await openNote(first);
+    const restored = await restoreWorkspace();
+    if (!restored) {
+      const first = state.files.find((p) => p.endsWith(".md"));
+      if (first) await openNote(first);
+    }
     showPane("files");
     ensureIndex().then(() => { renderTags(); renderContext(); emit("index"); }).catch(() => {});
     initGraph(Vault);
