@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=90";
-import { initCanvas } from "./canvas.js?v=90";
-import { initCollab } from "./collab.js?v=90";
-import { initPlugins } from "./plugins.js?v=90";
-import { exportPdfFile } from "./pdf.js?v=90";
-import { initLive } from "./live.js?v=90";
-import { initDaily } from "./daily.js?v=90";
-import { initRecorder } from "./recorder.js?v=90";
-import { initPdfViewer } from "./pdfviewer.js?v=90";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=90";
+import { initGraph } from "./graph.js?v=91";
+import { initCanvas } from "./canvas.js?v=91";
+import { initCollab } from "./collab.js?v=91";
+import { initPlugins } from "./plugins.js?v=91";
+import { exportPdfFile } from "./pdf.js?v=91";
+import { initLive } from "./live.js?v=91";
+import { initDaily } from "./daily.js?v=91";
+import { initRecorder } from "./recorder.js?v=91";
+import { initPdfViewer } from "./pdfviewer.js?v=91";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=91";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v90";
+const BUILD = "v91";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 

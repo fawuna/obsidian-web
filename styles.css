@@ -733,10 +733,12 @@ body.split #previewHost { display: none; }
   .mobile-nav button { flex: 0 0 auto; width: 40px; height: 40px; border: 0; background: transparent; color: var(--text-dim); font-size: 17px; border-radius: 8px; cursor: pointer; }
   .mobile-nav button:hover, .mobile-nav button:active { background: var(--bg-3); color: var(--text); }
   .mobile-nav .mobile-title { flex: 1; width: auto; min-width: 0; text-align: center; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #app.ready { padding-bottom: 52px; box-sizing: border-box; }
-  #left { bottom: 52px; }
-  #right { bottom: 52px; }
-  .mobile-switch { bottom: 62px; }
+  #app.ready { padding-bottom: calc(52px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+  .mobile-nav { height: calc(52px + env(safe-area-inset-bottom)); padding: 0 calc(6px + env(safe-area-inset-right)) env(safe-area-inset-bottom) calc(6px + env(safe-area-inset-left)); }
+  .mobile-nav button { width: 44px; height: 44px; touch-action: manipulation; }
+  #left { bottom: calc(52px + env(safe-area-inset-bottom)); }
+  #right { bottom: calc(52px + env(safe-area-inset-bottom)); }
+  .mobile-switch { bottom: calc(62px + env(safe-area-inset-bottom)); }
 }
 
 .cm-math-inline { display: inline; }
