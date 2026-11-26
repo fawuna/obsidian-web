@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=100";
-import { initCanvas } from "./canvas.js?v=100";
-import { initCollab } from "./collab.js?v=100";
-import { initPlugins } from "./plugins.js?v=100";
-import { exportPdfFile } from "./pdf.js?v=100";
-import { initLive } from "./live.js?v=100";
-import { initDaily } from "./daily.js?v=100";
-import { initRecorder } from "./recorder.js?v=100";
-import { initPdfViewer } from "./pdfviewer.js?v=100";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=100";
+import { initGraph } from "./graph.js?v=101";
+import { initCanvas } from "./canvas.js?v=101";
+import { initCollab } from "./collab.js?v=101";
+import { initPlugins } from "./plugins.js?v=101";
+import { exportPdfFile } from "./pdf.js?v=101";
+import { initLive } from "./live.js?v=101";
+import { initDaily } from "./daily.js?v=101";
+import { initRecorder } from "./recorder.js?v=101";
+import { initPdfViewer } from "./pdfviewer.js?v=101";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=101";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v100";
+const BUILD = "v101";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -317,7 +317,8 @@ function openTargetNote(target) {
   const clean = sameNote ? raw.slice(1) : raw;
   const [name, anchor] = sameNote ? [null, clean] : clean.split("#");
   if (sameNote) { jumpToAnchor(anchor); return; }
-  const hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
+  let hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
+  if (!hit) hit = aliasTarget(name);
   if (!hit) { toast("Немає такої нотатки: " + name); return; }
   openNote(hit).then(() => { if (anchor) setTimeout(() => jumpToAnchor(anchor), 120); });
 }
@@ -2248,6 +2249,32 @@ function parseProps(text) {
   return { raw: m[0], body: text.slice(m[0].length), props };
 }
 
+function noteAliases(text) {
+  const parsed = parseProps(text || "");
+  if (!parsed) return [];
+  const aliases = [];
+  for (const [key, value] of parsed.props) {
+    if (!/^aliases?$/i.test(key)) continue;
+    for (const part of String(value || "").split(",")) {
+      const alias = part.trim().replace(/^\[|\]$/g, "").replace(/^["']|["']$/g, "");
+      if (alias) aliases.push(alias);
+    }
+  }
+  return aliases;
+}
+
+function aliasTarget(alias) {
+  const key = String(alias || "").trim().toLowerCase();
+  if (!key) return "";
+  for (const path of state.files) {
+    if (!path.endsWith(".md")) continue;
+    const text = state.index.get(path);
+    if (text == null) continue;
+    if (noteAliases(text).some((item) => item.toLowerCase() === key)) return path;
+  }
+  return "";
+}
+
 function frontmatterBlock(text) {
   const match = String(text).match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/);
   if (!match) return null;
@@ -2966,7 +2993,8 @@ function wireRendered(root, sourceText, lineOffset = 0) {
         return;
       }
       if (sameNote) { jumpToAnchor(anchor); return; }
-      const hit = state.files.find((p) => p === fileTarget + ".md" || p === fileTarget || p.endsWith("/" + fileTarget + ".md"));
+      let hit = state.files.find((p) => p === fileTarget + ".md" || p === fileTarget || p.endsWith("/" + fileTarget + ".md"));
+      if (!hit) hit = aliasTarget(fileTarget);
       if (!hit) { toast("Немає такої нотатки: " + fileTarget); return; }
       await openNote(hit);
       if (anchor) setTimeout(() => jumpToAnchor(anchor), 120);
@@ -4340,13 +4368,17 @@ function renderSwitcher() {
   const scored = source
     .map((path) => {
       const name = path.split("/").pop().replace(/\.(md|canvas)$/, "").toLowerCase();
+      const aliases = switcherMode === "open" ? noteAliases(state.index.get(path) || "") : [];
+      const aliasHit = aliases.find((alias) => alias.toLowerCase().includes(q)) || "";
       let score = 0;
       if (!q) score = 1;
       else if (name === q) score = 100;
       else if (name.startsWith(q)) score = 80;
       else if (name.includes(q)) score = 60;
+      else if (aliasHit && aliasHit.toLowerCase() === q) score = 55;
+      else if (aliasHit) score = 45;
       else if (path.toLowerCase().includes(q)) score = 30;
-      return { path, score };
+      return { path, score, aliasHit };
     })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
@@ -4364,6 +4396,8 @@ function renderSwitcher() {
     } else {
       item.appendChild(el("span", null, switcherMode === "template" ? "🧾" : path.endsWith(".canvas") ? "🎨" : path.endsWith(".base") ? "🗃" : "📄"));
       item.appendChild(el("span", null, switcherMode === "template" ? path.replace(/\.md$/, "") : path.replace(/\.(md|canvas)$/, "")));
+      const info = scored.find((entry) => entry.path === path);
+      if (info && info.aliasHit) item.appendChild(el("span", "hint", info.aliasHit));
     }
     item.onclick = () => {
       chooseSwitcherItem(path);
