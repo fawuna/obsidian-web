@@ -72,6 +72,16 @@ function buildGraph() {
     }
     list = list.filter((p) => withNeighbors.has(p));
   }
+  const showOrphans = document.getElementById("graphOrphans")?.checked !== false;
+  if (!showOrphans) {
+    const listSet = new Set(list);
+    const connected = new Set();
+    for (const [a, b] of links) {
+      if (listSet.has(a) && listSet.has(b)) { connected.add(a); connected.add(b); }
+    }
+    if (local && active && listSet.has(active)) connected.add(active);
+    list = list.filter((p) => connected.has(p));
+  }
   const cx = 0, cy = 0, radius = 90 + list.length * 6;
   nodes = list.map((path, i) => {
     const angle = (i / list.length) * Math.PI * 2;
@@ -148,7 +158,7 @@ function tick() {
   }
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const ideal = 110;
+  const ideal = Number(document.getElementById("graphDistance")?.value) || 110;
   for (const e of edges) {
     const a = byId.get(e.a), b = byId.get(e.b);
     if (!a || !b) continue;
@@ -184,6 +194,9 @@ function draw() {
   const line = getComputedStyle(document.documentElement).getPropertyValue("--line").trim() || "#3a3a3a";
   const muted = getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() || "#8f8f8f";
   const text = getComputedStyle(document.documentElement).getPropertyValue("--text").trim() || "#dadada";
+  const arrows = document.getElementById("graphArrows")?.checked;
+  const fade = Number(document.getElementById("graphTextFade")?.value) || 0;
+  const labelThreshold = 0.55 + (fade / 100) * 1.6;
 
   ctx.lineWidth = 1.2 / view.k;
   ctx.strokeStyle = line;
@@ -195,6 +208,26 @@ function draw() {
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
+  }
+  if (arrows) {
+    ctx.globalAlpha = 0.75;
+    for (const e of edges) {
+      const a = byId.get(e.a), b = byId.get(e.b);
+      if (!a || !b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const angle = Math.atan2(dy, dx);
+      const size = 7 / view.k;
+      const tipX = b.x - (dx / len) * (b.r + 1);
+      const tipY = b.y - (dy / len) * (b.r + 1);
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(tipX - Math.cos(angle - 0.45) * size, tipY - Math.sin(angle - 0.45) * size);
+      ctx.lineTo(tipX - Math.cos(angle + 0.45) * size, tipY - Math.sin(angle + 0.45) * size);
+      ctx.closePath();
+      ctx.fillStyle = line;
+      ctx.fill();
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -211,7 +244,7 @@ function draw() {
     ctx.strokeStyle = isActive ? accent : line;
     ctx.stroke();
 
-    if (view.k > 0.55 || isActive || isHover) {
+    if (view.k > labelThreshold || isActive || isHover) {
       ctx.font = (11 / view.k).toFixed(1) + "px Inter, Segoe UI, sans-serif";
       ctx.fillStyle = isActive ? accent : text;
       ctx.globalAlpha = isHover || isActive ? 1 : 0.75;
@@ -256,6 +289,28 @@ export function initGraph(vault) {
   if (gq) gq.addEventListener("input", () => { needsRebuild = true; });
   if (gt) gt.addEventListener("input", () => { needsRebuild = true; });
   if (gd) gd.addEventListener("input", () => { needsRebuild = true; });
+  const savedSettings = [
+    ["graphOrphans", "checkbox"],
+    ["graphArrows", "checkbox"],
+    ["graphTextFade", "range"],
+    ["graphDistance", "range"],
+  ];
+  for (const [id, type] of savedSettings) {
+    const node = document.getElementById(id);
+    if (!node) continue;
+    const saved = localStorage.getItem("vw-" + id);
+    if (saved !== null) {
+      if (type === "checkbox") node.checked = saved === "1";
+      else node.value = saved;
+    }
+    const save = () => {
+      if (type === "checkbox") localStorage.setItem("vw-" + id, node.checked ? "1" : "0");
+      else localStorage.setItem("vw-" + id, node.value);
+      if (id === "graphOrphans") needsRebuild = true;
+    };
+    node.addEventListener("input", save);
+    node.addEventListener("change", save);
+  }
   document.getElementById("graphRefresh").onclick = () => { needsRebuild = true; };
   document.getElementById("graphFit").onclick = () => fit();
 

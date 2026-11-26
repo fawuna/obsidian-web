@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=61";
-import { initCanvas } from "./canvas.js?v=61";
-import { initCollab } from "./collab.js?v=61";
-import { initPlugins } from "./plugins.js?v=61";
-import { exportPdfFile } from "./pdf.js?v=61";
-import { initLive } from "./live.js?v=61";
-import { initDaily } from "./daily.js?v=61";
+import { initGraph } from "./graph.js?v=62";
+import { initCanvas } from "./canvas.js?v=62";
+import { initCollab } from "./collab.js?v=62";
+import { initPlugins } from "./plugins.js?v=62";
+import { exportPdfFile } from "./pdf.js?v=62";
+import { initLive } from "./live.js?v=62";
+import { initDaily } from "./daily.js?v=62";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v61";
+const BUILD = "v62";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
