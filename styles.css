@@ -660,6 +660,10 @@ body.split #previewHost { display: none; }
 .cm-mermaid { display: flex; justify-content: center; margin: 10px 0; overflow-x: auto; }
 .cm-mermaid svg { max-width: 100%; height: auto; }
 .cm-math-src { color: var(--muted); }
+.cm-embed-note { display: inline-flex; flex-direction: column; gap: 3px; border: 1px solid var(--line); border-left: 3px solid var(--accent-2); border-radius: 6px; padding: 5px 9px; margin: 4px 0; max-width: 100%; background: var(--bg-2); cursor: pointer; vertical-align: top; }
+.cm-embed-note .cm-embed-title { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.cm-embed-note .cm-embed-body { font-size: 12.5px; color: var(--text-dim); white-space: pre-wrap; max-height: 90px; overflow: hidden; }
+.cm-embed-note.missing .cm-embed-body { color: var(--muted); font-style: italic; }
 .vault-btn { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; max-width: 170px; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
 .vault-btn:hover { background: var(--bg-3); color: var(--text); }
 @media (max-width: 760px) { #vaultBtn { display: none; } }

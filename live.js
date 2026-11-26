@@ -82,6 +82,52 @@ class ImageWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
+const noteEmbedCache = new Map();
+class NoteEmbedWidget extends WidgetType {
+  constructor(name) {
+    super();
+    this.name = name;
+  }
+  eq(other) { return other.name === this.name; }
+  toDOM() {
+    const box = document.createElement("span");
+    box.className = "cm-embed-note";
+    const title = document.createElement("span");
+    title.className = "cm-embed-title";
+    title.textContent = "📄 " + this.name;
+    box.appendChild(title);
+    const body = document.createElement("span");
+    body.className = "cm-embed-body";
+    box.appendChild(body);
+    const files = (window.Vault && window.Vault.state && window.Vault.state.files) || [];
+    const path = files.find((p) => p === this.name + ".md" || p === this.name || p.endsWith("/" + this.name + ".md")) || null;
+    if (!path) {
+      box.classList.add("missing");
+      body.textContent = "немає нотатки";
+      return box;
+    }
+    const cached = noteEmbedCache.get(path);
+    if (cached) {
+      body.textContent = cached;
+    } else if (window.Vault && typeof window.Vault.ghGet === "function") {
+      body.textContent = "завантажую…";
+      window.Vault.ghGet(path).then(({ text }) => {
+        const snippet = String(text || "").replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, "").slice(0, 400);
+        noteEmbedCache.set(path, snippet);
+        if (box.isConnected) body.textContent = snippet || "(порожньо)";
+      }).catch(() => { if (box.isConnected) body.textContent = "не завантажилось"; });
+    }
+    box.title = "Відкрити " + path;
+    box.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (window.Vault && typeof window.Vault.openNote === "function") window.Vault.openNote(path);
+    };
+    return box;
+  }
+  ignoreEvent() { return false; }
+}
+
 let katexLoader = null;
 function ensureKatex() {
   if (window.katex) return Promise.resolve(window.katex);
@@ -208,6 +254,8 @@ function decorateInline(decos, text, lineFrom, imageUrl) {
       if (IMAGE_RE.test(name)) {
         const src = imageUrl(name);
         decos.push(Decoration.replace({ widget: new ImageWidget(src, name) }).range(at, at + full.length));
+      } else if (name) {
+        decos.push(Decoration.replace({ widget: new NoteEmbedWidget(name) }).range(at, at + full.length));
       }
     } else if (m[9] !== undefined) {
       const inner = m[9];
