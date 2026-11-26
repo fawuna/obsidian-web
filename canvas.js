@@ -20,6 +20,12 @@ let panning = null;
 let historyStack = [];
 let historyIndex = -1;
 let canvasClipboard = null;
+let snapEnabled = localStorage.getItem("vw-canvasSnap") === "1";
+const SNAP_SIZE = 20;
+
+function snapValue(value) {
+  return snapEnabled ? Math.round(value / SNAP_SIZE) * SNAP_SIZE : Math.round(value);
+}
 const excerpts = new Map();
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -859,8 +865,8 @@ export function initCanvas(vault) {
     if (resizing) {
       const dx = (e.clientX - resizing.startX) / view.k;
       const dy = (e.clientY - resizing.startY) / view.k;
-      resizing.node.width = Math.max(160, Math.round(resizing.w + dx));
-      resizing.node.height = Math.max(90, Math.round(resizing.h + dy));
+      resizing.node.width = Math.max(160, snapValue(resizing.w + dx));
+      resizing.node.height = Math.max(90, snapValue(resizing.h + dy));
       dirty = true;
       const nodeEl = world.querySelector('[data-id="' + resizing.node.id + '"]');
       if (nodeEl) {
@@ -871,23 +877,23 @@ export function initCanvas(vault) {
     } else if (dragging) {
       const dx = (e.clientX - dragging.startX) / view.k;
       const dy = (e.clientY - dragging.startY) / view.k;
-      dragging.node.x = Math.round(dragging.origX + dx);
-      dragging.node.y = Math.round(dragging.origY + dy);
+      dragging.node.x = snapValue(dragging.origX + dx);
+      dragging.node.y = snapValue(dragging.origY + dy);
       dirty = true;
       const nodeEl = world.querySelector('[data-id="' + dragging.node.id + '"]');
       if (nodeEl) { nodeEl.style.left = dragging.node.x + "px"; nodeEl.style.top = dragging.node.y + "px"; }
       if (dragging.children && dragging.children.length) {
         for (const child of dragging.children) {
-          child.node.x = Math.round(child.x + dx);
-          child.node.y = Math.round(child.y + dy);
+          child.node.x = snapValue(child.x + dx);
+          child.node.y = snapValue(child.y + dy);
           const childEl = world.querySelector('[data-id="' + child.node.id + '"]');
           if (childEl) { childEl.style.left = child.node.x + "px"; childEl.style.top = child.node.y + "px"; }
         }
       }
       if (dragging.peers && dragging.peers.length) {
         for (const peer of dragging.peers) {
-          peer.node.x = Math.round(peer.x + dx);
-          peer.node.y = Math.round(peer.y + dy);
+          peer.node.x = snapValue(peer.x + dx);
+          peer.node.y = snapValue(peer.y + dy);
           const peerEl = world.querySelector('[data-id="' + peer.node.id + '"]');
           if (peerEl) { peerEl.style.left = peer.node.x + "px"; peerEl.style.top = peer.node.y + "px"; }
         }
@@ -975,6 +981,15 @@ export function initCanvas(vault) {
   document.getElementById("cvSave").onclick = () => save(false);
   document.getElementById("cvUndo").onclick = undoCanvas;
   document.getElementById("cvRedo").onclick = redoCanvas;
+  const snapBox = document.getElementById("cvSnap");
+  if (snapBox) {
+    snapBox.checked = snapEnabled;
+    snapBox.onchange = () => {
+      snapEnabled = snapBox.checked;
+      localStorage.setItem("vw-canvasSnap", snapEnabled ? "1" : "0");
+      Vault.toast(snapEnabled ? "сітка: 20px" : "сітку вимкнено");
+    };
+  }
   document.querySelectorAll("#cvAlign [data-align]").forEach((btn) => {
     btn.onclick = () => alignSelection(btn.dataset.align);
   });
@@ -1079,6 +1094,15 @@ export function initCanvas(vault) {
     undo: undoCanvas,
     redo: redoCanvas,
     history: () => ({ index: historyIndex, length: historyStack.length }),
+    setSnap(enabled) {
+      snapEnabled = !!enabled;
+      const box = document.getElementById("cvSnap");
+      if (box) box.checked = snapEnabled;
+      localStorage.setItem("vw-canvasSnap", snapEnabled ? "1" : "0");
+      return snapEnabled;
+    },
+    snapEnabled: () => snapEnabled,
+    dragging: () => (dragging ? { id: dragging.node.id, startX: dragging.startX, origX: dragging.origX } : null),
     addGroup(label, x = 40, y = 40, width = 480, height = 340) {
       const node = { id: uid(), type: "group", label: label || "Група", x, y, width, height };
       model.nodes.push(node);
