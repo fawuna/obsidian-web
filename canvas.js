@@ -17,6 +17,8 @@ let connectMode = false;
 let connectFrom = null;
 let dragging = null;
 let panning = null;
+let historyStack = [];
+let historyIndex = -1;
 const excerpts = new Map();
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -37,7 +39,42 @@ function cycleColor(node) {
   if (next >= keys.length) delete node.color;
   else node.color = keys[next];
   dirty = true;
+  pushHistory();
   render();
+}
+
+function snapshotModel() {
+  return JSON.stringify({ nodes: model.nodes, edges: model.edges });
+}
+
+function pushHistory() {
+  const snap = snapshotModel();
+  if (historyIndex >= 0 && historyStack[historyIndex] === snap) return;
+  historyStack = historyStack.slice(0, historyIndex + 1);
+  historyStack.push(snap);
+  historyIndex = historyStack.length - 1;
+  if (historyStack.length > 100) { historyStack.shift(); historyIndex -= 1; }
+}
+
+function restoreHistory(index) {
+  if (index < 0 || index >= historyStack.length) return;
+  historyIndex = index;
+  try { model = JSON.parse(historyStack[index]); } catch { return; }
+  if (!Array.isArray(model.nodes)) model.nodes = [];
+  if (!Array.isArray(model.edges)) model.edges = [];
+  selected = null;
+  selectedNodes.clear();
+  selectedEdge = null;
+  dirty = true;
+  render();
+}
+
+function undoCanvas() {
+  if (historyIndex > 0) restoreHistory(historyIndex - 1);
+}
+
+function redoCanvas() {
+  if (historyIndex < historyStack.length - 1) restoreHistory(historyIndex + 1);
 }
 
 function applyTransform() {
@@ -170,14 +207,14 @@ function showEdgeBar(edge, clientX, clientY) {
   const none = document.createElement("button");
   none.className = "cv-swatch cv-swatch-none" + (!edge.color ? " on" : "");
   none.title = "Без кольору";
-  none.onclick = action(() => { delete edge.color; dirty = true; refresh(); });
+  none.onclick = action(() => { delete edge.color; pushHistory(); dirty = true; refresh(); });
   bar.appendChild(none);
   for (const [key, color] of Object.entries(CANVAS_COLORS)) {
     const swatch = document.createElement("button");
     swatch.className = "cv-swatch" + (edge.color === key ? " on" : "");
     swatch.style.background = color;
     swatch.title = "Колір " + key;
-    swatch.onclick = action(() => { edge.color = key; dirty = true; refresh(); });
+    swatch.onclick = action(() => { edge.color = key; pushHistory(); dirty = true; refresh(); });
     bar.appendChild(swatch);
   }
 
@@ -192,6 +229,7 @@ function showEdgeBar(edge, clientX, clientY) {
     const next = { none: "to", to: "both", both: "none", from: "none" }[arrowState] || "to";
     edge.toEnd = next === "to" || next === "both" ? "arrow" : "none";
     edge.fromEnd = next === "both" ? "arrow" : "none";
+    pushHistory();
     dirty = true;
     refresh();
   });
@@ -205,6 +243,7 @@ function showEdgeBar(edge, clientX, clientY) {
     const text = prompt("Підпис ребра (порожньо — без підпису):", edge.label || "");
     if (text === null) return;
     if (text.trim()) edge.label = text.trim(); else delete edge.label;
+    pushHistory();
     dirty = true;
     refresh();
   });
@@ -217,6 +256,7 @@ function showEdgeBar(edge, clientX, clientY) {
   remove.onclick = action(() => {
     model.edges = model.edges.filter((item) => item.id !== edge.id);
     selectedEdge = null;
+    pushHistory();
     dirty = true;
     render();
   });
@@ -288,6 +328,7 @@ function render() {
       const label = prompt("Підпис ребра (порожньо — без підпису):", e.label || "");
       if (label === null) return;
       if (label.trim()) e.label = label.trim(); else delete e.label;
+      pushHistory();
       dirty = true;
       render();
     });
@@ -383,7 +424,14 @@ function render() {
     } else if (n.type === "text") {
       const ta = document.createElement("textarea");
       ta.value = n.text || "";
-      ta.oninput = () => { n.text = ta.value; dirty = true; };
+      let histTimer = null;
+      ta.oninput = () => {
+        n.text = ta.value;
+        dirty = true;
+        clearTimeout(histTimer);
+        histTimer = setTimeout(pushHistory, 600);
+      };
+      ta.onblur = () => { clearTimeout(histTimer); pushHistory(); };
       ta.onmousedown = (e) => e.stopPropagation();
       body.appendChild(ta);
     } else {
@@ -427,6 +475,7 @@ function render() {
             fromEnd: "none",
             toEnd: "arrow",
           });
+          pushHistory();
           connectFrom = null;
           connectMode = false;
           dirty = true;
@@ -493,6 +542,9 @@ async function open(p) {
   selected = null;
   selectedEdge = null;
   selectedNodes.clear();
+  historyStack = [];
+  historyIndex = -1;
+  pushHistory();
   view = { x: 60, y: 60, k: 1 };
   render();
   Vault.paint();
@@ -530,6 +582,7 @@ function alignSelection(mode) {
     else if (mode === "vcenter") n.y = Math.round((minY + maxY) / 2 - h / 2);
     else if (mode === "bottom") n.y = maxY - h;
   }
+  pushHistory();
   dirty = true;
   render();
   return true;
@@ -634,6 +687,7 @@ function deleteSelection() {
   model.edges = model.edges.filter((edge) => !ids.has(edge.fromNode) && !ids.has(edge.toNode));
   selectedNodes.clear();
   selected = null;
+  pushHistory();
   dirty = true;
   render();
 }
@@ -654,6 +708,7 @@ function duplicateSelection() {
   }
   selectedNodes = new Set(map.values());
   selected = selectedNodes.values().next().value || null;
+  pushHistory();
   dirty = true;
   render();
 }
@@ -662,6 +717,7 @@ function bringSelectionToFront() {
   if (!selectedNodes.size) return;
   const chosen = model.nodes.filter((n) => selectedNodes.has(n.id));
   model.nodes = model.nodes.filter((n) => !selectedNodes.has(n.id)).concat(chosen);
+  pushHistory();
   dirty = true;
   render();
 }
@@ -670,6 +726,7 @@ function sendSelectionToBack() {
   if (!selectedNodes.size) return;
   const chosen = model.nodes.filter((n) => selectedNodes.has(n.id));
   model.nodes = chosen.concat(model.nodes.filter((n) => !selectedNodes.has(n.id)));
+  pushHistory();
   dirty = true;
   render();
 }
@@ -682,6 +739,7 @@ function cycleSelectionColor() {
     if (next >= keys.length) delete node.color;
     else node.color = keys[next];
   }
+  pushHistory();
   dirty = true;
   render();
 }
@@ -700,7 +758,7 @@ function nodeContext(event, node) {
   else if (node.type === "group") {
     items.push({ label: "Перейменувати групу", run: () => {
       const label = prompt("Назва групи:", node.label || "Група");
-      if (label !== null) { node.label = label.trim() || "Група"; dirty = true; render(); }
+      if (label !== null) { node.label = label.trim() || "Група"; pushHistory(); dirty = true; render(); }
     } });
   } else {
     items.push({ label: "Редагувати текст", run: () => {
@@ -793,8 +851,8 @@ export function initCanvas(vault) {
   });
 
   window.addEventListener("mouseup", () => {
-    if (resizing) { resizing = null; render(); }
-    if (dragging) { dragging = null; }
+    if (resizing) { resizing = null; pushHistory(); render(); }
+    if (dragging) { dragging = null; pushHistory(); }
     if (panning) { panning = null; board.classList.remove("dragging"); }
   });
 
@@ -802,6 +860,7 @@ export function initCanvas(vault) {
     if (Vault.state.view !== "canvas") return;
     const w = toWorld(board.getBoundingClientRect().left + 120, board.getBoundingClientRect().top + 120);
     model.nodes.push({ id: uid(), type: "text", text: "", x: Math.round(w.x), y: Math.round(w.y), width: 300, height: 160 });
+    pushHistory();
     dirty = true;
     render();
   };
@@ -811,6 +870,7 @@ export function initCanvas(vault) {
     const rect = board.getBoundingClientRect();
     const w = toWorld(rect.left + 100, rect.top + 100);
     model.nodes.push({ id: uid(), type: "group", label: "Група", x: Math.round(w.x), y: Math.round(w.y), width: 480, height: 340 });
+    pushHistory();
     dirty = true;
     render();
   };
@@ -824,6 +884,7 @@ export function initCanvas(vault) {
     const rect = board.getBoundingClientRect();
     const w = toWorld(rect.left + 200, rect.top + 200);
     model.nodes.push({ id: uid(), type: "link", url: clean, x: Math.round(w.x), y: Math.round(w.y), width: 400, height: 300 });
+    pushHistory();
     dirty = true;
     render();
   };
@@ -837,6 +898,7 @@ export function initCanvas(vault) {
     if (!hit) { Vault.toast("Нема такої нотатки"); return; }
     const w = toWorld(board.getBoundingClientRect().left + 160, board.getBoundingClientRect().top + 160);
     model.nodes.push({ id: uid(), type: "file", file: hit, x: Math.round(w.x), y: Math.round(w.y), width: 320, height: 220 });
+    pushHistory();
     dirty = true;
     render();
   };
@@ -861,6 +923,8 @@ export function initCanvas(vault) {
   };
 
   document.getElementById("cvSave").onclick = () => save(false);
+  document.getElementById("cvUndo").onclick = undoCanvas;
+  document.getElementById("cvRedo").onclick = redoCanvas;
   document.querySelectorAll("#cvAlign [data-align]").forEach((btn) => {
     btn.onclick = () => alignSelection(btn.dataset.align);
   });
@@ -876,6 +940,16 @@ export function initCanvas(vault) {
 
   document.addEventListener("keydown", (e) => {
     if (Vault.state.view !== "canvas") return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      if (e.shiftKey) redoCanvas(); else undoCanvas();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+      e.preventDefault();
+      redoCanvas();
+      return;
+    }
     if (e.key === "Escape") {
       hideEdgeBar();
       selectedEdge = null;
@@ -898,6 +972,7 @@ export function initCanvas(vault) {
     if (e.key === "Delete" && selectedEdge) {
       model.edges = model.edges.filter((ed) => ed.id !== selectedEdge);
       selectedEdge = null;
+      pushHistory();
       dirty = true;
       render();
       Vault.toast("звʼязок видалено");
@@ -907,6 +982,7 @@ export function initCanvas(vault) {
       model.nodes = model.nodes.filter((n) => n.id !== selected);
       model.edges = model.edges.filter((ed) => ed.fromNode !== selected && ed.toNode !== selected);
       selected = null;
+      pushHistory();
       dirty = true;
       render();
     }
@@ -918,6 +994,9 @@ export function initCanvas(vault) {
     setModel(next) {
       model = next && Array.isArray(next.nodes) ? next : { nodes: [], edges: [] };
       if (!Array.isArray(model.edges)) model.edges = [];
+      historyStack = [];
+      historyIndex = -1;
+      pushHistory();
       render();
     },
     getModel() { return JSON.parse(JSON.stringify(model)); },
@@ -935,6 +1014,9 @@ export function initCanvas(vault) {
     bringToFront: bringSelectionToFront,
     sendToBack: sendSelectionToBack,
     exportDataUrl: canvasImageDataUrl,
+    undo: undoCanvas,
+    redo: redoCanvas,
+    history: () => ({ index: historyIndex, length: historyStack.length }),
     addGroup(label, x = 40, y = 40, width = 480, height = 340) {
       const node = { id: uid(), type: "group", label: label || "Група", x, y, width, height };
       model.nodes.push(node);
