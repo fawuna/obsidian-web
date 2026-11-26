@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=88";
-import { initCanvas } from "./canvas.js?v=88";
-import { initCollab } from "./collab.js?v=88";
-import { initPlugins } from "./plugins.js?v=88";
-import { exportPdfFile } from "./pdf.js?v=88";
-import { initLive } from "./live.js?v=88";
-import { initDaily } from "./daily.js?v=88";
-import { initRecorder } from "./recorder.js?v=88";
-import { initPdfViewer } from "./pdfviewer.js?v=88";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=88";
+import { initGraph } from "./graph.js?v=89";
+import { initCanvas } from "./canvas.js?v=89";
+import { initCollab } from "./collab.js?v=89";
+import { initPlugins } from "./plugins.js?v=89";
+import { exportPdfFile } from "./pdf.js?v=89";
+import { initLive } from "./live.js?v=89";
+import { initDaily } from "./daily.js?v=89";
+import { initRecorder } from "./recorder.js?v=89";
+import { initPdfViewer } from "./pdfviewer.js?v=89";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=89";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v88";
+const BUILD = "v89";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -4396,7 +4396,7 @@ function baseNormalizeKey(key) {
   if (text === "file.ext") return { key: "ext", label: "Тип", source: "file" };
   if (text.startsWith("file.")) return { key: text.slice(5), label: text.slice(5), source: "file" };
   if (text.startsWith("note.")) return { key: text.slice(5), label: text.slice(5), source: "prop" };
-  if (text.startsWith("formula.")) return { key: text, label: text.slice(8), source: "formula" };
+  if (text.startsWith("formula.")) return { key: text.slice(8), label: text.slice(8), source: "formula" };
   return { key: text, label: text, source: "prop" };
 }
 
@@ -4404,7 +4404,254 @@ function baseCellValue(row, column) {
   if (!row || !column) return "";
   if (column.source === "file") return row.file[column.key] ?? "";
   if (column.source === "tags") return row.tags.join(", ");
+  if (column.source === "formula") return row.formulas ? (row.formulas[column.key] ?? "") : "";
   if (column.source === "prop") return row.props[column.key] ?? "";
+  return "";
+}
+
+function baseProperty(row, key) {
+  const text = String(key || "");
+  if (text === "file.name") return row.file.name;
+  if (text === "file.path") return row.file.path;
+  if (text === "file.folder") return row.file.path.includes("/") ? row.file.path.slice(0, row.file.path.lastIndexOf("/")) : "";
+  if (text === "file.ext") return row.file.ext;
+  if (text === "tags" || text === "file.tags") return row.tags;
+  if (text.startsWith("note.")) return row.props[text.slice(5)] ?? "";
+  return row.props[text] ?? "";
+}
+
+function baseNumber(value) {
+  if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  const number = Number(String(value ?? "").trim().replace(",", "."));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function baseText(value) {
+  if (value == null) return "";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value);
+}
+
+function baseTruthy(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "string") return value.trim() !== "" && value.trim() !== "false" && value.trim() !== "0";
+  return !!value;
+}
+
+function baseTokenize(source) {
+  const text = String(source || "");
+  const tokens = [];
+  const re = /\s*(?:(\d+(?:\.\d+)?)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|([A-Za-z_\u0400-\u04FF][A-Za-z0-9_.\u0400-\u04FF-]*)|(==|!=|>=|<=|&&|\|\||[-+*/%<>!(),]))/g;
+  let index = 0;
+  let match;
+  while ((match = re.exec(text))) {
+    if (match.index !== index) throw new Error("unexpected token");
+    index = re.lastIndex;
+    if (match[1] !== undefined) tokens.push({ type: "number", value: Number(match[1]) });
+    else if (match[2] !== undefined) tokens.push({ type: "string", value: match[2].slice(1, -1).replace(/\\(.)/g, "$1") });
+    else if (match[3] !== undefined) tokens.push({ type: "ident", value: match[3] });
+    else tokens.push({ type: "op", value: match[4] });
+  }
+  if (text.slice(index).trim()) throw new Error("unexpected token");
+  return tokens;
+}
+
+function baseEvalFormula(expression, row, resolveFormula) {
+  let tokens = [];
+  try { tokens = baseTokenize(expression); } catch { return ""; }
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const take = (value) => {
+    const token = tokens[pos];
+    if (!token) return null;
+    if (value != null && token.value !== value) return null;
+    pos += 1;
+    return token;
+  };
+  function resolve(name) {
+    if (name === "true") return true;
+    if (name === "false") return false;
+    if (name === "null") return null;
+    if (name.startsWith("formula.")) return resolveFormula ? resolveFormula(name.slice(8)) : "";
+    return baseProperty(row, name);
+  }
+  function call(name, args) {
+    const lower = String(name).toLowerCase();
+    if (lower === "if") return baseTruthy(args[0]) ? args[1] : args[2];
+    if (lower === "round") {
+      const digits = args[1] == null ? 0 : Math.max(0, Math.min(10, baseNumber(args[1])));
+      const factor = Math.pow(10, digits);
+      return Math.round(baseNumber(args[0]) * factor) / factor;
+    }
+    if (lower === "min") return Math.min(...args.map(baseNumber));
+    if (lower === "max") return Math.max(...args.map(baseNumber));
+    if (lower === "number") return baseNumber(args[0]);
+    if (lower === "string") return baseText(args[0]);
+    if (lower === "upper") return baseText(args[0]).toUpperCase();
+    if (lower === "lower") return baseText(args[0]).toLowerCase();
+    if (lower === "length") return Array.isArray(args[0]) ? args[0].length : baseText(args[0]).length;
+    if (lower === "contains") return baseText(args[0]).toLowerCase().includes(baseText(args[1]).toLowerCase());
+    if (lower === "startswith") return baseText(args[0]).toLowerCase().startsWith(baseText(args[1]).toLowerCase());
+    if (lower === "endswith") return baseText(args[0]).toLowerCase().endsWith(baseText(args[1]).toLowerCase());
+    if (lower === "coalesce") return args.find((value) => baseTruthy(value)) ?? "";
+    if (lower === "default") return baseTruthy(args[0]) ? args[0] : args[1];
+    if (lower === "now") return new Date().toISOString();
+    if (lower === "today") return new Date().toISOString().slice(0, 10);
+    return "";
+  }
+  function primary() {
+    const token = peek();
+    if (!token) throw new Error("end");
+    if (token.type === "number" || token.type === "string") { pos += 1; return token.value; }
+    if (token.value === "(") { pos += 1; const value = expressionValue(); if (!take(")")) throw new Error(")"); return value; }
+    if (token.value === "!") { pos += 1; return !baseTruthy(primary()); }
+    if (token.value === "-") { pos += 1; return -baseNumber(primary()); }
+    if (token.type === "ident") {
+      pos += 1;
+      if (peek() && peek().value === "(") {
+        pos += 1;
+        const args = [];
+        if (!(peek() && peek().value === ")")) {
+          args.push(expressionValue());
+          while (take(",")) args.push(expressionValue());
+        }
+        take(")");
+        return call(token.value, args);
+      }
+      return resolve(token.value);
+    }
+    throw new Error("primary");
+  }
+  function product() {
+    let value = primary();
+    for (;;) {
+      const token = peek();
+      if (!token || !["*", "/", "%"].includes(token.value)) break;
+      pos += 1;
+      const right = primary();
+      if (token.value === "*") value = baseNumber(value) * baseNumber(right);
+      else if (token.value === "/") value = baseNumber(right) === 0 ? 0 : baseNumber(value) / baseNumber(right);
+      else value = baseNumber(value) % baseNumber(right);
+    }
+    return value;
+  }
+  function sum() {
+    let value = product();
+    for (;;) {
+      const token = peek();
+      if (!token || (token.value !== "+" && token.value !== "-")) break;
+      pos += 1;
+      const right = product();
+      if (token.value === "+") {
+        const a = baseText(value);
+        const b = baseText(right);
+        const leftNumber = Number(a.trim().replace(",", "."));
+        const rightNumber = Number(b.trim().replace(",", "."));
+        const numeric = a.trim() !== "" && b.trim() !== "" && Number.isFinite(leftNumber) && Number.isFinite(rightNumber);
+        value = numeric ? leftNumber + rightNumber : a + b;
+      } else {
+        value = baseNumber(value) - baseNumber(right);
+      }
+    }
+    return value;
+  }
+  function compare() {
+    let value = sum();
+    for (;;) {
+      const token = peek();
+      if (!token || !["<", ">", "<=", ">="].includes(token.value)) break;
+      pos += 1;
+      const right = sum();
+      const a = baseNumber(value);
+      const b = baseNumber(right);
+      if (token.value === "<") value = a < b;
+      else if (token.value === ">") value = a > b;
+      else if (token.value === "<=") value = a <= b;
+      else value = a >= b;
+    }
+    return value;
+  }
+  function equality() {
+    let value = compare();
+    for (;;) {
+      const token = peek();
+      if (!token || (token.value !== "==" && token.value !== "!=")) break;
+      pos += 1;
+      const right = compare();
+      const a = baseText(value);
+      const b = baseText(right);
+      const leftNumber = Number(a.trim().replace(",", "."));
+      const rightNumber = Number(b.trim().replace(",", "."));
+      const equal = a.toLowerCase() === b.toLowerCase() ||
+        (a.trim() !== "" && b.trim() !== "" && Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber === rightNumber);
+      value = token.value === "==" ? equal : !equal;
+    }
+    return value;
+  }
+  function andValue() {
+    let value = equality();
+    while (peek() && peek().value === "&&") {
+      pos += 1;
+      const right = equality();
+      value = baseTruthy(value) && baseTruthy(right);
+    }
+    return value;
+  }
+  function expressionValue() {
+    let value = andValue();
+    while (peek() && peek().value === "||") {
+      pos += 1;
+      const right = andValue();
+      value = baseTruthy(value) || baseTruthy(right);
+    }
+    return value;
+  }
+  try {
+    const value = expressionValue();
+    return pos === tokens.length ? baseText(value) : baseText(value);
+  } catch { return ""; }
+}
+
+function baseComputeFormulas(config, rows) {
+  const defs = config && config.formulas && typeof config.formulas === "object" ? config.formulas : {};
+  const names = Object.keys(defs);
+  if (!names.length) return;
+  const cache = new WeakMap();
+  function valueFor(row, name, stack) {
+    if (cache.has(row) && cache.get(row).has(name)) return cache.get(row).get(name);
+    if (stack.includes(name)) return "";
+    const next = stack.concat(name);
+    let value = "";
+    try { value = baseEvalFormula(defs[name], row, (key) => valueFor(row, key, next)); } catch { value = ""; }
+    if (!cache.has(row)) cache.set(row, new Map());
+    cache.get(row).set(name, value);
+    return value;
+  }
+  for (const row of rows) {
+    row.formulas = {};
+    for (const name of names) row.formulas[name] = valueFor(row, name, []);
+  }
+}
+
+function baseSummaryValue(rows, column, spec) {
+  const name = String(spec || "").trim().toLowerCase();
+  const values = rows.map((row) => baseCellValue(row, column));
+  const numbers = values
+    .map((value) => Number(String(value ?? "").trim().replace(",", ".")))
+    .filter((value) => Number.isFinite(value));
+  if (name === "sum") return String(numbers.reduce((a, b) => a + b, 0));
+  if (name === "average" || name === "avg" || name === "mean") {
+    return numbers.length ? String(Math.round((numbers.reduce((a, b) => a + b, 0) / numbers.length) * 100) / 100) : "";
+  }
+  if (name === "min") return numbers.length ? String(Math.min(...numbers)) : "";
+  if (name === "max") return numbers.length ? String(Math.max(...numbers)) : "";
+  if (name === "count") return String(values.filter((value) => baseText(value).trim() !== "").length);
+  if (name === "empty") return String(values.filter((value) => baseText(value).trim() === "").length);
+  if (name === "unique") return String(new Set(values.map((value) => baseText(value)).filter(Boolean)).size);
+  if (name === "checked") return String(values.filter((value) => baseTruthy(value)).length);
+  if (name === "unchecked") return String(values.filter((value) => !baseTruthy(value)).length);
   return "";
 }
 
@@ -4479,6 +4726,7 @@ function baseColumns(view, rows) {
 
 function baseBuild(config, docs) {
   const rows = baseRowsFromDocs(docs);
+  baseComputeFormulas(config, rows);
   const views = Array.isArray(config.views) && config.views.length ? config.views : [{ type: "table", name: "Table", order: [] }];
   const view = views[Math.min(Math.max(0, baseViewIndex), views.length - 1)] || views[0];
   let filtered = rows.filter((row) => baseFilterMatch(config.filters, row));
@@ -4606,6 +4854,25 @@ function renderBaseTable(data) {
     }
     tr.onclick = () => openNote(row.path);
     tbody.appendChild(tr);
+  }
+  let tfoot = table.querySelector("tfoot");
+  if (!tfoot) { tfoot = document.createElement("tfoot"); table.appendChild(tfoot); }
+  tfoot.innerHTML = "";
+  const summaries = data.view && data.view.summaries && typeof data.view.summaries === "object" ? data.view.summaries : null;
+  if (summaries) {
+    const footRow = document.createElement("tr");
+    for (const column of data.columns) {
+      const td = document.createElement("td");
+      const candidates = [
+        column.source === "formula" ? "formula." + column.key : column.source === "file" ? "file." + column.key : column.source === "tags" ? "tags" : column.key,
+        column.key,
+        "property." + column.key,
+      ];
+      const key = candidates.find((item) => Object.prototype.hasOwnProperty.call(summaries, item));
+      if (key) td.textContent = baseSummaryValue(data.rows, column, summaries[key]);
+      footRow.appendChild(td);
+    }
+    tfoot.appendChild(footRow);
   }
   const empty = $("baseEmpty");
   if (empty) {
