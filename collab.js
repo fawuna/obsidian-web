@@ -1,4 +1,4 @@
-﻿// Real-time collaboration: Yjs CRDT over WebRTC (y-webrtc). No server of our own.
+// Real-time collaboration: Yjs CRDT over WebRTC (y-webrtc). No server of our own.
 let Vault = null;
 let Y = null;
 let WebrtcProvider = null;
@@ -40,7 +40,7 @@ function renderPresence() {
     host.appendChild(dot);
     i++;
   });
-  status(active ? "collab: " + i + " РѕРЅР»Р°Р№РЅ" : "");
+  status(active ? "collab: " + i + " онлайн" : "");
 }
 
 function applyDiff(oldText, newText) {
@@ -129,8 +129,8 @@ export async function initCollab(vault) {
   function openModal() {
     document.getElementById("collabRoom").value = localStorage.getItem("vw-room") || (Vault.repo + "@" + Vault.branch);
     document.getElementById("collabName").value = myName();
-    document.getElementById("collabToggle").textContent = active ? "Р’РёРјРєРЅСѓС‚Рё" : "РЈРІС–РјРєРЅСѓС‚Рё";
-    modalState(active ? "СЃРµСЃС–СЏ Р°РєС‚РёРІРЅР°" : "СЃРµСЃС–СЏ РІРёРјРєРЅРµРЅР°");
+    document.getElementById("collabToggle").textContent = active ? "Вимкнути" : "Увімкнути";
+    modalState(active ? "сесія активна" : "сесія вимкнена");
     Vault.openModal("collabModal");
   }
 
@@ -140,18 +140,18 @@ export async function initCollab(vault) {
     if (active) { stop(); return; }
     const room = document.getElementById("collabRoom").value.trim();
     const name = document.getElementById("collabName").value.trim() || "me";
-    if (!room) { modalState("РІРІРµРґРё РЅР°Р·РІСѓ РєС–РјРЅР°С‚Рё"); return; }
+    if (!room) { modalState("введи назву кімнати"); return; }
     localStorage.setItem("vw-room", room);
     localStorage.setItem("vw-myName", name);
-    modalState("РїС–РґРєР»СЋС‡Р°СЋСЃСЊвЂ¦");
+    modalState("підключаюсь…");
     try {
       await start(room, name);
-      modalState("РїСЂР°С†СЋС”. РєС–РјРЅР°С‚Р°: " + room);
-      document.getElementById("collabToggle").textContent = "Р’РёРјРєРЅСѓС‚Рё";
+      modalState("працює. кімната: " + room);
+      document.getElementById("collabToggle").textContent = "Вимкнути";
       Vault.closeModals();
-      Vault.toast("СЃРїС–Р»СЊРЅР° СЃРµСЃС–СЏ СѓРІС–РјРєРЅРµРЅР°");
+      Vault.toast("спільна сесія увімкнена");
     } catch (error) {
-      modalState("РЅРµ РІРёР№С€Р»Рѕ: " + error.message + " (РїРµСЂРµРІС–СЂ С–РЅС‚РµСЂРЅРµС‚)");
+      modalState("не вийшло: " + error.message + " (перевір інтернет)");
     }
   };
 
@@ -179,7 +179,7 @@ export async function initCollab(vault) {
     provider.awareness.on("change", renderPresence);
     active = true;
     boundPath = null;
-    status("collab: РїС–РґРєР»СЋС‡РµРЅРЅСЏвЂ¦");
+    status("collab: підключення…");
     renderPresence();
     if (Vault.state.active) bindNote(Vault.state.active);
   }
@@ -191,8 +191,8 @@ export async function initCollab(vault) {
     provider = null; doc = null; ytext = null; boundPath = null;
     document.getElementById("presence").innerHTML = "";
     status("");
-    document.getElementById("collabToggle").textContent = "РЈРІС–РјРєРЅСѓС‚Рё";
-    modalState("СЃРµСЃС–СЏ РІРёРјРєРЅРµРЅР°");
+    document.getElementById("collabToggle").textContent = "Увімкнути";
+    modalState("сесія вимкнена");
   }
 
   if (localStorage.getItem("vw-autocollab") === "1") {

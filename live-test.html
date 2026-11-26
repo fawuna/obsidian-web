@@ -1,0 +1,27 @@
+﻿<!doctype html>
+<html lang="uk">
+<head><meta charset="utf-8"><title>Live text test client</title></head>
+<body style="background:#111;color:#ddd;font:14px system-ui;padding:20px">
+<h3>Live text test client</h3>
+<pre id="out">connecting…</pre>
+<script type="module">
+import * as Y from 'https://esm.sh/yjs@13.6.33';
+import { WebsocketProvider } from 'https://esm.sh/y-websocket@2.0.4?bundle';
+
+const doc = new Y.Doc();
+const provider = new WebsocketProvider('wss://demos.yjs.dev/ws', 'super-game-vault-live', doc, { connect: true });
+const ytext = doc.getText('note:_live-test.md');
+
+window.__insert = (t) => ytext.insert(0, t);
+window.__text = () => ytext.toString();
+window.__provider = provider;
+
+setInterval(() => {
+  document.getElementById('out').textContent =
+    'len=' + ytext.length + '\n' + ytext.toString().slice(0, 60);
+}, 700);
+
+window.__ready = true;
+</script>
+</body>
+</html>
