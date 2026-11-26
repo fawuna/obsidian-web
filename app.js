@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=78";
-import { initCanvas } from "./canvas.js?v=78";
-import { initCollab } from "./collab.js?v=78";
-import { initPlugins } from "./plugins.js?v=78";
-import { exportPdfFile } from "./pdf.js?v=78";
-import { initLive } from "./live.js?v=78";
-import { initDaily } from "./daily.js?v=78";
+import { initGraph } from "./graph.js?v=79";
+import { initCanvas } from "./canvas.js?v=79";
+import { initCollab } from "./collab.js?v=79";
+import { initPlugins } from "./plugins.js?v=79";
+import { exportPdfFile } from "./pdf.js?v=79";
+import { initLive } from "./live.js?v=79";
+import { initDaily } from "./daily.js?v=79";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v78";
+const BUILD = "v79";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -56,6 +56,7 @@ const CORE_PLUGINS = [
   { id: "page-preview", label: "Page preview", desc: "Прев'ю при наведенні на посилання", def: true },
   { id: "daily-notes", label: "Daily notes", desc: "Щоденна нотатка", def: true },
   { id: "templates", label: "Templates", desc: "Вставка шаблонів", def: true },
+  { id: "slides", label: "Slides", desc: "Презентація з нотатки", def: true },
   { id: "note-composer", label: "Note composer", desc: "Витяг і обʼєднання нотаток", def: true },
   { id: "command-palette", label: "Command palette", desc: "Палітра команд", def: true },
   { id: "editor-status", label: "Editor status", desc: "Позиція курсора", def: true },
@@ -3778,6 +3779,121 @@ function openRandomNote() {
   openNote(notes[Math.floor(Math.random() * notes.length)]);
 }
 
+/* ---------------- slides ---------------- */
+const slides = { open: false, items: [], index: 0, path: null };
+
+function splitSlides(body) {
+  const lines = String(body).split(/\r?\n/);
+  const out = [];
+  let current = [];
+  for (const line of lines) {
+    if (/^---\s*$/.test(line)) {
+      out.push(current.join("\n"));
+      current = [];
+    } else {
+      current.push(line);
+    }
+  }
+  out.push(current.join("\n"));
+  return out;
+}
+
+function renderSlide() {
+  const stage = $("slidesStage");
+  if (!stage) return;
+  const md = slides.items[slides.index] || "";
+  stage.innerHTML = "";
+  const article = document.createElement("article");
+  article.className = "markdown-preview-view";
+  const sizer = document.createElement("div");
+  sizer.className = "markdown-preview-sizer";
+  sizer.innerHTML = markdownToHtml(md);
+  article.appendChild(sizer);
+  stage.appendChild(article);
+  styleCallouts(sizer);
+  wireRendered(sizer, md);
+  renderMathIn(sizer);
+  renderMermaidIn(sizer);
+  sizer.querySelectorAll(".internal-link[data-target]").forEach((a) => {
+    const previous = a.onclick;
+    a.onclick = async (event) => {
+      stopSlides();
+      if (previous) await previous(event);
+    };
+  });
+  $("slidesCounter").textContent = (slides.index + 1) + " / " + slides.items.length;
+}
+
+function startSlides() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  if (!/\.md$/i.test(file.path)) { toast("Слайди працюють лише для Markdown-нотаток"); return; }
+  const parsed = parseProps(file.text);
+  const body = parsed ? parsed.body : file.text;
+  slides.items = splitSlides(body);
+  if (!slides.items.length) slides.items = [""];
+  slides.index = 0;
+  slides.path = file.path;
+  slides.open = true;
+  $("slidesHost").classList.add("show");
+  $("slidesHost").setAttribute("aria-hidden", "false");
+  document.body.classList.add("slides-open");
+  renderSlide();
+}
+
+function stopSlides() {
+  if (!slides.open) return;
+  slides.open = false;
+  $("slidesHost").classList.remove("show");
+  $("slidesHost").setAttribute("aria-hidden", "true");
+  document.body.classList.remove("slides-open");
+  $("slidesStage").innerHTML = "";
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+}
+
+function slideStep(delta) {
+  if (!slides.open) return;
+  const next = Math.max(0, Math.min(slides.items.length - 1, slides.index + delta));
+  if (next === slides.index) return;
+  slides.index = next;
+  renderSlide();
+}
+
+function toggleSlidesFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  } else if (document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+}
+
+function handleSlidesKey(event) {
+  if (!slides.open) return false;
+  const key = event.key;
+  if (key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); stopSlides(); return true; }
+  if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(key)) { event.preventDefault(); event.stopImmediatePropagation(); slideStep(1); return true; }
+  if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(key)) { event.preventDefault(); event.stopImmediatePropagation(); slideStep(-1); return true; }
+  if (key === "Home") { event.preventDefault(); event.stopImmediatePropagation(); slides.index = 0; renderSlide(); return true; }
+  if (key === "End") { event.preventDefault(); event.stopImmediatePropagation(); slides.index = slides.items.length - 1; renderSlide(); return true; }
+  if (key.toLowerCase() === "f") { event.preventDefault(); event.stopImmediatePropagation(); toggleSlidesFullscreen(); return true; }
+  return false;
+}
+
+function initSlides() {
+  const host = $("slidesHost");
+  if (!host) return;
+  $("slidesPrev").onclick = (event) => { event.stopPropagation(); slideStep(-1); };
+  $("slidesNext").onclick = (event) => { event.stopPropagation(); slideStep(1); };
+  $("slidesClose").onclick = (event) => { event.stopPropagation(); stopSlides(); };
+  $("slidesFull").onclick = (event) => { event.stopPropagation(); toggleSlidesFullscreen(); };
+  host.addEventListener("click", (event) => {
+    if (!slides.open) return;
+    if (event.target.closest("a, button, input, textarea, select, video, audio, iframe")) return;
+    const rect = host.getBoundingClientRect();
+    slideStep(event.clientX >= rect.left + rect.width / 2 ? 1 : -1);
+  });
+}
+
 /* ---------------- palette / switcher ---------------- */
 let paletteItems = [], paletteActive = 0, switcherItems = [], switcherActive = 0;
 
@@ -4789,6 +4905,7 @@ $("editor").addEventListener("paste", async (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
+  if (handleSlidesKey(e)) return;
   if (e.key === "Escape") {
     if ($("findBar").classList.contains("show")) closeFind(); else closeModals();
     return;
@@ -5292,6 +5409,7 @@ async function connect(repo, branch, token, remember) {
     ensureIndex().then(() => { renderTags(); renderRightPanels(); emit("index"); }).catch(() => {});
     initGraph(Vault);
     canvasApi = initCanvas(Vault);
+    initSlides();
     initCollab(Vault);
     initPlugins(Vault).then((api) => { pluginsApi = api; renderCommunityPlugins(); }).catch(() => {});
     loadSnippets().catch(() => {});
@@ -5307,6 +5425,7 @@ registerCommand({ id: "save", label: "Зберегти нотатку", hint: "C
 registerCommand({ id: "mode", label: "Режим читання / редактор", hint: "Ctrl+E", run: toggleMode });
 registerCommand({ id: "pdf", label: "Експорт PDF (файл)", hint: "PDF", run: exportPdf });
 registerCommand({ id: "print", label: "Друк / зберегти як PDF (вікно друку)", hint: "Ctrl+P", run: printNote });
+registerCommand({ id: "slides", label: "Почати презентацію", hint: "Slides", plugin: "slides", run: startSlides });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
 registerCommand({ id: "create-base", label: "Bases: створити базу", run: createBase });
@@ -5413,4 +5532,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }) };
