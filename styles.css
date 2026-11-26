@@ -660,3 +660,6 @@ body.split #previewHost { display: none; }
 .cm-mermaid { display: flex; justify-content: center; margin: 10px 0; overflow-x: auto; }
 .cm-mermaid svg { max-width: 100%; height: auto; }
 .cm-math-src { color: var(--muted); }
+.vault-btn { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; max-width: 170px; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
+.vault-btn:hover { background: var(--bg-3); color: var(--text); }
+@media (max-width: 760px) { #vaultBtn { display: none; } }

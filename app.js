@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=68";
-import { initCanvas } from "./canvas.js?v=68";
-import { initCollab } from "./collab.js?v=68";
-import { initPlugins } from "./plugins.js?v=68";
-import { exportPdfFile } from "./pdf.js?v=68";
-import { initLive } from "./live.js?v=68";
-import { initDaily } from "./daily.js?v=68";
+import { initGraph } from "./graph.js?v=69";
+import { initCanvas } from "./canvas.js?v=69";
+import { initCollab } from "./collab.js?v=69";
+import { initPlugins } from "./plugins.js?v=69";
+import { exportPdfFile } from "./pdf.js?v=69";
+import { initLive } from "./live.js?v=69";
+import { initDaily } from "./daily.js?v=69";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v68";
+const BUILD = "v69";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -338,6 +338,56 @@ function stripBlockIds(root) {
       last.nodeValue = last.nodeValue.replace(new RegExp("\\s*\\^" + escapeRegExp(match[1]) + "\\s*$"), "");
     }
   });
+}
+
+function openVaultMenu(event) {
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  const items = [];
+  for (const vault of readVaults()) {
+    const current = vault.repo === state.repo && vault.branch === state.branch;
+    items.push({
+      label: (current ? "✓ " : "") + vault.repo + " · " + vault.branch,
+      run: () => switchVault(vault.repo, vault.branch),
+    });
+  }
+  if (!items.length) items.push({ label: "Поточне сховище: " + state.repo, run: openSettings });
+  items.push({ sep: true });
+  items.push({ label: "Налаштування сховища", run: openSettings });
+  items.push({ label: "Забути токен", danger: true, run: () => { store.del("token"); location.reload(); } });
+  showCtx(rect.left, rect.bottom + 4, items);
+}
+
+function readVaults() {
+  try {
+    const data = JSON.parse(store.get("vaults", "[]"));
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((item) => item && typeof item.repo === "string" && item.repo.includes("/"))
+      .map((item) => ({ repo: item.repo, branch: item.branch || "main" }));
+  } catch { return []; }
+}
+
+function saveVault() {
+  if (!state.repo || !state.repo.includes("/")) return;
+  const list = readVaults().filter((item) => !(item.repo === state.repo && item.branch === state.branch));
+  list.unshift({ repo: state.repo, branch: state.branch });
+  store.set("vaults", JSON.stringify(list.slice(0, 12)));
+  renderVaultButton();
+}
+
+function renderVaultButton() {
+  const btn = $("vaultBtn");
+  if (!btn) return;
+  const name = state.repo.split("/")[1] || state.repo || "Vault";
+  btn.textContent = name + " ▾";
+  btn.title = state.repo + " · " + state.branch;
+}
+
+function switchVault(repo, branch) {
+  store.set("repo", repo);
+  store.set("branch", branch || "main");
+  location.reload();
 }
 
 let workspaceTimer = null;
@@ -4585,6 +4635,7 @@ $("replaceInput").addEventListener("keydown", (e) => {
 });
 $("navBack").onclick = goBack;
 $("navFwd").onclick = goFwd;
+$("vaultBtn").onclick = openVaultMenu;
 $("openGraph").onclick = () => setView(state.view === "graph" ? "note" : "graph");
 $("openCanvas").onclick = () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas — створи 🎨"); };
 $("newCanvas").onclick = () => { if (canvasApi) canvasApi.create(); };
@@ -4804,6 +4855,7 @@ $("saveSettings").onclick = () => {
   store.set("pagePreview", $("setPagePreview").checked ? "1" : "0");
   store.set("hotkeys", JSON.stringify(hotkeys));
   theme(); applyPrefs();
+  saveVault();
   closeModals();
   location.reload();
 };
@@ -4849,6 +4901,7 @@ async function connect(repo, branch, token, remember) {
     if (remember) { store.set("repo", state.repo); store.set("branch", state.branch); store.set("token", state.token); }
     $("login").style.display = "none";
     $("app").classList.add("ready");
+    saveVault();
     await loadTree();
     if (dailyApi) await dailyApi.loadConfigs();
     else dailyApi = await initDaily(Vault);
@@ -4972,6 +5025,7 @@ theme();
 applyPrefs();
 setMode(store.get("mode", window.innerWidth <= 980 ? "edit" : "split"));
 renderBookmarks();
+renderVaultButton();
 updateSplitButtons();$("repo").value = state.repo;
 $("branch").value = state.branch;
 $("token").value = state.token;
