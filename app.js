@@ -634,19 +634,37 @@ function renderTags() {
 }
 
 async function runSearch() {
-  const q = $("searchInput").value.trim().toLowerCase();
+  const raw = $("searchInput").value.trim();
   const host = $("searchResults");
   host.innerHTML = "";
-  if (q.length < 2) { host.appendChild(el("div", "empty", "мінімум 2 символи")); return; }
+  if (raw.length < 2) { host.appendChild(el("div", "empty", "мінімум 2 символи")); return; }
   host.appendChild(el("div", "empty", "шукаю…"));
   await ensureIndex();
+
+  const parsed = parseSearchQuery(raw);
   const results = [];
   for (const [path, text] of state.index) {
     if (!text) continue;
     const lower = text.toLowerCase();
-    let idx = lower.indexOf(q), hits = 0;
-    while (idx !== -1 && hits < 50) { hits++; idx = lower.indexOf(q, idx + q.length); }
-    if (hits) results.push({ path, hits, snippet: text.slice(Math.max(0, lower.indexOf(q) - 40), lower.indexOf(q) + 90).replace(/\n/g, " ") });
+    const pathLower = path.toLowerCase();
+    if (parsed.path.some((p) => !pathLower.includes(p))) continue;
+    if (parsed.tags.some((t) => !lower.includes("#" + t))) continue;
+    if (parsed.not.some((t) => lower.includes(t))) continue;
+    if (parsed.terms.some((t) => !lower.includes(t))) continue;
+    if (parsed.phrases.some((t) => !lower.includes(t))) continue;
+
+    const needle = parsed.phrases[0] || parsed.terms[0] || "";
+    const at = needle ? lower.indexOf(needle) : 0;
+    let hits = 0;
+    if (needle) {
+      let i = lower.indexOf(needle);
+      while (i !== -1 && hits < 100) { hits++; i = lower.indexOf(needle, i + needle.length); }
+    }
+    results.push({
+      path,
+      hits: Math.max(1, hits),
+      snippet: needle ? text.slice(Math.max(0, at - 40), at + 90).replace(/\n/g, " ") : text.slice(0, 80).replace(/\n/g, " "),
+    });
   }
   host.innerHTML = "";
   if (!results.length) { host.appendChild(el("div", "empty", "нічого не знайдено")); return; }
@@ -662,6 +680,23 @@ async function runSearch() {
     card.onclick = () => openNote(r.path);
     host.appendChild(card);
   });
+}
+
+function parseSearchQuery(raw) {
+  const out = { terms: [], phrases: [], path: [], tags: [], not: [] };
+  const re = /(-?)("([^"]+)"|(\S+))/g;
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    const neg = m[1] === "-";
+    const token = (m[3] || m[4] || "").trim();
+    if (!token) continue;
+    if (neg) { out.not.push(token.toLowerCase()); continue; }
+    if (/^path:/i.test(token)) { out.path.push(token.slice(5).toLowerCase()); continue; }
+    if (/^tag:/i.test(token)) { out.tags.push(token.slice(4).replace(/^#/, "").toLowerCase()); continue; }
+    if (m[3]) out.phrases.push(token.toLowerCase());
+    else out.terms.push(token.toLowerCase());
+  }
+  return out;
 }
 
 /* ---------------- palette / switcher ---------------- */
@@ -692,8 +727,11 @@ function renderPalette() {
   if (!paletteItems.length) list.appendChild(el("div", "empty", "нічого не знайдено"));
 }
 
-function showSwitcher() {
+let switcherMode = "open";
+function showSwitcher(mode) {
+  switcherMode = mode === "link" ? "link" : "open";
   $("switcherInput").value = "";
+  $("switcherInput").placeholder = switcherMode === "link" ? "Вставити [[посилання]] на…" : "Перейти до нотатки…";
   switcherActive = 0;
   renderSwitcher();
   openModal("switcher");
@@ -722,7 +760,15 @@ function renderSwitcher() {
     const item = el("div", "item" + (i === switcherActive ? " active" : ""));
     item.appendChild(el("span", null, path.endsWith(".canvas") ? "🎨" : "📄"));
     item.appendChild(el("span", null, path.replace(/\.(md|canvas)$/, "")));
-    item.onclick = () => { closeModals(); openNote(path); };
+    item.onclick = () => {
+      closeModals();
+      if (switcherMode === "link") {
+        insertAtCursor("[[" + path.replace(/\.(md|canvas)$/, "") + "]]");
+        switcherMode = "open";
+      } else {
+        openNote(path);
+      }
+    };
     list.appendChild(item);
   });
   if (!switcherItems.length) list.appendChild(el("div", "empty", "нічого не знайдено"));
@@ -993,12 +1039,34 @@ $("editor").addEventListener("input", () => {
   $("stMeta").textContent = words + " слів · " + file.text.length + " симв.";
   renderPreview();
   syncHighlight();
+  updateCursorPos();
   clearTimeout($("editor")._o);
   $("editor")._o = setTimeout(renderOutline, 350);
   emit("edit", { path: file.path, text: file.text, prev });
   clearTimeout($("editor")._t);
   $("editor")._t = setTimeout(() => saveNote(true), 3000);
+
+  const ed = $("editor");
+  const before = ed.value.slice(Math.max(0, ed.selectionStart - 2), ed.selectionStart);
+  if (before === "[[") {
+    ed.value = ed.value.slice(0, ed.selectionStart - 2) + ed.value.slice(ed.selectionStart);
+    ed.selectionStart = ed.selectionEnd = ed.selectionStart - 2;
+    showSwitcher("link");
+  }
 });
+
+function updateCursorPos() {
+  const ed = $("editor");
+  if (!ed || document.activeElement !== ed) return;
+  const pos = ed.selectionStart;
+  const before = ed.value.slice(0, pos);
+  const line = before.split("\n").length;
+  const ch = pos - before.lastIndexOf("\n");
+  const el2 = $("stCursor");
+  if (el2) el2.textContent = line + ":" + ch;
+}
+$("editor").addEventListener("click", updateCursorPos);
+$("editor").addEventListener("keyup", updateCursorPos);
 
 $("editor").addEventListener("keydown", (e) => {
   const ed = $("editor");
@@ -1248,6 +1316,12 @@ registerCommand({ id: "print", label: "Друк / зберегти як PDF (в�
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
 registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
+registerCommand({ id: "bold", label: "Жирний", hint: "Ctrl+B", run: () => { wrapSelection("**"); } });
+registerCommand({ id: "italic", label: "Курсив", hint: "Ctrl+I", run: () => { wrapSelection("*"); } });
+registerCommand({ id: "find", label: "Знайти в нотатці", hint: "Ctrl+F", run: openFind });
+registerCommand({ id: "replace", label: "Замінити в нотатці", hint: "Ctrl+H", run: () => { openFind(); $("replaceInput").focus(); } });
+registerCommand({ id: "link-note", label: "Вставити [[посилання]]", hint: "[[", run: () => showSwitcher("link") });
+registerCommand({ id: "outline-copy", label: "Скопіювати заголовки нотатки", run: () => $("copyOutline").click() });
 registerCommand({ id: "theme", label: "Перемкнути тему", run: toggleTheme });
 registerCommand({ id: "left", label: "Показати/сховати ліву панель", hint: "Ctrl+B", run: toggleLeft });
 registerCommand({ id: "right", label: "Показати/сховати праву панель", run: toggleRight });
