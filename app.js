@@ -1,16 +1,16 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=82";
-import { initCanvas } from "./canvas.js?v=82";
-import { initCollab } from "./collab.js?v=82";
-import { initPlugins } from "./plugins.js?v=82";
-import { exportPdfFile } from "./pdf.js?v=82";
-import { initLive } from "./live.js?v=82";
-import { initDaily } from "./daily.js?v=82";
-import { initRecorder } from "./recorder.js?v=82";
+import { initGraph } from "./graph.js?v=83";
+import { initCanvas } from "./canvas.js?v=83";
+import { initCollab } from "./collab.js?v=83";
+import { initPlugins } from "./plugins.js?v=83";
+import { exportPdfFile } from "./pdf.js?v=83";
+import { initLive } from "./live.js?v=83";
+import { initDaily } from "./daily.js?v=83";
+import { initRecorder } from "./recorder.js?v=83";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v82";
+const BUILD = "v83";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -634,7 +634,14 @@ function runHotkey(id) {
     case "mode": toggleMode(); break;
     case "palette": showPalette(); break;
     case "switcher": showSwitcher(); break;
-    case "graph": setView(state.view === "graph" ? "note" : "graph"); break;
+    case "graph":
+      if (state.view === "graph") { setView("note"); }
+      else {
+        const localToggle = $("graphLocal");
+        if (localToggle) { localToggle.checked = false; localToggle.dispatchEvent(new Event("change")); }
+        setView("graph");
+      }
+      break;
     case "find": openFind(); break;
     case "replace": openFind(); $("replaceInput").focus(); break;
     case "left": toggleLeft(); break;
@@ -5584,7 +5591,17 @@ registerCommand({ id: "web-viewer", label: "Відкрити Web viewer", hint: 
   if (url) openWebViewer(url);
 } });
 registerCommand({ id: "slides", label: "Почати презентацію", hint: "Slides", plugin: "slides", run: startSlides });
-registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
+registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", plugin: "graph", run: () => {
+  const localToggle = $("graphLocal");
+  if (state.view === "graph") { setView("note"); return; }
+  if (localToggle) { localToggle.checked = false; localToggle.dispatchEvent(new Event("change")); }
+  setView("graph");
+} });
+registerCommand({ id: "local-graph", label: "Відкрити локальний граф", hint: "Local graph", plugin: "graph", run: () => {
+  const localToggle = $("graphLocal");
+  if (localToggle) { localToggle.checked = true; localToggle.dispatchEvent(new Event("change")); }
+  setView("graph");
+} });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
 registerCommand({ id: "create-base", label: "Bases: створити базу", run: createBase });
 registerCommand({ id: "base-refresh", label: "Bases: оновити базу", run: () => { if (state.view === "base") renderBase(); } });

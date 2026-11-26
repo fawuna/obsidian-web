@@ -51,7 +51,7 @@ function buildGraph() {
   const onlyMd = Vault.files.filter((p) => p.endsWith(".md"));
   const active = Vault.state.active;
   const index = Vault.index;
-  const local = document.getElementById("graphLocal")?.checked !== false && active;
+  const local = document.getElementById("graphLocal")?.checked === true && active;
 
   const links = [];
   for (const [path, text] of index) {
@@ -355,6 +355,8 @@ export function initGraph(vault) {
   if (gt) gt.addEventListener("input", () => { needsRebuild = true; });
   if (gd) gd.addEventListener("input", () => { needsRebuild = true; });
   const savedSettings = [
+    ["graphLocal", "checkbox"],
+    ["graphDepth", "number"],
     ["graphOrphans", "checkbox"],
     ["graphTags", "checkbox"],
     ["graphArrows", "checkbox"],
@@ -466,7 +468,24 @@ export function initGraph(vault) {
       nodes: nodes.map((n) => ({ id: n.id, type: n.type || "note", label: n.label })),
       edges: edges.map((e) => ({ a: e.a, b: e.b })),
       info: document.getElementById("graphInfo").textContent,
+      local: document.getElementById("graphLocal")?.checked === true,
+      depth: Number(document.getElementById("graphDepth")?.value) || 1,
     }),
+    setLocal(enabled, depth) {
+      const cb = document.getElementById("graphLocal");
+      if (cb) {
+        cb.checked = !!enabled;
+        localStorage.setItem("vw-graphLocal", cb.checked ? "1" : "0");
+      }
+      const di = document.getElementById("graphDepth");
+      if (di && depth != null) {
+        di.value = String(Math.max(1, Math.min(3, Number(depth) || 1)));
+        localStorage.setItem("vw-graphDepth", di.value);
+      }
+      needsRebuild = true;
+      Vault.setView("graph");
+      if (!raf) loop();
+    },
   };
 
   if (Vault.state.view === "graph") { resize(); loop(); }
