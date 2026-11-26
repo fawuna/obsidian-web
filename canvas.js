@@ -19,6 +19,7 @@ let dragging = null;
 let panning = null;
 let historyStack = [];
 let historyIndex = -1;
+let canvasClipboard = null;
 const excerpts = new Map();
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -713,6 +714,53 @@ function duplicateSelection() {
   render();
 }
 
+function copySelection() {
+  const list = model.nodes.filter((n) => selectedNodes.has(n.id));
+  if (!list.length) { Vault.toast("Нічого копіювати"); return ""; }
+  const ids = new Set(list.map((n) => n.id));
+  const payload = {
+    nodes: list.map((n) => ({ ...n })),
+    edges: model.edges.filter((e) => ids.has(e.fromNode) && ids.has(e.toNode)).map((e) => ({ ...e })),
+  };
+  const text = JSON.stringify(payload);
+  canvasClipboard = text;
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(() => {});
+  Vault.toast("скопійовано карток: " + payload.nodes.length);
+  return text;
+}
+
+async function pasteClipboard() {
+  let text = canvasClipboard;
+  if (!text && navigator.clipboard && navigator.clipboard.readText) {
+    try { text = await navigator.clipboard.readText(); } catch { text = ""; }
+  }
+  if (!text) { Vault.toast("Буфер обміну порожній"); return false; }
+  let payload = null;
+  try { payload = JSON.parse(text); } catch { payload = null; }
+  if (!payload || !Array.isArray(payload.nodes) || !payload.nodes.length) {
+    Vault.toast("У буфері немає карток");
+    return false;
+  }
+  const idMap = new Map();
+  for (const node of payload.nodes) {
+    const copy = { ...node, id: uid(), x: (Number(node.x) || 0) + 40, y: (Number(node.y) || 0) + 40 };
+    idMap.set(node.id, copy.id);
+    model.nodes.push(copy);
+  }
+  for (const edge of Array.isArray(payload.edges) ? payload.edges : []) {
+    if (idMap.has(edge.fromNode) && idMap.has(edge.toNode)) {
+      model.edges.push({ ...edge, id: uid(), fromNode: idMap.get(edge.fromNode), toNode: idMap.get(edge.toNode) });
+    }
+  }
+  selectedNodes = new Set(idMap.values());
+  selected = selectedNodes.values().next().value || null;
+  pushHistory();
+  dirty = true;
+  render();
+  Vault.toast("вставлено карток: " + payload.nodes.length);
+  return true;
+}
+
 function bringSelectionToFront() {
   if (!selectedNodes.size) return;
   const chosen = model.nodes.filter((n) => selectedNodes.has(n.id));
@@ -768,6 +816,8 @@ function nodeContext(event, node) {
   }
   items.push({ sep: true });
   items.push({ label: "Дублювати", run: duplicateSelection });
+  items.push({ label: "Копіювати", run: copySelection });
+  items.push({ label: "Вставити", run: () => pasteClipboard() });
   items.push({ label: "На передній план", run: bringSelectionToFront });
   items.push({ label: "Назад", run: sendSelectionToBack });
   items.push({ label: "Наступний колір", run: cycleSelectionColor });
@@ -950,6 +1000,16 @@ export function initCanvas(vault) {
       redoCanvas();
       return;
     }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+      e.preventDefault();
+      copySelection();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+      e.preventDefault();
+      pasteClipboard();
+      return;
+    }
     if (e.key === "Escape") {
       hideEdgeBar();
       selectedEdge = null;
@@ -1010,6 +1070,8 @@ export function initCanvas(vault) {
     },
     align(mode) { return alignSelection(mode); },
     duplicate: duplicateSelection,
+    copy: copySelection,
+    paste: pasteClipboard,
     deleteSelection,
     bringToFront: bringSelectionToFront,
     sendToBack: sendSelectionToBack,
