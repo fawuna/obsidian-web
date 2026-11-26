@@ -1,13 +1,13 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=16";
-import { initCanvas } from "./canvas.js?v=16";
-import { initCollab } from "./collab.js?v=16";
-import { initPlugins } from "./plugins.js?v=16";
-import { exportPdfFile } from "./pdf.js?v=16";
+import { initGraph } from "./graph.js?v=18";
+import { initCanvas } from "./canvas.js?v=18";
+import { initCollab } from "./collab.js?v=18";
+import { initPlugins } from "./plugins.js?v=18";
+import { exportPdfFile } from "./pdf.js?v=18";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v16";
+const BUILD = "v18";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -211,6 +211,7 @@ function renderTree() {
       if (!isCollapsed) walk(node[folder], full, depth + 1);
     }
     for (const leaf of leaves) {
+      if (leaf.startsWith(".")) continue;
       const full = prefix ? prefix + "/" + leaf : leaf;
       const row = el("div", "file-row" + (full === state.active ? " active" : ""));
       row.style.paddingLeft = 12 + depth * 12 + "px";
@@ -260,6 +261,9 @@ async function moveFile(path, folder) {
     const openFile = state.open.find((f) => f.path === path);
     if (openFile) openFile.path = target;
     if (state.active === path) state.active = target;
+    if (state.index.has(path)) { state.index.set(target, state.index.get(path)); state.index.delete(path); }
+    const bmAt = state.bookmarks.indexOf(path);
+    if (bmAt >= 0) { state.bookmarks[bmAt] = target; store.set("bookmarks", JSON.stringify(state.bookmarks)); renderBookmarks(); }
     state.pending.delete(path);
     await loadTree();
     renderTabs(); paint();
@@ -320,6 +324,7 @@ function fileContext(event, path) {
     { label: "Відкрити в другій панелі", run: () => openInSecond(path) },
     { sep: true },
     { label: "Перейменувати", run: () => renameNote(path) },
+    { label: "Перемістити…", run: () => moveFilePrompt(path) },
     { label: "Дублювати", run: () => duplicateNote(path) },
     { label: "Копіювати шлях", run: () => navigator.clipboard.writeText(path).then(() => toast("шлях скопійовано"), () => toast("буфер недоступний")) },
     { sep: true },
@@ -327,6 +332,13 @@ function fileContext(event, path) {
     { sep: true },
     { label: "Видалити", danger: true, run: () => deleteNote(path) },
   ]);
+}
+
+async function moveFilePrompt(path) {
+  const folders = [...state.folders].filter((f) => f && f !== ".").sort();
+  const raw = prompt("Тека (порожньо — корінь):\n" + folders.slice(0, 20).join(", "), "");
+  if (raw === null) return;
+  await moveFile(path, raw.trim().replace(/^\/+|\/+$/g, ""));
 }
 
 async function duplicateNote(path) {
@@ -635,13 +647,19 @@ function toggleTaskLine(lineIndex, prefixLen) {
   toast("позначено");
 }
 
-function parseProps(text) {  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/);
+function parseProps(text) {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/);
   if (!m) return null;
   const rows = m[1].split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
   const props = [];
   for (const line of rows) {
     const kv = line.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):\s*(.*)$/);
-    if (kv) props.push([kv[1], kv[2].replace(/^["']|["']$/g, "")]);
+    if (kv) { props.push([kv[1], kv[2].replace(/^["']|["']$/g, "")]); continue; }
+    const item = line.match(/^\s*-\s*(.*)$/);
+    if (item && props.length) {
+      const last = props[props.length - 1];
+      last[1] = last[1] ? last[1] + ", " + item[1].trim() : item[1].trim();
+    }
   }
   return { raw: m[0], body: text.slice(m[0].length), props };
 }
