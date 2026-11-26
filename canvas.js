@@ -46,11 +46,185 @@ function setCanvasName(text) {
   document.getElementById("canvasName").textContent = text;
 }
 
-function edgePath(a, b) {
-  const ax = a.x + a.width / 2, ay = a.y + a.height / 2;
-  const bx = b.x + b.width / 2, by = b.y + b.height / 2;
-  const mx = (ax + bx) / 2;
-  return "M " + ax + " " + ay + " C " + mx + " " + ay + ", " + mx + " " + by + ", " + bx + " " + by;
+function sidePoint(node, side) {
+  const width = node.width || 320;
+  const height = node.height || 200;
+  if (side === "top") return { x: node.x + width / 2, y: node.y };
+  if (side === "bottom") return { x: node.x + width / 2, y: node.y + height };
+  if (side === "left") return { x: node.x, y: node.y + height / 2 };
+  return { x: node.x + width, y: node.y + height / 2 };
+}
+
+function nearestSides(a, b) {
+  const ax = a.x + (a.width || 320) / 2, ay = a.y + (a.height || 200) / 2;
+  const bx = b.x + (b.width || 320) / 2, by = b.y + (b.height || 200) / 2;
+  const dx = bx - ax, dy = by - ay;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? ["right", "left"] : ["left", "right"];
+  return dy >= 0 ? ["bottom", "top"] : ["top", "bottom"];
+}
+
+function edgeGeometry(a, b, edge) {
+  let fromSide = edge.fromSide;
+  let toSide = edge.toSide;
+  if (!fromSide || !toSide) {
+    const auto = nearestSides(a, b);
+    fromSide = fromSide || auto[0];
+    toSide = toSide || auto[1];
+  }
+  const p1 = sidePoint(a, fromSide);
+  const p2 = sidePoint(b, toSide);
+  const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  const pull = Math.max(40, Math.min(220, distance * 0.45));
+  const normal = (side, sign) => side === "right" ? [sign, 0] :
+    side === "left" ? [-sign, 0] :
+    side === "bottom" ? [0, sign] : [0, -sign];
+  const [n1x, n1y] = normal(fromSide, pull);
+  const [n2x, n2y] = normal(toSide, pull);
+  const c1x = p1.x + n1x, c1y = p1.y + n1y;
+  const c2x = p2.x + n2x, c2y = p2.y + n2y;
+  return {
+    d: "M " + p1.x + " " + p1.y + " C " + c1x + " " + c1y + ", " + c2x + " " + c2y + ", " + p2.x + " " + p2.y,
+    labelX: (p1.x + 3 * c1x + 3 * c2x + p2.x) / 8,
+    labelY: (p1.y + 3 * c1y + 3 * c2y + p2.y) / 8,
+  };
+}
+
+function edgeStroke(edge) {
+  return CANVAS_COLORS[edge.color] || (/^#[0-9a-f]{3,8}$/i.test(edge.color || "") ? edge.color : null);
+}
+
+function edgeMarkerId(edge, defs, hexMarkers) {
+  if (selectedEdge === edge.id) return "cv-arrow-sel";
+  if (CANVAS_COLORS[edge.color]) return "cv-arrow-" + edge.color;
+  if (/^#[0-9a-f]{3,8}$/i.test(edge.color || "")) {
+    const id = "cv-arrow-hex-" + edge.color.slice(1).toLowerCase();
+    if (!hexMarkers.has(id)) {
+      hexMarkers.add(id);
+      addArrowMarker(defs, id, edge.color);
+    }
+    return id;
+  }
+  return "cv-arrow-default";
+}
+
+function addArrowMarker(defs, id, fill, opacity) {
+  const ns = "http://www.w3.org/2000/svg";
+  const marker = document.createElementNS(ns, "marker");
+  marker.setAttribute("id", id);
+  marker.setAttribute("viewBox", "0 0 10 10");
+  marker.setAttribute("refX", "9");
+  marker.setAttribute("refY", "5");
+  marker.setAttribute("markerWidth", "7");
+  marker.setAttribute("markerHeight", "7");
+  marker.setAttribute("orient", "auto-start-reverse");
+  const shape = document.createElementNS(ns, "path");
+  shape.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+  shape.setAttribute("fill", fill);
+  if (opacity) shape.setAttribute("fill-opacity", opacity);
+  marker.appendChild(shape);
+  defs.appendChild(marker);
+}
+
+function updateEdgePaths() {
+  if (!svg) return;
+  const byId = new Map(model.nodes.map((n) => [n.id, n]));
+  for (const p of svg.querySelectorAll(".cv-edge")) {
+    const edge = model.edges.find((ed) => ed.id === p.dataset.id);
+    if (!edge) continue;
+    const a = byId.get(edge.fromNode), b = byId.get(edge.toNode);
+    if (!a || !b) continue;
+    const geo = edgeGeometry(a, b, edge);
+    p.setAttribute("d", geo.d);
+    const label = svg.querySelector('.cv-edge-label[data-id="' + edge.id + '"]');
+    if (label) {
+      label.setAttribute("x", String(geo.labelX));
+      label.setAttribute("y", String(geo.labelY));
+    }
+  }
+}
+
+let edgeBar = null;
+
+function hideEdgeBar() {
+  if (edgeBar) {
+    edgeBar.remove();
+    edgeBar = null;
+  }
+}
+
+function showEdgeBar(edge, clientX, clientY) {
+  hideEdgeBar();
+  if (!board) return;
+  const rect = board.getBoundingClientRect();
+  const bar = document.createElement("div");
+  bar.className = "cv-edge-bar";
+  const refresh = () => { render(); showEdgeBar(edge, clientX, clientY); };
+  const action = (fn) => (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    fn();
+  };
+
+  const none = document.createElement("button");
+  none.className = "cv-swatch cv-swatch-none" + (!edge.color ? " on" : "");
+  none.title = "Без кольору";
+  none.onclick = action(() => { delete edge.color; dirty = true; refresh(); });
+  bar.appendChild(none);
+  for (const [key, color] of Object.entries(CANVAS_COLORS)) {
+    const swatch = document.createElement("button");
+    swatch.className = "cv-swatch" + (edge.color === key ? " on" : "");
+    swatch.style.background = color;
+    swatch.title = "Колір " + key;
+    swatch.onclick = action(() => { edge.color = key; dirty = true; refresh(); });
+    bar.appendChild(swatch);
+  }
+
+  const arrowState = edge.toEnd === "arrow"
+    ? (edge.fromEnd === "arrow" ? "both" : "to")
+    : (edge.fromEnd === "arrow" ? "from" : "none");
+  const dir = document.createElement("button");
+  dir.className = "cv-bar-btn";
+  dir.textContent = arrowState === "both" ? "↔" : arrowState === "to" ? "→" : arrowState === "from" ? "←" : "—";
+  dir.title = "Напрямок стрілки";
+  dir.onclick = action(() => {
+    const next = { none: "to", to: "both", both: "none", from: "none" }[arrowState] || "to";
+    edge.toEnd = next === "to" || next === "both" ? "arrow" : "none";
+    edge.fromEnd = next === "both" ? "arrow" : "none";
+    dirty = true;
+    refresh();
+  });
+  bar.appendChild(dir);
+
+  const label = document.createElement("button");
+  label.className = "cv-bar-btn";
+  label.textContent = "T";
+  label.title = "Підпис ребра";
+  label.onclick = action(() => {
+    const text = prompt("Підпис ребра (порожньо — без підпису):", edge.label || "");
+    if (text === null) return;
+    if (text.trim()) edge.label = text.trim(); else delete edge.label;
+    dirty = true;
+    refresh();
+  });
+  bar.appendChild(label);
+
+  const remove = document.createElement("button");
+  remove.className = "cv-bar-btn cv-bar-danger";
+  remove.textContent = "🗑";
+  remove.title = "Видалити звʼязок";
+  remove.onclick = action(() => {
+    model.edges = model.edges.filter((item) => item.id !== edge.id);
+    selectedEdge = null;
+    dirty = true;
+    render();
+  });
+  bar.appendChild(remove);
+
+  edgeBar = bar;
+  board.appendChild(bar);
+  const width = bar.offsetWidth, height = bar.offsetHeight;
+  bar.style.left = Math.max(8, Math.min(rect.width - width - 8, clientX - rect.left - width / 2)) + "px";
+  bar.style.top = Math.max(8, Math.min(rect.height - height - 8, clientY - rect.top - height - 12)) + "px";
 }
 
 function linkHost(url) {
@@ -64,6 +238,7 @@ function isInsideGroup(node, group) {
 }
 
 function render() {
+  hideEdgeBar();
   world.innerHTML = "";
   svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "cv-svg");
@@ -75,15 +250,34 @@ function render() {
   svg.style.overflow = "visible";
   world.appendChild(svg);
 
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  svg.appendChild(defs);
+  addArrowMarker(defs, "cv-arrow-default", "var(--accent)", "0.6");
+  addArrowMarker(defs, "cv-arrow-sel", "var(--accent)");
+  for (const [key, color] of Object.entries(CANVAS_COLORS)) addArrowMarker(defs, "cv-arrow-" + key, color);
+  const hexMarkers = new Set();
+
   const byId = new Map(model.nodes.map((n) => [n.id, n]));
   for (const e of model.edges) {
     const a = byId.get(e.fromNode), b = byId.get(e.toNode);
     if (!a || !b) continue;
+    const geo = edgeGeometry(a, b, e);
     const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    p.setAttribute("d", edgePath(a, b));
+    p.setAttribute("d", geo.d);
     p.setAttribute("class", "cv-edge" + (selectedEdge === e.id ? " sel" : ""));
     p.dataset.id = e.id;
-    p.addEventListener("click", (ev) => { ev.stopPropagation(); selectedEdge = e.id; selected = null; render(); });
+    const tone = edgeStroke(e);
+    if (tone && selectedEdge !== e.id) p.style.stroke = tone;
+    const marker = "url(#" + edgeMarkerId(e, defs, hexMarkers) + ")";
+    if (e.toEnd === "arrow") p.setAttribute("marker-end", marker);
+    if (e.fromEnd === "arrow") p.setAttribute("marker-start", marker);
+    p.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      selectedEdge = e.id;
+      selected = null;
+      render();
+      showEdgeBar(e, ev.clientX, ev.clientY);
+    });
     p.addEventListener("dblclick", (ev) => {
       ev.stopPropagation();
       const label = prompt("Підпис ребра (порожньо — без підпису):", e.label || "");
@@ -96,11 +290,10 @@ function render() {
 
     if (e.label) {
       const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      const ax = a.x + a.width / 2, ay = a.y + a.height / 2;
-      const bx = b.x + b.width / 2, by = b.y + b.height / 2;
-      t.setAttribute("x", String((ax + bx) / 2));
-      t.setAttribute("y", String((ay + by) / 2));
+      t.setAttribute("x", String(geo.labelX));
+      t.setAttribute("y", String(geo.labelY));
       t.setAttribute("class", "cv-edge-label");
+      t.dataset.id = e.id;
       t.textContent = e.label;
       svg.appendChild(t);
     }
@@ -198,7 +391,17 @@ function render() {
       if (connectMode) {
         if (!connectFrom) { connectFrom = n.id; selected = n.id; Vault.toast("тепер тицьни другу картку"); }
         else if (connectFrom !== n.id) {
-          model.edges.push({ id: uid(), fromNode: connectFrom, toNode: n.id, fromSide: "right", toSide: "left" });
+          const fromNode = model.nodes.find((item) => item.id === connectFrom);
+          const sides = fromNode ? nearestSides(fromNode, n) : ["right", "left"];
+          model.edges.push({
+            id: uid(),
+            fromNode: connectFrom,
+            toNode: n.id,
+            fromSide: sides[0],
+            toSide: sides[1],
+            fromEnd: "none",
+            toEnd: "arrow",
+          });
           connectFrom = null;
           connectMode = false;
           dirty = true;
@@ -314,13 +517,7 @@ export function initCanvas(vault) {
         nodeEl.style.width = resizing.node.width + "px";
         nodeEl.style.height = resizing.node.height + "px";
       }
-      const byId = new Map(model.nodes.map((n) => [n.id, n]));
-      svg.querySelectorAll("path").forEach((p, i) => {
-        const ed = model.edges[i];
-        if (!ed) return;
-        const a = byId.get(ed.fromNode), b = byId.get(ed.toNode);
-        if (a && b) p.setAttribute("d", edgePath(a, b));
-      });
+      updateEdgePaths();
     } else if (dragging) {
       const dx = (e.clientX - dragging.startX) / view.k;
       const dy = (e.clientY - dragging.startY) / view.k;
@@ -337,12 +534,7 @@ export function initCanvas(vault) {
           if (childEl) { childEl.style.left = child.node.x + "px"; childEl.style.top = child.node.y + "px"; }
         }
       }
-      const byId = new Map(model.nodes.map((n) => [n.id, n]));
-      svg.querySelectorAll("path").forEach((p, i) => {
-        const ed = model.edges[i];
-        const a = byId.get(ed.fromNode), b = byId.get(ed.toNode);
-        if (a && b) p.setAttribute("d", edgePath(a, b));
-      });
+      updateEdgePaths();
     } else if (panning) {
       view.x = e.clientX - panning.x;
       view.y = e.clientY - panning.y;
@@ -422,6 +614,13 @@ export function initCanvas(vault) {
 
   document.addEventListener("keydown", (e) => {
     if (Vault.state.view !== "canvas") return;
+    if (e.key === "Escape") {
+      hideEdgeBar();
+      selectedEdge = null;
+      selected = null;
+      render();
+      return;
+    }
     if (e.key === "Delete" && selectedEdge) {
       model.edges = model.edges.filter((ed) => ed.id !== selectedEdge);
       selectedEdge = null;
