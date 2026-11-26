@@ -243,7 +243,7 @@
       <div style="padding:6px 8px;border-bottom:1px solid var(--line)">
         <input class="filter" id="filter" placeholder="Фільтр файлів…" autocomplete="off">
       </div>
-      <div class="pane-body" id="tree"></div>
+      <div class="pane-body" id="filesPane"><div id="tree"></div></div>
       <div class="pane-body" id="searchPane" style="display:none">
         <input class="filter" id="searchInput" placeholder="Шукати по всьому волту…" autocomplete="off">
         <div id="searchResults" style="margin-top:8px"></div>
@@ -889,7 +889,6 @@
   function showPane(pane) {
     state.pane = pane;
     ["files", "search", "tags"].forEach((p) => { $(p + "Pane").style.display = p === pane ? "" : "none"; });
-    $("tree").style.display = pane === "files" ? "" : "none";
     $("paneTitle").textContent = pane === "files" ? "Файли" : pane === "search" ? "Пошук" : "Теги";
     document.querySelectorAll("#ribbon [data-pane]").forEach((b) => b.classList.toggle("active", b.dataset.pane === pane));
     if (pane === "tags") renderTags();
