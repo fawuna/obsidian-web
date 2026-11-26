@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=89";
-import { initCanvas } from "./canvas.js?v=89";
-import { initCollab } from "./collab.js?v=89";
-import { initPlugins } from "./plugins.js?v=89";
-import { exportPdfFile } from "./pdf.js?v=89";
-import { initLive } from "./live.js?v=89";
-import { initDaily } from "./daily.js?v=89";
-import { initRecorder } from "./recorder.js?v=89";
-import { initPdfViewer } from "./pdfviewer.js?v=89";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=89";
+import { initGraph } from "./graph.js?v=90";
+import { initCanvas } from "./canvas.js?v=90";
+import { initCollab } from "./collab.js?v=90";
+import { initPlugins } from "./plugins.js?v=90";
+import { exportPdfFile } from "./pdf.js?v=90";
+import { initLive } from "./live.js?v=90";
+import { initDaily } from "./daily.js?v=90";
+import { initRecorder } from "./recorder.js?v=90";
+import { initPdfViewer } from "./pdfviewer.js?v=90";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=90";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v89";
+const BUILD = "v90";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -131,6 +131,7 @@ let recorderApi = null;
 let pdfApi = null;
 let mediaApi = null;
 let pluginsApi = null;
+let appCfg = { newFileLocation: "root", newFileFolderPath: "", attachmentFolderPath: "" };
 
 /* ---------------- events ---------------- */
 function on(event, fn) {
@@ -1820,6 +1821,16 @@ async function newNote() {
 async function createNoteNamed(raw) {
   let path = String(raw || "").trim().replace(/^\/+/, "");
   if (!path) return "";
+  if (!path.includes("/")) {
+    let folder = "";
+    if (appCfg.newFileLocation === "current") {
+      const file = currentFile();
+      if (file && file.path.includes("/")) folder = file.path.slice(0, file.path.lastIndexOf("/"));
+    } else if (appCfg.newFileLocation === "folder") {
+      folder = String(appCfg.newFileFolderPath || "").replace(/^\/+|\/+$/g, "");
+    }
+    if (folder) path = folder + "/" + path;
+  }
   if (!path.endsWith(".md")) path += ".md";
   try {
     await ghPut(path, "# " + path.split("/").pop().replace(/\.md$/, "") + "\n\n", null, "add " + path);
@@ -2043,14 +2054,40 @@ function insertAtCursor(text) {
   ed.dispatchEvent(new Event("input"));
 }
 
+async function loadAppConfig() {
+  try {
+    const raw = JSON.parse((await ghGet(".obsidian/app.json")).text);
+    if (raw && typeof raw === "object") {
+      appCfg = {
+        newFileLocation: raw.newFileLocation || "root",
+        newFileFolderPath: raw.newFileFolderPath || "",
+        attachmentFolderPath: raw.attachmentFolderPath || "",
+      };
+    }
+  } catch { /* defaults */ }
+}
+
+function attachmentFolder() {
+  const setting = String(appCfg.attachmentFolderPath || "").replace(/\\/g, "/");
+  if (setting === "./") {
+    const file = currentFile();
+    return file && file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "";
+  }
+  return setting.replace(/^\/+|\/+$/g, "");
+}
+
 async function uploadImage(file) {
-  const name = "assets/" + Date.now() + "-" + file.name.replace(/[^\w.\-]+/g, "_");
+  const folder = attachmentFolder();
+  const name = (folder ? folder + "/" : "") + Date.now() + "-" + file.name.replace(/[^\w.\-]+/g, "_");
   const buffer = new Uint8Array(await file.arrayBuffer());
   setState("завантажую картинку…");
   await ghPutRaw(name, b64encode(buffer), null, "upload " + name);
+  state.pending.add(name);
   insertAtCursor("\n![[" + name + "]]\n");
+  await loadTree();
   setState("картинку вставлено", "ok");
   toast("+" + name);
+  return name;
 }
 
 async function handleImageFiles(files) {
@@ -5685,6 +5722,7 @@ const SETTINGS_TABS = [
   { id: "about", label: "About" },
   { id: "appearance", label: "Appearance" },
   { id: "editor", label: "Editor" },
+  { id: "files", label: "Files and links" },
   { id: "daily", label: "Daily notes" },
   { id: "templates", label: "Templates" },
   { id: "unique", label: "Unique note creator" },
@@ -5844,6 +5882,9 @@ function openSettings() {
   $("setSpellcheck").checked = store.get("spellcheck", "1") !== "0";
   $("setWebLinks").checked = store.get("webLinks", "0") === "1";
   $("setRecorderFolder").value = recorderApi && recorderApi.config ? recorderApi.config.folder || "" : "";
+  $("setNewFileLocation").value = appCfg.newFileLocation || "root";
+  $("setNewFileFolder").value = appCfg.newFileFolderPath || "";
+  $("setAttachmentFolder").value = appCfg.attachmentFolderPath || "";
   const noteCfg = dailyApi && dailyApi.config ? dailyApi.config : null;
   if (noteCfg) {
     $("setDailyFolder").value = noteCfg.daily.folder || "";
@@ -5926,6 +5967,16 @@ $("saveSettings").onclick = async () => {
     await writeVaultJson(".obsidian/audio-recorder.json", {
       folder: $("setRecorderFolder").value.trim(),
     });
+    let appRaw = {};
+    try {
+      const got = await ghGet(".obsidian/app.json");
+      appRaw = JSON.parse(got.text) || {};
+      if (!appRaw || typeof appRaw !== "object" || Array.isArray(appRaw)) appRaw = {};
+    } catch { appRaw = {}; }
+    appRaw.newFileLocation = $("setNewFileLocation").value;
+    appRaw.newFileFolderPath = $("setNewFileFolder").value.trim();
+    appRaw.attachmentFolderPath = $("setAttachmentFolder").value.trim();
+    await writeVaultJson(".obsidian/app.json", appRaw);
   } catch (error) {
     toast("Налаштування нотаток: " + error.message);
   }
@@ -5987,6 +6038,7 @@ async function connect(repo, branch, token, remember) {
     if (dailyApi) await dailyApi.loadConfigs();
     else dailyApi = await initDaily(Vault);
     window.__daily = dailyApi;
+    await loadAppConfig();
     recorderApi = await initRecorder(Vault);
     window.__recorder = recorderApi;
     pdfApi = initPdfViewer(Vault);
@@ -6139,4 +6191,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null) };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig };

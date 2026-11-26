@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=89">
+<link rel="stylesheet" href="styles.css?v=90">
 </head>
 <body>
 
@@ -377,6 +377,20 @@
           <label style="margin-top:18px;display:block">Graph view: сила відштовхування</label>
           <input id="setGraphForce" type="range" min="40" max="220" step="10">
         </section>
+        <section class="settings-section" data-settings="files">
+          <h3>Files and links</h3>
+          <label style="display:block">Розташування нових нотаток</label>
+          <select id="setNewFileLocation">
+            <option value="root">У корені волту</option>
+            <option value="current">У теці поточної нотатки</option>
+            <option value="folder">У вказаній теці</option>
+          </select>
+          <label style="margin-top:12px;display:block">Тека для нових нотаток</label>
+          <input id="setNewFileFolder" placeholder="notes">
+          <label style="margin-top:12px;display:block">Тека для вкладень</label>
+          <input id="setAttachmentFolder" placeholder="assets або ./">
+          <div class="hint">Порожньо — корінь волту; ./ — тека поточної нотатки.</div>
+        </section>
         <section class="settings-section" data-settings="daily">
           <h3>Daily notes</h3>
           <div class="row">
@@ -482,7 +496,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=89"></script>
-<script type="module" src="app.js?v=89"></script>
+<script src="vendor/marked.min.js?v=90"></script>
+<script type="module" src="app.js?v=90"></script>
 </body>
 </html>
