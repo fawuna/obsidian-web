@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=101";
-import { initCanvas } from "./canvas.js?v=101";
-import { initCollab } from "./collab.js?v=101";
-import { initPlugins } from "./plugins.js?v=101";
-import { exportPdfFile } from "./pdf.js?v=101";
-import { initLive } from "./live.js?v=101";
-import { initDaily } from "./daily.js?v=101";
-import { initRecorder } from "./recorder.js?v=101";
-import { initPdfViewer } from "./pdfviewer.js?v=101";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=101";
+import { initGraph } from "./graph.js?v=102";
+import { initCanvas } from "./canvas.js?v=102";
+import { initCollab } from "./collab.js?v=102";
+import { initPlugins } from "./plugins.js?v=102";
+import { exportPdfFile } from "./pdf.js?v=102";
+import { initLive } from "./live.js?v=102";
+import { initDaily } from "./daily.js?v=102";
+import { initRecorder } from "./recorder.js?v=102";
+import { initPdfViewer } from "./pdfviewer.js?v=102";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=102";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v101";
+const BUILD = "v102";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -3727,6 +3727,15 @@ async function runSearch() {
         at = hay.indexOf(needle, at + Math.max(1, needle.length));
       }
     }
+    const aliasText = noteAliases(text).join(" ");
+    if (aliasText) {
+      const aliasHay = caseSensitive ? aliasText : aliasText.toLowerCase();
+      for (const needle of searchNeedles) {
+        const at = aliasHay.indexOf(needle);
+        if (at < 0) continue;
+        hits.push({ line: 0, pieces: snippetPieces(aliasText, at, at + needle.length, true) });
+      }
+    }
     for (const spec of parsed.regex) {
       let re;
       try {
@@ -3873,7 +3882,10 @@ function sectionContains(text, words, caseSensitive) {
 }
 
 function searchQueryMatches(parsed, path, text, caseSensitive) {
-  const hay = caseSensitive ? text : text.toLowerCase();
+  const aliases = noteAliases(text);
+  const aliasText = aliases.join(" ");
+  const searchable = aliasText ? text + "\n" + aliasText : text;
+  const hay = caseSensitive ? searchable : searchable.toLowerCase();
   const pathLower = path.toLowerCase();
   const nameLower = path.split("/").pop().toLowerCase();
   if (parsed.path.some((p) => !pathLower.includes(p))) return false;
@@ -3901,14 +3913,14 @@ function searchQueryMatches(parsed, path, text, caseSensitive) {
       const flags = spec.flags.replace(/g/g, "") + (caseSensitive || spec.flags.includes("i") ? "" : "i");
       re = new RegExp(spec.source, flags);
     } catch { return false; }
-    if (!re.test(text)) return false;
+    if (!re.test(searchable)) return false;
   }
   for (const group of parsed.line) {
     if (!group) continue;
     const words = group.split(/\s+/).filter(Boolean).map((word) => caseSensitive ? word : word.toLowerCase());
     if (!words.length) continue;
     let found = false;
-    for (const line of text.split(/\r?\n/)) {
+    for (const line of searchable.split(/\r?\n/)) {
       const hayLine = caseSensitive ? line : line.toLowerCase();
       if (words.every((word) => hayLine.includes(word))) { found = true; break; }
     }
@@ -3917,7 +3929,7 @@ function searchQueryMatches(parsed, path, text, caseSensitive) {
   for (const group of parsed.section) {
     if (!group) continue;
     const words = group.split(/\s+/).filter(Boolean).map((word) => caseSensitive ? word : word.toLowerCase());
-    if (words.length && !sectionContains(text, words, caseSensitive)) return false;
+    if (words.length && !sectionContains(searchable, words, caseSensitive)) return false;
   }
   const needles = [...parsed.phrases, ...parsed.terms].map((needle) => caseSensitive ? needle : needle.toLowerCase());
   if (needles.some((needle) => !hay.includes(needle))) return false;
