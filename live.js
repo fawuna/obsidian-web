@@ -879,7 +879,7 @@ function renderSlashMenu(view, start, query) {
     row.addEventListener("click", (event) => { event.preventDefault(); runSlash(item); });
     host.appendChild(row);
   });
-  const coords = view.coordsAtPos(view.state.selection.main.head);
+  const coords = view.coordsAtPos(view.state.selection.main.head) || { left: 40, bottom: 90 };
   if (coords) {
     host.style.display = "block";
     const width = host.offsetWidth || 240;
@@ -935,12 +935,160 @@ function slashCancel(view) {
   return true;
 }
 
+const tagMenu = { open: false, view: null, index: 0, start: 0, query: "", host: null, items: [] };
+
+function collectTags() {
+  const tags = new Set();
+  const index = window.Vault && window.Vault.index;
+  if (!index || typeof index.values !== "function") return [];
+  const sources = [];
+  for (const text of index.values()) sources.push(text);
+  for (const file of (window.Vault && window.Vault.state && window.Vault.state.open) || []) sources.push(file.text);
+  for (const text of sources) {
+    const lines = String(text || "").split(/\r?\n/);
+    let inFront = lines[0] && lines[0].trim() === "---";
+    let tagBlock = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (i === 0 && line.trim() === "---") { inFront = true; continue; }
+      if (inFront && line.trim() === "---") { inFront = false; continue; }
+      if (inFront) {
+        const head = line.match(/^tags?:\s*(.*)$/i);
+        if (head) {
+          tagBlock = true;
+          for (const part of head[1].replace(/^\[|\]$/g, "").split(",")) {
+            const tag = part.trim().replace(/^#/, "").replace(/^["']|["']$/g, "");
+            if (tag) tags.add(tag);
+          }
+          continue;
+        }
+        if (tagBlock) {
+          const item = line.match(/^\s*-\s*(.*)$/);
+          if (item) {
+            const tag = item[1].trim().replace(/^#/, "").replace(/^["']|["']$/g, "");
+            if (tag) tags.add(tag);
+            continue;
+          }
+          tagBlock = false;
+        }
+        continue;
+      }
+      for (const m of line.matchAll(/(^|[\s(])#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]*)/g)) tags.add(m[2]);
+    }
+  }
+  return [...tags].sort((a, b) => a.localeCompare(b, "uk", { numeric: true }));
+}
+
+function tagHost() {
+  if (!tagMenu.host) {
+    tagMenu.host = document.createElement("div");
+    tagMenu.host.className = "slash-menu tag-menu";
+    tagMenu.host.style.display = "none";
+    document.body.appendChild(tagMenu.host);
+  }
+  return tagMenu.host;
+}
+
+function hideTagMenu() {
+  tagMenu.open = false;
+  tagMenu.view = null;
+  tagMenu.items = [];
+  if (tagMenu.host) tagMenu.host.style.display = "none";
+}
+
+function renderTagMenu(view, start, items) {
+  tagMenu.open = true;
+  tagMenu.view = view;
+  tagMenu.start = start;
+  tagMenu.items = items;
+  tagMenu.index = Math.max(0, Math.min(tagMenu.index, items.length - 1));
+  const host = tagHost();
+  host.innerHTML = "";
+  items.forEach((tag, index) => {
+    const row = document.createElement("div");
+    row.className = "slash-item" + (index === tagMenu.index ? " active" : "");
+    const label = document.createElement("span");
+    label.textContent = "#" + tag;
+    row.appendChild(label);
+    row.addEventListener("mousedown", (event) => event.preventDefault());
+    row.addEventListener("click", (event) => { event.preventDefault(); runTag(tag); });
+    host.appendChild(row);
+  });
+  const coords = view.coordsAtPos(view.state.selection.main.head) || { left: 40, bottom: 90 };
+  if (coords) {
+    host.style.display = "block";
+    const width = host.offsetWidth || 220;
+    const height = host.offsetHeight || 240;
+    host.style.left = Math.max(8, Math.min(window.innerWidth - width - 8, coords.left)) + "px";
+    host.style.top = Math.max(8, Math.min(window.innerHeight - height - 8, coords.bottom + 6)) + "px";
+  }
+}
+
+function updateTagMenu(view) {
+  const head = view.state.selection.main.head;
+  const line = view.state.doc.lineAt(head);
+  const before = line.text.slice(0, head - line.from);
+  const match = before.match(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF/-]*)$/);
+  if (!match) { hideTagMenu(); return; }
+  const query = match[2];
+  const tags = collectTags()
+    .filter((tag) => tag.toLowerCase() !== query.toLowerCase())
+    .filter((tag) => tag.toLowerCase().includes(query.toLowerCase()))
+    .slice(0, 40);
+  if (!tags.length) { hideTagMenu(); return; }
+  hideSlashMenu();
+  const start = line.from + before.length - query.length - 1;
+  renderTagMenu(view, start, tags);
+}
+
+function runTag(tag) {
+  const view = tagMenu.view;
+  if (!view) return;
+  const head = view.state.selection.main.head;
+  const start = tagMenu.start;
+  hideTagMenu();
+  const insert = "#" + tag + " ";
+  view.dispatch({ changes: { from: start, to: head, insert }, selection: { anchor: start + insert.length }, scrollIntoView: true });
+  view.focus();
+}
+
+function tagMove(view, delta) {
+  if (!tagMenu.open || tagMenu.view !== view) return false;
+  tagMenu.index = (tagMenu.index + delta + tagMenu.items.length) % tagMenu.items.length;
+  renderTagMenu(view, tagMenu.start, tagMenu.items);
+  return true;
+}
+
+function tagAccept(view) {
+  if (!tagMenu.open || tagMenu.view !== view) return false;
+  const tag = tagMenu.items[tagMenu.index];
+  if (!tag) { hideTagMenu(); return false; }
+  const head = view.state.selection.main.head;
+  const start = tagMenu.start;
+  hideTagMenu();
+  const insert = "#" + tag + " ";
+  view.dispatch({ changes: { from: start, to: head, insert }, selection: { anchor: start + insert.length }, scrollIntoView: true });
+  view.focus();
+  return true;
+}
+
+function tagCancel(view) {
+  if (!tagMenu.open || tagMenu.view !== view) return false;
+  hideTagMenu();
+  return true;
+}
+
 function makeExtensions(options, instance) {
   return [
     history(),
     drawSelection(),
     EditorView.lineWrapping,
     keymap.of([
+      { key: "ArrowDown", run: (v) => tagMove(v, 1) },
+      { key: "ArrowUp", run: (v) => tagMove(v, -1) },
+      { key: "Enter", run: tagAccept },
+      { key: "Tab", run: tagAccept },
+      { key: "Escape", run: tagCancel },
       { key: "ArrowDown", run: (v) => slashMove(v, 1) },
       { key: "ArrowUp", run: (v) => slashMove(v, -1) },
       { key: "Enter", run: slashAccept },
@@ -999,7 +1147,10 @@ function makeExtensions(options, instance) {
         const line = update.state.doc.lineAt(head);
         options.onCursor(line.number, head - line.from + 1);
       }
-      if (!instance.suppress && update.view.hasFocus) updateSlashMenu(update.view);
+      if (!instance.suppress && update.view.hasFocus) {
+        updateSlashMenu(update.view);
+        updateTagMenu(update.view);
+      }
     }),
   ];
 }
@@ -1019,12 +1170,17 @@ export function initLive(options) {
   instance.lastText = view.state.doc.toString();
   host.classList.add("cm-host");
   document.addEventListener("mousedown", (event) => {
-    if (!slashMenu.open) return;
+    if (!slashMenu.open && !tagMenu.open) return;
     if (slashMenu.host && slashMenu.host.contains(event.target)) return;
+    if (tagMenu.host && tagMenu.host.contains(event.target)) return;
     if (view.dom.contains(event.target)) return;
     hideSlashMenu();
+    hideTagMenu();
   });
-  view.scrollDOM.addEventListener("scroll", () => { if (slashMenu.view === view) hideSlashMenu(); }, { passive: true });
+  view.scrollDOM.addEventListener("wheel", () => {
+    if (slashMenu.view === view) hideSlashMenu();
+    if (tagMenu.view === view) hideTagMenu();
+  }, { passive: true });
   view.dom.addEventListener("focusin", () => { if (options.onFocus) options.onFocus(); });
   view.dom.addEventListener("mousedown", () => { if (options.onFocus) options.onFocus(); });
 
