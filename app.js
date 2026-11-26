@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=106";
-import { initCanvas } from "./canvas.js?v=106";
-import { initCollab } from "./collab.js?v=106";
-import { initPlugins } from "./plugins.js?v=106";
-import { exportPdfFile } from "./pdf.js?v=106";
-import { initLive } from "./live.js?v=106";
-import { initDaily } from "./daily.js?v=106";
-import { initRecorder } from "./recorder.js?v=106";
-import { initPdfViewer } from "./pdfviewer.js?v=106";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=106";
+import { initGraph } from "./graph.js?v=107";
+import { initCanvas } from "./canvas.js?v=107";
+import { initCollab } from "./collab.js?v=107";
+import { initPlugins } from "./plugins.js?v=107";
+import { exportPdfFile } from "./pdf.js?v=107";
+import { initLive } from "./live.js?v=107";
+import { initDaily } from "./daily.js?v=107";
+import { initRecorder } from "./recorder.js?v=107";
+import { initPdfViewer } from "./pdfviewer.js?v=107";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=107";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v106";
+const BUILD = "v107";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -479,7 +479,7 @@ function saveWorkspace() {
   });
   const data = {
     v: 1,
-    groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active })),
+    groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active, stacked: !!group.stacked })),
     pane2Width: widths[1],
     widths,
   };
@@ -499,6 +499,7 @@ async function restoreWorkspace() {
   const specs = data.groups.map((group) => ({
     tabs: Array.isArray(group.tabs) ? group.tabs.filter(valid) : [],
     active: valid(group.active) ? group.active : null,
+    stacked: !!group.stacked,
   }));
   if (!specs.length) return false;
   const paths = [...new Set(specs.flatMap((group) => group.tabs))];
@@ -514,7 +515,7 @@ async function restoreWorkspace() {
   const loaded = new Set(state.open.map((file) => file.path));
   const build = (spec) => {
     const tabs = spec.tabs.filter((path) => loaded.has(path));
-    return { tabs, active: tabs.includes(spec.active) ? spec.active : (tabs[0] || null) };
+    return { tabs, active: tabs.includes(spec.active) ? spec.active : (tabs[0] || null), stacked: !!spec.stacked };
   };
   let groups = specs.map(build).filter((group) => group.tabs.length);
   if (!groups.length) return false;
@@ -1063,6 +1064,7 @@ function tabContext(event, groupIndex, path) {
     { label: "Перемістити в першу панель", disabled: groupIndex === 0, run: () => moveTabBetweenGroups(groupIndex, path, 0) },
     { sep: true },
     { label: "Копіювати шлях", run: () => copyText(path) },
+    { label: state.groups[groupIndex] && state.groups[groupIndex].stacked ? "Розкласти вкладки" : "Скласти вкладки", run: () => toggleStackedTabs(groupIndex) },
     { label: state.bookmarks.includes(path) ? "Зняти із закладок" : "У закладки", run: () => toggleBookmark(path) },
   ]);
 }
@@ -1402,6 +1404,8 @@ function renderGroupTabsInto(index, bar) {
   if (!bar) return;
   const group = state.groups[index];
   bar.innerHTML = "";
+  bar.classList.toggle("stacked", !!(group && group.stacked));
+  document.body.classList.toggle("has-stacked-tabs", state.groups.some((item) => item && item.stacked));
   if (!group) return;
   for (const path of group.tabs) makeGroupTab(index, path, bar);
   if (index > 0) {
@@ -1812,6 +1816,16 @@ function moveTabBetweenGroups(fromIndex, path, toIndex) {
   renderTabs(); renderTree(); paint(); updateSplitButtons();
   applyMobilePane();
   scheduleWorkspaceSave();
+}
+
+function toggleStackedTabs(index = activeGroupIndex()) {
+  const group = state.groups[index];
+  if (!group) return false;
+  group.stacked = !group.stacked;
+  renderTabs();
+  scheduleWorkspaceSave();
+  toast(group.stacked ? "вкладки складені" : "вкладки розкладені");
+  return group.stacked;
 }
 
 function renderTabs() {
@@ -3958,7 +3972,7 @@ function snapshotWorkspace() {
     return width > 0 ? Math.round(width) : null;
   });
   return {
-    groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active })),
+    groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active, stacked: !!group.stacked })),
     pane2Width: widths[1],
     widths,
     mode: state.mode,
@@ -6314,6 +6328,7 @@ registerCommand({ id: "web-viewer", label: "Відкрити Web viewer", hint: 
   if (url) openWebViewer(url);
 } });
 registerCommand({ id: "slides", label: "Почати презентацію", hint: "Slides", plugin: "slides", run: startSlides });
+registerCommand({ id: "stack-tabs", label: "Скласти / розкласти вкладки", hint: "Stack tabs", run: () => toggleStackedTabs() });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", plugin: "graph", run: () => {
   const localToggle = $("graphLocal");
   if (state.view === "graph") { setView("note"); return; }
@@ -6434,4 +6449,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName };
