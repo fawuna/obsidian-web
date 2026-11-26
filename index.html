@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=27">
+<link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body>
 
@@ -192,6 +192,15 @@
       <div><label>Шрифт редактора</label><select id="setFont"><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17">17px</option></select></div>
       <div><label>Ширина</label><select id="setWidth"><option value="46rem">Звичайна</option><option value="56rem">Широка</option><option value="38rem">Вузька</option></select></div>
     </div>
+    <label style="margin-top:18px">Акцентний колір</label>
+    <div class="accent-row">
+      <input id="setAccent" type="color" value="#a882ff">
+      <button class="ghost-border" id="accentReset" title="Скинути до теми">↺</button>
+      <div id="accentPresets" class="accent-presets"></div>
+    </div>
+    <label style="margin-top:18px">Гарячі клавіші</label>
+    <div id="hotkeyList" class="hotkey-list"></div>
+    <div class="hint">Клікни поле й натисни комбінацію. Backspace — очистити, Esc — скасувати.</div>
     <label style="margin-top:18px">Graph view: сила відштовхування</label>
     <input id="setGraphForce" type="range" min="40" max="220" step="10">
   </div>
@@ -218,7 +227,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=27"></script>
-<script type="module" src="app.js?v=27"></script>
+<script src="vendor/marked.min.js?v=29"></script>
+<script type="module" src="app.js?v=29"></script>
 </body>
 </html>

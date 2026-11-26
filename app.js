@@ -1,14 +1,14 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=27";
-import { initCanvas } from "./canvas.js?v=27";
-import { initCollab } from "./collab.js?v=27";
-import { initPlugins } from "./plugins.js?v=27";
-import { exportPdfFile } from "./pdf.js?v=27";
-import { initLive } from "./live.js?v=27";
+import { initGraph } from "./graph.js?v=29";
+import { initCanvas } from "./canvas.js?v=29";
+import { initCollab } from "./collab.js?v=29";
+import { initPlugins } from "./plugins.js?v=29";
+import { exportPdfFile } from "./pdf.js?v=29";
+import { initLive } from "./live.js?v=29";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v27";
+const BUILD = "v29";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -125,10 +125,71 @@ function setState(text, cls) { $("stState").textContent = text; $("stState").cla
 function currentFile() { return state.open.find((f) => f.path === state.active) || null; }
 
 function theme() { document.documentElement.dataset.theme = store.get("theme", "dark"); }
-function applyPrefs() {
-  $("editor").style.fontSize = store.get("font", "15") + "px";
-  document.documentElement.style.setProperty("--editor-width", store.get("width", "46rem"));
+
+const ACCENT_PRESETS = ["#a882ff", "#5d9cff", "#52c98a", "#e0b458", "#e5686c", "#ff7ac6", "#7ad7d7", "#9a9a9a"];
+
+const HOTKEY_ACTIONS = [
+  { id: "save", label: "Зберегти нотатку", def: "Mod+S" },
+  { id: "mode", label: "Режим: редактор / live / читання", def: "Mod+E" },
+  { id: "palette", label: "Палітра команд", def: "Mod+P" },
+  { id: "switcher", label: "Швидкий перехід", def: "Mod+O" },
+  { id: "graph", label: "Graph view", def: "Mod+G" },
+  { id: "find", label: "Знайти", def: "Mod+F" },
+  { id: "replace", label: "Замінити", def: "Mod+H" },
+  { id: "left", label: "Ліва панель", def: "Mod+B" },
+  { id: "right", label: "Права панель", def: "Mod+Shift+B" },
+  { id: "theme", label: "Тема", def: "Mod+Shift+L" },
+];
+const DEFAULT_HOTKEYS = Object.fromEntries(HOTKEY_ACTIONS.map((action) => [action.id, action.def]));
+let hotkeys = { ...DEFAULT_HOTKEYS };
+try { Object.assign(hotkeys, JSON.parse(store.get("hotkeys", "{}"))); } catch { /* keep defaults */ }
+
+function applyAccent() {
+  const accent = store.get("accent", "");
+  if (accent) {
+    document.documentElement.style.setProperty("--accent", accent);
+    document.documentElement.style.setProperty("--accent-2", "color-mix(in srgb, " + accent + " 72%, #000)");
+  } else {
+    document.documentElement.style.removeProperty("--accent");
+    document.documentElement.style.removeProperty("--accent-2");
+  }
 }
+
+function applyPrefs() {
+  const font = store.get("font", "15");
+  document.documentElement.style.setProperty("--editor-font-size", font + "px");
+  $("editor").style.fontSize = "";
+  document.documentElement.style.setProperty("--editor-width", store.get("width", "46rem"));
+  applyAccent();
+}
+
+function comboFromEvent(event) {
+  const parts = [];
+  if (event.ctrlKey || event.metaKey) parts.push("Mod");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  if (!event.key || ["Control", "Meta", "Alt", "Shift", "CapsLock"].includes(event.key)) return "";
+  let name = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+  if (name === " ") name = "Space";
+  parts.push(name);
+  return parts.join("+");
+}
+
+function runHotkey(id) {
+  switch (id) {
+    case "save": saveNote(); break;
+    case "mode": toggleMode(); break;
+    case "palette": showPalette(); break;
+    case "switcher": showSwitcher(); break;
+    case "graph": setView(state.view === "graph" ? "note" : "graph"); break;
+    case "find": openFind(); break;
+    case "replace": openFind(); $("replaceInput").focus(); break;
+    case "left": toggleLeft(); break;
+    case "right": toggleRight(); break;
+    case "theme": toggleTheme(); break;
+  }
+}
+
 
 /* ---------------- commands ---------------- */
 function registerCommand(cmd) { state.commands.push(cmd); }
@@ -1370,7 +1431,7 @@ $("editor").addEventListener("keyup", updateCursorPos);
 $("editor").addEventListener("keydown", (e) => {
   const ed = $("editor");
   const mod = e.ctrlKey || e.metaKey;
-  if (mod && "bikfh".indexOf(e.key.toLowerCase()) >= 0) e.stopPropagation();
+  if (mod && "bik".indexOf(e.key.toLowerCase()) >= 0) e.stopPropagation();
 
   if (e.key === "Tab") {
     e.preventDefault();
@@ -1400,18 +1461,6 @@ $("editor").addEventListener("keydown", (e) => {
     ed.dispatchEvent(new Event("input"));
     return;
   }
-  if (mod && e.key.toLowerCase() === "f") {
-    e.preventDefault();
-    openFind();
-    return;
-  }
-  if (mod && e.key.toLowerCase() === "h") {
-    e.preventDefault();
-    openFind();
-    $("replaceInput").focus();
-    return;
-  }
-
   if (e.key === "Enter" && !e.shiftKey && !mod) {
     const s = ed.selectionStart;
     const before = ed.value.slice(0, s);
@@ -1528,18 +1577,18 @@ $("editor").addEventListener("paste", async (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if ($("findBar").classList.contains("show")) closeFind(); else closeModals();
+    return;
+  }
   const inLive = e.target && e.target.closest && e.target.closest("#live .cm-editor");
   if (inLive && (e.ctrlKey || e.metaKey) && ["b", "i", "k"].includes(e.key.toLowerCase())) return;
-  const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); saveNote(); }
-  else if (mod && e.key.toLowerCase() === "e") { e.preventDefault(); toggleMode(); }
-  else if (mod && e.key.toLowerCase() === "p") { e.preventDefault(); showPalette(); }
-  else if (mod && e.key.toLowerCase() === "o") { e.preventDefault(); showSwitcher(); }
-  else if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); toggleLeft(); }
-  else if (mod && e.key.toLowerCase() === "g") { e.preventDefault(); setView(state.view === "graph" ? "note" : "graph"); }
-  else if (mod && e.key.toLowerCase() === "f") { e.preventDefault(); openFind(); }
-  else if (mod && e.key.toLowerCase() === "h") { e.preventDefault(); openFind(); $("replaceInput").focus(); }
-  else if (e.key === "Escape") { if ($("findBar").classList.contains("show")) closeFind(); else closeModals(); }
+  const combo = comboFromEvent(e);
+  if (!combo) return;
+  const id = Object.keys(hotkeys).find((action) => hotkeys[action] === combo);
+  if (!id) return;
+  e.preventDefault();
+  runHotkey(id);
 });
 
 $("paletteInput").addEventListener("input", () => { paletteActive = 0; renderPalette(); });
@@ -1607,6 +1656,70 @@ $("newCanvas").onclick = () => { if (canvasApi) canvasApi.create(); };
 document.querySelectorAll("#ribbon [data-pane]").forEach((b) => { b.onclick = () => showPane(b.dataset.pane); });
 
 /* settings */
+function renderAccentPresets() {
+  const host = $("accentPresets");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const color of ACCENT_PRESETS) {
+    const swatch = document.createElement("button");
+    swatch.type = "button";
+    swatch.style.background = color;
+    swatch.title = color;
+    swatch.onclick = () => {
+      $("setAccent").value = color;
+      store.set("accent", color);
+      applyPrefs();
+    };
+    host.appendChild(swatch);
+  }
+}
+
+function renderHotkeysSettings() {
+  const host = $("hotkeyList");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const action of HOTKEY_ACTIONS) {
+    const row = el("div", "hotkey-row");
+    row.appendChild(el("span", "hotkey-label", action.label));
+    const input = document.createElement("input");
+    input.className = "hk-input";
+    input.readOnly = true;
+    input.value = hotkeys[action.id] || "";
+    input.placeholder = "не задано";
+    input.addEventListener("keydown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") { input.blur(); return; }
+      if (event.key === "Backspace" || event.key === "Delete") {
+        hotkeys[action.id] = "";
+        store.set("hotkeys", JSON.stringify(hotkeys));
+        input.value = "";
+        input.blur();
+        return;
+      }
+      const combo = comboFromEvent(event);
+      if (!combo) return;
+      for (const key of Object.keys(hotkeys)) if (key !== action.id && hotkeys[key] === combo) hotkeys[key] = "";
+      hotkeys[action.id] = combo;
+      store.set("hotkeys", JSON.stringify(hotkeys));
+      input.value = combo;
+      input.blur();
+      renderHotkeysSettings();
+      toast(action.label + " → " + combo);
+    });
+    row.appendChild(input);
+    const reset = el("button", "ghost-border hk-reset", "↺");
+    reset.title = "Скинути до " + (action.def || "порожньо");
+    reset.onclick = () => {
+      hotkeys[action.id] = action.def;
+      store.set("hotkeys", JSON.stringify(hotkeys));
+      renderHotkeysSettings();
+    };
+    row.appendChild(reset);
+    host.appendChild(row);
+  }
+}
+
 function openSettings() {
   $("setRepo").value = state.repo;
   $("setBranch").value = state.branch;
@@ -1615,8 +1728,26 @@ function openSettings() {
   $("setFont").value = store.get("font", "15");
   $("setWidth").value = store.get("width", "46rem");
   $("setGraphForce").value = store.get("graphForce", "120");
+  const computed = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  $("setAccent").value = /^#[0-9a-f]{6}$/i.test(computed) ? computed : "#a882ff";
+  renderAccentPresets();
+  renderHotkeysSettings();
   openModal("settings");
 }
+$("setAccent").addEventListener("input", () => {
+  store.set("accent", $("setAccent").value);
+  applyPrefs();
+});
+$("accentReset").onclick = () => {
+  store.del("accent");
+  applyPrefs();
+  const computed = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  $("setAccent").value = /^#[0-9a-f]{6}$/i.test(computed) ? computed : "#a882ff";
+};
+$("setFont").addEventListener("change", () => {
+  store.set("font", $("setFont").value);
+  applyPrefs();
+});
 $("saveSettings").onclick = () => {
   store.set("repo", $("setRepo").value.trim());
   store.set("branch", $("setBranch").value.trim());
@@ -1624,7 +1755,9 @@ $("saveSettings").onclick = () => {
   store.set("theme", $("setTheme").value);
   store.set("font", $("setFont").value);
   store.set("width", $("setWidth").value);
+  store.set("accent", $("setAccent").value);
   store.set("graphForce", $("setGraphForce").value);
+  store.set("hotkeys", JSON.stringify(hotkeys));
   theme(); applyPrefs();
   closeModals();
   location.reload();
