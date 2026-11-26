@@ -261,7 +261,36 @@ body.view-canvas #canvasHost { display: flex; }
   #preview .wikilink { border-bottom: none !important; }
 }
 
-@media (max-width: 980px) {
+/* split panes */
+#pane2 { display: none; }
+#splitter { display: none; flex: 0 0 6px; background: var(--line); cursor: col-resize; }
+#splitter:hover { background: var(--accent-2); }
+body.split #pane2 { display: flex; }
+body.split #splitter { display: block; }
+body.split #previewHost { display: none; }
+
+/* bookmarks */
+.bookmarks { border-bottom: 1px solid var(--line); padding: 4px 6px; }
+.bookmarks:empty { display: none; }
+.bm-head { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 2px 6px 4px; }
+.bm-item { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 5px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
+.bm-item:hover { background: var(--bg-3); color: var(--text); }
+.bm-item .star { color: var(--yellow); }
+.star-btn { padding: 0 3px; font-size: 12px; color: var(--muted); opacity: 0; }
+.file-row:hover .star-btn { opacity: 1; }
+.star-btn.on { opacity: 1; color: var(--yellow); }
+
+/* context menu */
+.ctx-menu { position: fixed; display: none; z-index: 85; min-width: 220px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.45); padding: 4px; }
+.ctx-menu.show { display: block; }
+.ctx-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
+.ctx-item:hover { background: var(--bg-3); color: var(--text); }
+.ctx-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.ctx-item.danger:hover { background: #5a2323; color: #ffd6d6; }
+
+@media (max-width: 760px) {
+  body.split #pane2 { display: none; }
+  body.split #splitter { display: none; }
   #left { position: absolute; inset: 40px 0 28px 46px; width: auto; flex: 0 0 auto; z-index: 30; display: none; }
   #left.open { display: flex; }
   #right { position: absolute; inset: 40px 0 28px 46px; width: auto; flex: 0 0 auto; z-index: 31; display: none; }

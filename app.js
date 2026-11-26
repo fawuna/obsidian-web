@@ -7,7 +7,7 @@ import { exportPdfFile } from "./pdf.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v9";
+const BUILD = "v10";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -34,6 +34,9 @@ const state = {
   ribbonButtons: [],
   handlers: new Map(),
   pending: new Set(),
+  bookmarks: JSON.parse(store.get("bookmarks", "[]")),
+  folders: new Set(),
+  second: null,
 };
 
 /* ---------------- events ---------------- */
@@ -142,14 +145,20 @@ function renderRibbonExtra() {
 /* ---------------- tree ---------------- */
 async function loadTree() {
   const data = await api("/repos/" + state.repo + "/git/trees/" + state.branch + "?recursive=1");
-  const remote = (data.tree || [])
-    .filter((n) => n.type === "blob" && (n.path.endsWith(".md") || n.path.endsWith(".canvas")))
-    .map((n) => n.path);
+  const all = (data.tree || []).filter((n) => n.type === "blob").map((n) => n.path);
+  state.folders = new Set();
+  for (const p of all) {
+    if (p.endsWith("/.gitkeep")) state.folders.add(p.slice(0, -"/.gitkeep".length));
+  }
+  const remote = all
+    .filter((p) => p.endsWith(".md") || p.endsWith(".canvas"))
+    .map((p) => p);
   const remoteSet = new Set(remote);
   for (const p of [...state.pending]) { if (remoteSet.has(p)) state.pending.delete(p); }
   for (const p of state.pending) if (!remoteSet.has(p)) remote.push(p);
   state.files = remote.sort((a, b) => a.localeCompare(b, "uk", { numeric: true }));
   renderTree();
+  renderBookmarks();
   renderTags();
   emit("tree", state.files);
 }
@@ -165,6 +174,14 @@ function renderTree() {
     let node = tree;
     for (let i = 0; i < parts.length - 1; i++) { node[parts[i]] = node[parts[i]] || {}; node = node[parts[i]]; }
     node[parts[parts.length - 1]] = null;
+  }
+  for (const folder of state.folders) {
+    const parts = folder.split("/");
+    let node = tree;
+    for (const part of parts) {
+      if (!node[part] || node[part] === null) node[part] = {};
+      node = node[part];
+    }
   }
   const collapsed = new Set(JSON.parse(store.get("collapsed", "[]")));
   const walk = (node, prefix, depth) => {
@@ -200,6 +217,11 @@ function renderTree() {
       row.draggable = true;
       row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : "📄"));
       row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas)$/, "")));
+      const starred = state.bookmarks.includes(full);
+      const star = el("button", "star-btn" + (starred ? " on" : ""), "★");
+      star.title = starred ? "Зняти із закладок" : "У закладки";
+      star.onclick = (e) => { e.stopPropagation(); toggleBookmark(full); };
+      row.appendChild(star);
       const actions = el("span", "actions");
       const rename = el("button", null, "✎");
       rename.title = "Перейменувати";
@@ -210,6 +232,7 @@ function renderTree() {
       actions.append(rename, del);
       row.appendChild(actions);
       row.onclick = () => openNote(full);
+      row.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); fileContext(e, full); };
       row.ondragstart = (e) => { e.dataTransfer.setData("text/vault-path", full); e.dataTransfer.effectAllowed = "move"; row.classList.add("dragging"); };
       row.ondragend = () => row.classList.remove("dragging");
       host.appendChild(row);
@@ -246,6 +269,131 @@ async function moveFile(path, folder) {
     setState("помилка: " + error.message, "err");
     toast("Не перемістилось: " + error.message);
   }
+}
+
+/* ---------------- bookmarks, context menu, split pane ---------------- */
+function renderBookmarks() {
+  const host = $("bookmarks");
+  if (!host) return;
+  host.innerHTML = "";
+  if (!state.bookmarks.length) return;
+  host.appendChild(el("div", "bm-head", "Закладки"));
+  for (const path of state.bookmarks) {
+    const row = el("div", "bm-item");
+    row.appendChild(el("span", "star", "★"));
+    row.appendChild(el("span", null, path.replace(/\.(md|canvas)$/, "")));
+    row.onclick = () => openNote(path);
+    row.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); fileContext(e, path); };
+    host.appendChild(row);
+  }
+}
+
+function toggleBookmark(path) {
+  const at = state.bookmarks.indexOf(path);
+  if (at >= 0) state.bookmarks.splice(at, 1);
+  else state.bookmarks.push(path);
+  store.set("bookmarks", JSON.stringify(state.bookmarks));
+  renderBookmarks();
+  renderTree();
+  toast(at >= 0 ? "знято із закладок" : "у закладках: " + path.split("/").pop());
+}
+
+function showCtx(x, y, items) {
+  const menu = $("ctxMenu");
+  menu.innerHTML = "";
+  for (const item of items) {
+    if (item.sep) { menu.appendChild(el("div", "ctx-sep")); continue; }
+    const row = el("div", "ctx-item" + (item.danger ? " danger" : ""), item.label);
+    row.onclick = () => { hideCtx(); item.run(); };
+    menu.appendChild(row);
+  }
+  menu.classList.add("show");
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = Math.max(6, Math.min(x, window.innerWidth - rect.width - 8)) + "px";
+  menu.style.top = Math.max(6, Math.min(y, window.innerHeight - rect.height - 8)) + "px";
+}
+function hideCtx() { const m = $("ctxMenu"); if (m) m.classList.remove("show"); }
+
+function fileContext(event, path) {
+  showCtx(event.clientX, event.clientY, [
+    { label: "Відкрити", run: () => openNote(path) },
+    { label: "Відкрити в другій панелі", run: () => openInSecond(path) },
+    { sep: true },
+    { label: "Перейменувати", run: () => renameNote(path) },
+    { label: "Дублювати", run: () => duplicateNote(path) },
+    { label: "Копіювати шлях", run: () => navigator.clipboard.writeText(path).then(() => toast("шлях скопійовано"), () => toast("буфер недоступний")) },
+    { sep: true },
+    { label: state.bookmarks.includes(path) ? "Зняти із закладок" : "У закладки", run: () => toggleBookmark(path) },
+    { sep: true },
+    { label: "Видалити", danger: true, run: () => deleteNote(path) },
+  ]);
+}
+
+async function duplicateNote(path) {
+  try {
+    const { text } = await ghGet(path);
+    const dot = path.lastIndexOf(".");
+    const target = dot > 0 ? path.slice(0, dot) + " copy" + path.slice(dot) : path + " copy.md";
+    await ghPut(target, text, null, "duplicate " + path);
+    state.pending.add(target);
+    await loadTree();
+    toast("створено " + target);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+async function newFolder() {
+  const raw = prompt("Назва теки (можна з підпапкою):", "Нова тека");
+  if (!raw) return;
+  const name = raw.trim().replace(/^\/+|\/+$/g, "");
+  if (!name) return;
+  const marker = name + "/.gitkeep";
+  try {
+    await ghPut(marker, "", null, "add folder " + name);
+    await loadTree();
+    toast("теку створено: " + name);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+function openInSecond(path) {
+  state.second = path;
+  document.body.classList.add("split");
+  const file = state.open.find((f) => f.path === path);
+  const done = () => { paint(); updateSplitButtons(); };
+  if (file) { done(); return; }
+  openNote(path).then(done, done);
+}
+
+function closeSecond() {
+  state.second = null;
+  document.body.classList.remove("split");
+  $("pane2").style.flex = "";
+  paint();
+  updateSplitButtons();
+}
+
+function updateSplitButtons() {
+  const btn = $("splitBtn");
+  if (btn) {
+    btn.textContent = state.second ? "▣" : "▢";
+    btn.title = state.second ? "Закрити другу панель" : "Відкрити другу панель";
+  }
+}
+
+function syncHighlight2() {
+  const pre = $("hlCode2");
+  if (!pre) return;
+  const ed = $("editor2");
+  pre.innerHTML = highlightMarkdown(ed.value) + "\n";
+  pre.style.transform = "translateY(" + -ed.scrollTop + "px)";
+}
+
+function paintSecond() {
+  const ed = $("editor2");
+  if (!ed) return;
+  const file = state.second ? state.open.find((f) => f.path === state.second) : null;
+  ed.value = file ? file.text : "";
+  ed.readOnly = !file;
+  syncHighlight2();
 }
 
 /* ---------------- notes ---------------- */
@@ -337,14 +485,15 @@ function paint() {
   renderContext();
   renderOutline();
   syncHighlight();
+  paintSecond();
   const words = file ? file.text.trim().split(/\s+/).filter(Boolean).length : 0;
   $("stMeta").textContent = file ? words + " слів · " + file.text.length + " симв." : "";
   setState(file ? (file.dirty ? "не збережено" : "синхронізовано") : "", file && file.dirty ? "warn" : "ok");
   emit("paint", file);
 }
 
-async function saveNote(silent = false) {
-  const file = currentFile();
+async function saveNote(silent = false, target = null) {
+  const file = target || currentFile();
   if (!file) return;
   try {
     if (!silent) setState("зберігаю…");
@@ -1153,6 +1302,58 @@ function wrapSelection(marker) {
 
 $("editor").addEventListener("scroll", () => syncHighlight());
 
+$("editor2").addEventListener("input", () => {
+  const file = state.open.find((f) => f.path === state.second);
+  if (!file) return;
+  file.text = $("editor2").value;
+  file.dirty = true;
+  state.index.set(file.path, file.text);
+  setState("не збережено", "warn");
+  syncHighlight2();
+  clearTimeout($("editor2")._t);
+  $("editor2")._t = setTimeout(() => saveNote(true, file), 1500);
+});
+$("editor2").addEventListener("scroll", () => syncHighlight2());
+$("editor2").addEventListener("keydown", (e) => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const ed = $("editor2");
+    const s = ed.selectionStart;
+    ed.value = ed.value.slice(0, s) + "  " + ed.value.slice(ed.selectionEnd);
+    ed.selectionStart = ed.selectionEnd = s + 2;
+    ed.dispatchEvent(new Event("input"));
+  }
+});
+
+$("splitter").addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  const main = document.querySelector("main");
+  const move = (ev) => {
+    const rect = main.getBoundingClientRect();
+    const ratio = Math.min(0.85, Math.max(0.15, (ev.clientX - rect.left) / rect.width));
+    const right = Math.round(rect.width * (1 - ratio)) - 3;
+    $("pane2").style.flex = "0 0 " + Math.max(120, right) + "px";
+  };
+  const up = () => {
+    window.removeEventListener("mousemove", move);
+    window.removeEventListener("mouseup", up);
+  };
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", up);
+});
+
+$("tree").addEventListener("contextmenu", (e) => {
+  if (e.target.closest(".file-row")) return;
+  e.preventDefault();
+  showCtx(e.clientX, e.clientY, [
+    { label: "Нова нотатка", run: newNote },
+    { label: "Нова тека", run: newFolder },
+  ]);
+});
+document.addEventListener("click", (e) => { if (!e.target.closest("#ctxMenu")) hideCtx(); });
+document.addEventListener("contextmenu", (e) => { if (!e.target.closest(".file-row, .bm-item, #tree, #ctxMenu")) hideCtx(); });
+window.addEventListener("blur", hideCtx);
+
 $("editor").addEventListener("paste", async (e) => {
   const items = [...(e.clipboardData?.items || [])];
   const images = items.filter((i) => i.type.startsWith("image/")).map((i) => i.getAsFile()).filter(Boolean);
@@ -1214,12 +1415,16 @@ $("openSwitcher").onclick = showSwitcher;
 $("openSettings").onclick = openSettings;
 $("closeSettings").onclick = closeModals;
 $("newNote").onclick = newNote;
+$("splitBtn").onclick = () => {
+  if (state.second) closeSecond();
+  else if (state.active) openInSecond(state.active);
+  else toast("відкрий нотатку");
+};
 $("reloadTree").onclick = () => loadTree().catch((e) => toast(e.message));
 $("filter").oninput = renderTree;
 $("searchInput").oninput = () => { clearTimeout($("searchInput")._t); $("searchInput")._t = setTimeout(runSearch, 300); };
 $("rebuildIndex").onclick = async () => { state.index.clear(); await ensureIndex(); renderContext(); renderTags(); toast("індекс оновлено"); };
-$("copyOutline").onclick = () => {
-  const items = [...document.querySelectorAll("#outline .outline-item")].map((b) => b.textContent);
+$("copyOutline").onclick = () => {  const items = [...document.querySelectorAll("#outline .outline-item")].map((b) => b.textContent);
   if (!items.length) { toast("немає заголовків"); return; }
   navigator.clipboard.writeText(items.map((t) => "- " + t).join("\n")).then(
     () => toast("заголовки скопійовано"),
@@ -1315,6 +1520,9 @@ registerCommand({ id: "pdf", label: "Експорт PDF (файл)", hint: "PDF"
 registerCommand({ id: "print", label: "Друк / зберегти як PDF (вікно друку)", hint: "Ctrl+P", run: printNote });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
+registerCommand({ id: "bookmark", label: "Додати/зняти закладку", run: () => { if (state.active) toggleBookmark(state.active); } });
+registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.second) closeSecond(); else if (state.active) openInSecond(state.active); else toast("відкрий нотатку"); } });
+registerCommand({ id: "new-folder", label: "Нова тека", run: newFolder });
 registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
 registerCommand({ id: "bold", label: "Жирний", hint: "Ctrl+B", run: () => { wrapSelection("**"); } });
 registerCommand({ id: "italic", label: "Курсив", hint: "Ctrl+I", run: () => { wrapSelection("*"); } });
@@ -1333,7 +1541,8 @@ registerCommand({ id: "logout", label: "Забути токен і вийти", 
 theme();
 applyPrefs();
 setMode(store.get("mode", window.innerWidth <= 980 ? "edit" : "split"));
-$("repo").value = state.repo;
+renderBookmarks();
+updateSplitButtons();$("repo").value = state.repo;
 $("branch").value = state.branch;
 $("token").value = state.token;
 $("connect").onclick = () => connect($("repo").value, $("branch").value, $("token").value, true);
