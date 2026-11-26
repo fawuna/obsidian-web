@@ -750,6 +750,10 @@ body.split #previewHost { display: none; }
 .cm-embed-note .cm-embed-title { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .cm-embed-note .cm-embed-body { font-size: 12.5px; color: var(--text-dim); white-space: pre-wrap; max-height: 90px; overflow: hidden; }
 .cm-embed-note.missing .cm-embed-body { color: var(--muted); font-style: italic; }
+.slash-menu { position: fixed; z-index: 1500; min-width: 230px; max-height: 320px; overflow: auto; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.45); padding: 4px; font-size: 13px; }
+.slash-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 10px; border-radius: 6px; color: var(--text-dim); cursor: pointer; }
+.slash-item.active, .slash-item:hover { background: var(--bg-4); color: var(--text); }
+.slash-hint { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
 .vault-btn { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; max-width: 170px; overflow: hidden; text-overflow: ellipsis; flex: 0 0 auto; }
 .vault-btn:hover { background: var(--bg-3); color: var(--text); }
 @media (max-width: 760px) { #vaultBtn { display: none; } }

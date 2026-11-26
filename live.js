@@ -815,11 +815,138 @@ function autoPair(editorView, from, to, text) {
   return true;
 }
 
+const SLASH_ITEMS = [
+  { id: "h1", label: "Заголовок 1", hint: "#", insert: "# " },
+  { id: "h2", label: "Заголовок 2", hint: "##", insert: "## " },
+  { id: "h3", label: "Заголовок 3", hint: "###", insert: "### " },
+  { id: "bullet", label: "Маркований список", hint: "-", insert: "- " },
+  { id: "number", label: "Нумерований список", hint: "1.", insert: "1. " },
+  { id: "task", label: "Завдання", hint: "[ ]", insert: "- [ ] " },
+  { id: "quote", label: "Цитата", hint: ">", insert: "> " },
+  { id: "callout", label: "Callout", hint: "> [!note]", insert: "> [!note] " },
+  { id: "code", label: "Блок коду", hint: "```", insert: "```\n\n```", cursor: 3 },
+  { id: "math", label: "Формула", hint: "$$", insert: "$$\n\n$$", cursor: 2 },
+  { id: "table", label: "Таблиця", hint: "|", insert: "| Column | Column |\n| --- | --- |\n|  |  |" },
+  { id: "divider", label: "Розділювач", hint: "---", insert: "---\n" },
+  { id: "template", label: "Вставити шаблон", hint: "🧾", template: true },
+];
+
+const slashMenu = { open: false, view: null, index: 0, start: 0, query: "", host: null, items: [] };
+
+function slashHost() {
+  if (!slashMenu.host) {
+    slashMenu.host = document.createElement("div");
+    slashMenu.host.className = "slash-menu";
+    slashMenu.host.style.display = "none";
+    document.body.appendChild(slashMenu.host);
+  }
+  return slashMenu.host;
+}
+
+function slashCandidates(query) {
+  const q = String(query || "").toLowerCase();
+  return SLASH_ITEMS.filter((item) => !q || item.label.toLowerCase().includes(q) || item.id.includes(q) || String(item.hint).toLowerCase().includes(q));
+}
+
+function hideSlashMenu() {
+  slashMenu.open = false;
+  slashMenu.view = null;
+  slashMenu.items = [];
+  if (slashMenu.host) slashMenu.host.style.display = "none";
+}
+
+function renderSlashMenu(view, start, query) {
+  const items = slashCandidates(query);
+  if (!items.length) { hideSlashMenu(); return; }
+  slashMenu.open = true;
+  slashMenu.view = view;
+  slashMenu.start = start;
+  slashMenu.query = query;
+  slashMenu.items = items;
+  slashMenu.index = Math.max(0, Math.min(slashMenu.index, items.length - 1));
+  const host = slashHost();
+  host.innerHTML = "";
+  items.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "slash-item" + (index === slashMenu.index ? " active" : "");
+    const label = document.createElement("span");
+    label.textContent = item.label;
+    const hint = document.createElement("span");
+    hint.className = "slash-hint";
+    hint.textContent = item.hint;
+    row.append(label, hint);
+    row.addEventListener("mousedown", (event) => event.preventDefault());
+    row.addEventListener("click", (event) => { event.preventDefault(); runSlash(item); });
+    host.appendChild(row);
+  });
+  const coords = view.coordsAtPos(view.state.selection.main.head);
+  if (coords) {
+    host.style.display = "block";
+    const width = host.offsetWidth || 240;
+    const height = host.offsetHeight || 280;
+    host.style.left = Math.max(8, Math.min(window.innerWidth - width - 8, coords.left)) + "px";
+    host.style.top = Math.max(8, Math.min(window.innerHeight - height - 8, coords.bottom + 6)) + "px";
+  }
+}
+
+function updateSlashMenu(view) {
+  const head = view.state.selection.main.head;
+  const line = view.state.doc.lineAt(head);
+  const before = line.text.slice(0, head - line.from);
+  const match = before.match(/^(\s*)\/([A-Za-z0-9_\u0400-\u04FF-]*)$/);
+  if (!match) { hideSlashMenu(); return; }
+  renderSlashMenu(view, line.from + match[1].length, match[2]);
+}
+
+function runSlash(item) {
+  const view = slashMenu.view;
+  if (!view) return;
+  const head = view.state.selection.main.head;
+  const start = slashMenu.start;
+  hideSlashMenu();
+  if (item.template) {
+    if (window.Vault && typeof window.Vault.showSwitcher === "function") window.Vault.showSwitcher("template");
+    return;
+  }
+  const insert = item.insert || "";
+  const caret = start + (item.cursor == null ? insert.length : item.cursor);
+  view.dispatch({ changes: { from: start, to: head, insert }, selection: { anchor: caret }, scrollIntoView: true });
+  view.focus();
+}
+
+function slashMove(view, delta) {
+  if (!slashMenu.open || slashMenu.view !== view) return false;
+  slashMenu.index = (slashMenu.index + delta + slashMenu.items.length) % slashMenu.items.length;
+  renderSlashMenu(view, slashMenu.start, slashMenu.query);
+  return true;
+}
+
+function slashAccept(view) {
+  if (!slashMenu.open || slashMenu.view !== view) return false;
+  const item = slashMenu.items[slashMenu.index];
+  if (!item) { hideSlashMenu(); return false; }
+  runSlash(item);
+  return true;
+}
+
+function slashCancel(view) {
+  if (!slashMenu.open || slashMenu.view !== view) return false;
+  hideSlashMenu();
+  return true;
+}
+
 function makeExtensions(options, instance) {
   return [
     history(),
     drawSelection(),
     EditorView.lineWrapping,
+    keymap.of([
+      { key: "ArrowDown", run: (v) => slashMove(v, 1) },
+      { key: "ArrowUp", run: (v) => slashMove(v, -1) },
+      { key: "Enter", run: slashAccept },
+      { key: "Tab", run: slashAccept },
+      { key: "Escape", run: slashCancel },
+    ]),
     keymap.of([
       { key: "Enter", run: continueList },
       { key: "Tab", run: (v) => indentList(v, false) },
@@ -872,6 +999,7 @@ function makeExtensions(options, instance) {
         const line = update.state.doc.lineAt(head);
         options.onCursor(line.number, head - line.from + 1);
       }
+      if (!instance.suppress && update.view.hasFocus) updateSlashMenu(update.view);
     }),
   ];
 }
@@ -890,6 +1018,13 @@ export function initLive(options) {
   instance.view = view;
   instance.lastText = view.state.doc.toString();
   host.classList.add("cm-host");
+  document.addEventListener("mousedown", (event) => {
+    if (!slashMenu.open) return;
+    if (slashMenu.host && slashMenu.host.contains(event.target)) return;
+    if (view.dom.contains(event.target)) return;
+    hideSlashMenu();
+  });
+  view.scrollDOM.addEventListener("scroll", () => { if (slashMenu.view === view) hideSlashMenu(); }, { passive: true });
   view.dom.addEventListener("focusin", () => { if (options.onFocus) options.onFocus(); });
   view.dom.addEventListener("mousedown", () => { if (options.onFocus) options.onFocus(); });
 
