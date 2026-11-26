@@ -9,6 +9,8 @@ let sha = null;
 let dirty = false;
 let view = { x: 60, y: 60, k: 1 };
 let selected = null;
+let selectedEdge = null;
+let resizing = null;
 let connectMode = false;
 let connectFrom = null;
 let dragging = null;
@@ -16,6 +18,25 @@ let panning = null;
 const excerpts = new Map();
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+const CANVAS_COLORS = {
+  "1": "#e5686c",
+  "2": "#e0b458",
+  "3": "#52c98a",
+  "4": "#5d9cff",
+  "5": "#a882ff",
+  "6": "#9a9a9a",
+};
+
+function cycleColor(node) {
+  const keys = Object.keys(CANVAS_COLORS);
+  const at = node.color ? keys.indexOf(node.color) : -1;
+  const next = at + 1;
+  if (next >= keys.length) delete node.color;
+  else node.color = keys[next];
+  dirty = true;
+  render();
+}
 
 function applyTransform() {
   world.style.transform = "translate(" + view.x + "px," + view.y + "px) scale(" + view.k + ")";
@@ -50,8 +71,29 @@ function render() {
     if (!a || !b) continue;
     const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
     p.setAttribute("d", edgePath(a, b));
-    p.setAttribute("class", "cv-edge");
+    p.setAttribute("class", "cv-edge" + (selectedEdge === e.id ? " sel" : ""));
+    p.dataset.id = e.id;
+    p.addEventListener("click", (ev) => { ev.stopPropagation(); selectedEdge = e.id; selected = null; render(); });
+    p.addEventListener("dblclick", (ev) => {
+      ev.stopPropagation();
+      const label = prompt("Підпис ребра (порожньо — без підпису):", e.label || "");
+      if (label === null) return;
+      if (label.trim()) e.label = label.trim(); else delete e.label;
+      dirty = true;
+      render();
+    });
     svg.appendChild(p);
+
+    if (e.label) {
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      const ax = a.x + a.width / 2, ay = a.y + a.height / 2;
+      const bx = b.x + b.width / 2, by = b.y + b.height / 2;
+      t.setAttribute("x", String((ax + bx) / 2));
+      t.setAttribute("y", String((ay + by) / 2));
+      t.setAttribute("class", "cv-edge-label");
+      t.textContent = e.label;
+      svg.appendChild(t);
+    }
   }
 
   for (const n of model.nodes) {
@@ -62,10 +104,22 @@ function render() {
     node.style.width = (n.width || 320) + "px";
     node.style.height = (n.height || 200) + "px";
     node.dataset.id = n.id;
+    if (n.color && CANVAS_COLORS[n.color]) {
+      node.style.borderColor = CANVAS_COLORS[n.color];
+      node.style.boxShadow = "0 0 0 1px " + CANVAS_COLORS[n.color] + ", 0 6px 18px rgba(0,0,0,.35)";
+      node.dataset.color = n.color;
+    }
 
     const head = document.createElement("div");
     head.className = "cv-head";
     head.textContent = (n.type === "file" ? "📄 " : "📝 ") + (n.file || "text");
+    const dot = document.createElement("span");
+    dot.className = "cv-color";
+    dot.title = "Колір картки";
+    dot.style.background = n.color ? CANVAS_COLORS[n.color] : "transparent";
+    dot.style.border = "1px solid " + (n.color ? "transparent" : "var(--line)");
+    dot.onclick = (e) => { e.stopPropagation(); cycleColor(n); };
+    head.appendChild(dot);
     head.onmousedown = (e) => {
       e.stopPropagation();
       selected = n.id;
@@ -93,6 +147,16 @@ function render() {
       body.ondblclick = () => { Vault.openNote(n.file); };
     }
     node.appendChild(body);
+
+    const handle = document.createElement("div");
+    handle.className = "cv-resize";
+    handle.title = "Потягни, щоб змінити розмір";
+    handle.onmousedown = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      resizing = { node: n, startX: e.clientX, startY: e.clientY, w: n.width || 320, h: n.height || 200 };
+    };
+    node.appendChild(handle);
 
     node.onclick = (e) => {
       e.stopPropagation();
@@ -204,7 +268,25 @@ export function initCanvas(vault) {
 
   window.addEventListener("mousemove", (e) => {
     if (Vault.state.view !== "canvas") return;
-    if (dragging) {
+    if (resizing) {
+      const dx = (e.clientX - resizing.startX) / view.k;
+      const dy = (e.clientY - resizing.startY) / view.k;
+      resizing.node.width = Math.max(160, Math.round(resizing.w + dx));
+      resizing.node.height = Math.max(90, Math.round(resizing.h + dy));
+      dirty = true;
+      const nodeEl = world.querySelector('[data-id="' + resizing.node.id + '"]');
+      if (nodeEl) {
+        nodeEl.style.width = resizing.node.width + "px";
+        nodeEl.style.height = resizing.node.height + "px";
+      }
+      const byId = new Map(model.nodes.map((n) => [n.id, n]));
+      svg.querySelectorAll("path").forEach((p, i) => {
+        const ed = model.edges[i];
+        if (!ed) return;
+        const a = byId.get(ed.fromNode), b = byId.get(ed.toNode);
+        if (a && b) p.setAttribute("d", edgePath(a, b));
+      });
+    } else if (dragging) {
       const dx = (e.clientX - dragging.startX) / view.k;
       const dy = (e.clientY - dragging.startY) / view.k;
       dragging.node.x = Math.round(dragging.origX + dx);
@@ -226,6 +308,7 @@ export function initCanvas(vault) {
   });
 
   window.addEventListener("mouseup", () => {
+    if (resizing) { resizing = null; render(); }
     if (dragging) { dragging = null; }
     if (panning) { panning = null; board.classList.remove("dragging"); }
   });
@@ -274,6 +357,14 @@ export function initCanvas(vault) {
 
   document.addEventListener("keydown", (e) => {
     if (Vault.state.view !== "canvas") return;
+    if (e.key === "Delete" && selectedEdge) {
+      model.edges = model.edges.filter((ed) => ed.id !== selectedEdge);
+      selectedEdge = null;
+      dirty = true;
+      render();
+      Vault.toast("звʼязок видалено");
+      return;
+    }
     if (e.key === "Delete" && selected) {
       model.nodes = model.nodes.filter((n) => n.id !== selected);
       model.edges = model.edges.filter((ed) => ed.fromNode !== selected && ed.toNode !== selected);

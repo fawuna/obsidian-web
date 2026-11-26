@@ -31,21 +31,47 @@ function buildGraph() {
     }
   }
 
+  const depthInput = document.getElementById("graphDepth");
+  const depthHops = Math.max(1, Math.min(3, Number(depthInput && depthInput.value) || 1));
+
   let keep = new Set(onlyMd);
   if (local && active) {
     keep = new Set([active]);
-    let frontier = [active];
-    for (let depth = 0; depth < 2; depth++) {
+    for (let depth = 0; depth < depthHops; depth++) {
       const next = [];
       for (const [a, b] of links) {
         if (keep.has(a) && !keep.has(b)) { keep.add(b); next.push(b); }
         if (keep.has(b) && !keep.has(a)) { keep.add(a); next.push(a); }
       }
-      frontier = next;
+      if (!next.length) break;
     }
   }
 
-  const list = onlyMd.filter((p) => keep.has(p));
+  const list0 = onlyMd.filter((p) => keep.has(p));
+  let list = list0;
+
+  const query = (document.getElementById("graphQuery")?.value || "").trim().toLowerCase();
+  const tag = (document.getElementById("graphTag")?.value || "").trim().replace(/^#/, "").toLowerCase();
+
+  if (query || tag) {
+    const match = new Set();
+    for (const path of list) {
+      const name = path.split("/").pop().replace(/\.md$/, "").toLowerCase();
+      let ok = true;
+      if (query && !(name.includes(query) || path.toLowerCase().includes(query))) ok = false;
+      if (ok && tag) {
+        const text = (index.get(path) || "").toLowerCase();
+        if (!text.includes("#" + tag) && !text.includes(tag)) ok = false;
+      }
+      if (ok) match.add(path);
+    }
+    const withNeighbors = new Set(match);
+    for (const [a, b] of links) {
+      if (match.has(a)) withNeighbors.add(b);
+      if (match.has(b)) withNeighbors.add(a);
+    }
+    list = list.filter((p) => withNeighbors.has(p));
+  }
   const cx = 0, cy = 0, radius = 90 + list.length * 6;
   nodes = list.map((path, i) => {
     const angle = (i / list.length) * Math.PI * 2;
@@ -224,6 +250,12 @@ export function initGraph(vault) {
   Vault.on("index", reb);
   Vault.on("view", (v) => { if (v === "graph") { resize(); needsRebuild = true; if (!raf) loop(); } });
   document.getElementById("graphLocal").onchange = () => { needsRebuild = true; };
+  const gq = document.getElementById("graphQuery");
+  const gt = document.getElementById("graphTag");
+  const gd = document.getElementById("graphDepth");
+  if (gq) gq.addEventListener("input", () => { needsRebuild = true; });
+  if (gt) gt.addEventListener("input", () => { needsRebuild = true; });
+  if (gd) gd.addEventListener("input", () => { needsRebuild = true; });
   document.getElementById("graphRefresh").onclick = () => { needsRebuild = true; };
   document.getElementById("graphFit").onclick = () => fit();
 
@@ -260,6 +292,18 @@ export function initGraph(vault) {
     } else {
       hovered = nodeAt(w);
       canvas.style.cursor = hovered ? "pointer" : "grab";
+      const tip = document.getElementById("graphTip");
+      if (tip) {
+        if (hovered) {
+          const degree = edges.filter((edge) => edge.a === hovered.id || edge.b === hovered.id).length;
+          tip.textContent = hovered.label + " · " + degree + " звʼязків";
+          tip.style.display = "block";
+          tip.style.left = e.clientX + 14 + "px";
+          tip.style.top = e.clientY + 14 + "px";
+        } else {
+          tip.style.display = "none";
+        }
+      }
     }
   });
 
