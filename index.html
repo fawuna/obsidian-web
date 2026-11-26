@@ -3,168 +3,192 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Vault — web editor</title>
+<title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
 <style>
   :root {
+    --accent: #a882ff;
+    --accent-2: #7a5cd6;
     --bg: #1e1e1e;
     --bg-2: #262626;
-    --bg-3: #2a2a2a;
-    --line: #363636;
+    --bg-3: #2f2f2f;
+    --bg-4: #383838;
+    --line: #3a3a3a;
     --text: #dadada;
-    --muted: #9a9a9a;
-    --accent: #a882ff;
-    --accent-dim: #7a5cd6;
-    --green: #4caf7d;
+    --text-dim: #b6b6b6;
+    --muted: #8f8f8f;
+    --green: #52c98a;
     --red: #e5686c;
-    --yellow: #d8b45a;
+    --yellow: #e0b458;
+    --radius: 8px;
+    --font-ui: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --font-text: var(--font-ui);
+    --editor-width: 46rem;
+  }
+  html[data-theme="light"] {
+    --bg: #ffffff; --bg-2: #f4f4f4; --bg-3: #e9e9e9; --bg-4: #dedede;
+    --line: #dcdcdc; --text: #1f1f1f; --text-dim: #3d3d3d; --muted: #6f6f6f;
+    --accent: #7856d8; --accent-2: #6a4bc4;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
     background: var(--bg); color: var(--text);
-    font: 15px/1.6 "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-    display: flex; flex-direction: column; overflow: hidden;
+    font: 14px/1.55 var(--font-ui);
+    overflow: hidden;
   }
   button, input, textarea, select { font: inherit; color: inherit; }
-  button {
-    background: var(--bg-3); border: 1px solid var(--line);
-    border-radius: 6px; padding: 5px 10px; cursor: pointer;
-  }
-  button:hover { background: #333; }
-  button.primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
-  button.primary:hover { background: var(--accent); border-color: var(--accent); }
-  button.icon { padding: 4px 7px; background: transparent; border-color: transparent; }
-  button.icon:hover { background: var(--bg-3); }
+  button { background: transparent; border: 0; cursor: pointer; border-radius: 6px; padding: 4px 8px; }
+  button:hover { background: var(--bg-3); }
+  button.primary { background: var(--accent-2); color: #fff; padding: 6px 12px; }
+  button.primary:hover { background: var(--accent); }
+  button.ghost-border { border: 1px solid var(--line); }
+  .icon-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 15px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #444; border-radius: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c4c4c4; }
 
   /* ---------- login ---------- */
-  #login {
-    position: fixed; inset: 0; background: #171717; display: flex;
-    align-items: center; justify-content: center; z-index: 50;
-  }
-  #login .card {
-    width: min(520px, 92vw); background: var(--bg-2); border: 1px solid var(--line);
-    border-radius: 12px; padding: 22px;
-  }
+  #login { position: fixed; inset: 0; background: #171717; display: flex; align-items: center; justify-content: center; z-index: 90; }
+  #login .card { width: min(540px, 93vw); background: #232323; border: 1px solid #343434; border-radius: 12px; padding: 22px; color: #dadada; }
   #login h1 { margin: 0 0 4px; font-size: 20px; }
-  #login p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
-  #login label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
-  #login input {
-    width: 100%; background: #1b1b1b; border: 1px solid var(--line);
-    border-radius: 7px; padding: 9px 11px;
-  }
-  #login .row { display: flex; gap: 8px; }
-  #login .row > * { flex: 1; }
-  #login .actions { margin-top: 18px; display: flex; gap: 8px; align-items: center; }
-  #login .hint { font-size: 12px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+  #login p { margin: 0 0 16px; color: #8f8f8f; font-size: 13px; }
+  #login label { display: block; font-size: 12px; color: #8f8f8f; margin: 12px 0 5px; }
+  #login input { width: 100%; background: #1b1b1b; border: 1px solid #343434; border-radius: 7px; padding: 9px 11px; color: #dadada; }
+  #login .actions { margin-top: 18px; display: flex; gap: 8px; }
+  #loginError { color: #e5686c; font-size: 13px; margin-top: 10px; min-height: 18px; }
+  #login .hint { font-size: 12px; color: #8f8f8f; margin-top: 14px; line-height: 1.55; }
   #login .hint code { background: #1b1b1b; padding: 1px 5px; border-radius: 4px; }
-  #loginError { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 18px; }
 
   /* ---------- shell ---------- */
-  #app { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  #app { display: none; height: 100%; flex-direction: column; }
   #app.ready { display: flex; }
 
-  .topbar {
-    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-    background: var(--bg-2); border-bottom: 1px solid var(--line);
-  }
-  .topbar .vault { font-weight: 600; font-size: 13px; color: var(--muted); }
-  .topbar .vault b { color: var(--text); }
-  .spacer { flex: 1; }
-  #syncState { font-size: 12px; color: var(--muted); }
-
-  .body { flex: 1; display: flex; min-height: 0; }
-
-  /* ---------- sidebar ---------- */
-  aside {
-    width: 270px; flex: 0 0 270px; background: var(--bg-2);
-    border-right: 1px solid var(--line); display: flex; flex-direction: column;
-    min-height: 0;
-  }
-  aside .search { padding: 8px; border-bottom: 1px solid var(--line); display: flex; gap: 6px; }
-  aside .search input {
-    flex: 1; background: #1b1b1b; border: 1px solid var(--line);
-    border-radius: 6px; padding: 6px 9px; font-size: 13px; min-width: 0;
-  }
-  #tree { overflow: auto; padding: 6px 4px 20px; font-size: 13.5px; }
-  .folder { color: var(--muted); padding: 4px 8px; cursor: pointer; user-select: none; display: flex; gap: 6px; }
-  .folder:hover { color: var(--text); }
-  .file {
-    padding: 4px 8px 4px 20px; border-radius: 5px; cursor: pointer;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #c9c9c9;
-  }
-  .file:hover { background: var(--bg-3); color: #fff; }
-  .file.active { background: #3a3350; color: #fff; }
-
-  /* ---------- main ---------- */
-  main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .tabs { display: flex; gap: 2px; padding: 6px 8px 0; background: var(--bg-2); border-bottom: 1px solid var(--line); overflow-x: auto; }
-  .tab {
-    padding: 6px 10px; border-radius: 6px 6px 0 0; font-size: 13px; cursor: pointer;
-    background: transparent; border: 1px solid transparent; border-bottom: none; white-space: nowrap;
-  }
+  .titlebar { display: flex; align-items: center; height: 40px; background: var(--bg-2); border-bottom: 1px solid var(--line); padding: 0 6px; gap: 4px; }
+  .titlebar .nav { display: flex; gap: 2px; }
+  .tabs { display: flex; gap: 2px; flex: 1; overflow-x: auto; height: 100%; align-items: flex-end; padding-top: 4px; }
+  .tab { display: flex; align-items: center; gap: 6px; max-width: 220px; padding: 6px 8px 5px 10px; border-radius: 8px 8px 0 0; font-size: 13px; color: var(--text-dim); background: transparent; border: 1px solid transparent; border-bottom: 0; cursor: pointer; white-space: nowrap; }
   .tab:hover { background: var(--bg-3); }
-  .tab.active { background: var(--bg); border-color: var(--line); color: #fff; }
-  .tab .dot { color: var(--yellow); margin-left: 6px; }
+  .tab.active { background: var(--bg); color: var(--text); border-color: var(--line); }
+  .tab .name { overflow: hidden; text-overflow: ellipsis; }
+  .tab .close { opacity: .5; font-size: 14px; padding: 0 3px; border-radius: 4px; }
+  .tab .close:hover { opacity: 1; background: var(--bg-4); }
+  .tab .dot { color: var(--yellow); font-size: 16px; line-height: 0; }
 
-  .pane { flex: 1; display: flex; min-height: 0; }
-  .pane .editor-wrap { flex: 1; display: flex; min-width: 0; }
-  textarea {
-    flex: 1; width: 100%; resize: none; border: 0; outline: 0; background: var(--bg);
-    color: #dcdcdc; padding: 22px 26px; font: 14px/1.7 "Cascadia Code", "JetBrains Mono", Consolas, monospace;
-    tab-size: 2;
-  }
-  #preview {
-    flex: 1; overflow: auto; padding: 22px 30px; background: var(--bg); display: none;
-  }
-  body.mode-preview textarea { display: none; }
-  body.mode-preview #preview { display: block; }
-  #preview h1, #preview h2, #preview h3 { line-height: 1.3; margin: 1.1em 0 .5em; }
-  #preview h1 { font-size: 28px; margin-top: 0; }
-  #preview h2 { font-size: 21px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
-  #preview h3 { font-size: 17px; }
-  #preview table { border-collapse: collapse; margin: 14px 0; font-size: 14px; }
-  #preview th, #preview td { border: 1px solid var(--line); padding: 6px 10px; }
+  .workspace { flex: 1; display: flex; min-height: 0; }
+
+  /* ribbon */
+  #ribbon { width: 46px; flex: 0 0 46px; background: var(--bg-2); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; }
+  #ribbon button { width: 34px; height: 34px; font-size: 16px; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+  #ribbon button.active, #ribbon button:hover { color: var(--text); background: var(--bg-3); }
+  #ribbon .spacer { flex: 1; }
+
+  /* sidebars */
+  aside { background: var(--bg-2); display: flex; flex-direction: column; min-height: 0; }
+  #left { width: 288px; flex: 0 0 288px; border-right: 1px solid var(--line); }
+  #right { width: 300px; flex: 0 0 300px; border-left: 1px solid var(--line); }
+  body.no-left #left { display: none; }
+  body.no-right #right { display: none; }
+  .pane-head { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--line); min-height: 40px; }
+  .pane-head .title { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); flex: 1; }
+  .pane-body { overflow: auto; flex: 1; min-height: 0; padding: 6px; }
+  .filter { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; font-size: 13px; }
+
+  .folder-row { display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 5px; color: var(--text-dim); cursor: pointer; font-size: 13px; }
+  .folder-row:hover { background: var(--bg-3); }
+  .folder-row .chev { font-size: 10px; width: 12px; color: var(--muted); }
+  .file-row { display: flex; align-items: center; gap: 6px; padding: 3.5px 8px; border-radius: 5px; cursor: pointer; font-size: 13px; color: var(--text-dim); }
+  .file-row:hover { background: var(--bg-3); color: var(--text); }
+  .file-row.active { background: color-mix(in srgb, var(--accent) 22%, transparent); color: #fff; }
+  .file-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-row .actions { margin-left: auto; display: none; gap: 2px; }
+  .file-row:hover .actions { display: flex; }
+  .file-row .actions button { padding: 0 4px; font-size: 12px; }
+
+  /* editor */
+  main { flex: 1; display: flex; min-width: 0; min-height: 0; background: var(--bg); position: relative; }
+  .editor-host { flex: 1; min-width: 0; display: flex; justify-content: center; overflow: hidden; }
+  #editor { width: 100%; max-width: var(--editor-width); height: 100%; border: 0; outline: 0; resize: none; background: transparent; color: var(--text); padding: 30px 40px 120px; font: 15px/1.7 var(--font-mono); tab-size: 2; }
+  #previewHost { flex: 1; min-width: 0; overflow: auto; display: none; justify-content: center; }
+  #preview { width: 100%; max-width: var(--editor-width); padding: 26px 40px 120px; font: 15.5px/1.75 var(--font-text); color: var(--text); }
+  body.mode-preview #editor { display: none; }
+  body.mode-preview #previewHost { display: flex; }
+  #preview h1, #preview h2, #preview h3, #preview h4 { line-height: 1.3; margin: 1.2em 0 .5em; }
+  #preview h1 { font-size: 30px; margin-top: 0; }
+  #preview h2 { font-size: 22px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+  #preview h3 { font-size: 18px; }
+  #preview table { border-collapse: collapse; margin: 14px 0; font-size: 14px; width: auto; }
+  #preview th, #preview td { border: 1px solid var(--line); padding: 6px 11px; vertical-align: top; }
   #preview th { background: var(--bg-2); }
-  #preview code { background: #2a2a2a; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-  #preview pre { background: #252525; padding: 12px 14px; border-radius: 8px; overflow: auto; }
+  #preview code { background: var(--bg-3); padding: 1.5px 5px; border-radius: 4px; font-family: var(--font-mono); font-size: .9em; }
+  #preview pre { background: var(--bg-2); border: 1px solid var(--line); padding: 12px 14px; border-radius: 8px; overflow: auto; }
   #preview pre code { background: none; padding: 0; }
-  #preview blockquote { border-left: 3px solid #4a4066; margin: 12px 0; padding: 2px 14px; color: #bcbcbc; }
+  #preview blockquote { border-left: 3px solid var(--accent-2); margin: 12px 0; padding: 2px 14px; color: var(--text-dim); }
   #preview img { max-width: 100%; border-radius: 6px; }
-  #preview a { color: var(--accent); }
-  #preview .wikilink { color: var(--accent); cursor: pointer; text-decoration: none; border-bottom: 1px dashed #5a4a8a; }
+  #preview a { color: var(--accent); text-decoration: none; }
+  #preview a:hover { text-decoration: underline; }
+  #preview .wikilink { color: var(--accent); cursor: pointer; border-bottom: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent); }
+  #preview .tag { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 4px; padding: 0 5px; font-size: .92em; }
+  #preview .callout { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--bg-2); border-radius: 6px; padding: 8px 14px; margin: 14px 0; }
+  #preview input[type=checkbox] { margin-right: 7px; }
+  #preview li.task { list-style: none; margin-left: -18px; }
+  #preview .props { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 0 0 18px; background: var(--bg-2); font-size: 13px; }
+  #preview .props .row { display: flex; gap: 10px; padding: 2px 0; }
+  #preview .props .k { color: var(--muted); min-width: 90px; }
+  #preview .props .v { color: var(--text); }
 
-  .status {
-    display: flex; align-items: center; gap: 12px; padding: 5px 12px;
-    background: var(--bg-2); border-top: 1px solid var(--line); font-size: 12px; color: var(--muted);
-  }
-  .status .ok { color: var(--green); }
-  .status .warn { color: var(--yellow); }
-  .status .err { color: var(--red); }
+  .backlink { display: block; width: 100%; text-align: left; padding: 6px 8px; border-radius: 6px; font-size: 13px; color: var(--text-dim); }
+  .backlink:hover { background: var(--bg-3); color: var(--text); }
+  .empty { color: var(--muted); font-size: 13px; padding: 8px; }
+  .tag-chip { display: inline-block; background: var(--bg-3); border-radius: 5px; padding: 2px 8px; margin: 2px; font-size: 12.5px; cursor: pointer; }
+  .tag-chip:hover { background: var(--bg-4); }
 
-  #toast {
-    position: fixed; bottom: 44px; left: 50%; transform: translateX(-50%) translateY(60px);
-    background: #333; border: 1px solid #444; border-radius: 8px; padding: 8px 16px;
-    font-size: 13px; opacity: 0; transition: .2s; pointer-events: none; z-index: 40;
-  }
+  /* status bar */
+  .statusbar { height: 28px; flex: 0 0 28px; display: flex; align-items: center; gap: 14px; padding: 0 12px; background: var(--bg-2); border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .statusbar .ok { color: var(--green); }
+  .statusbar .warn { color: var(--yellow); }
+  .statusbar .err { color: var(--red); }
+  .statusbar .spacer { flex: 1; }
+
+  /* overlays */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; z-index: 60; }
+  .overlay.show { display: block; }
+  .modal { position: fixed; left: 50%; top: 12vh; transform: translateX(-50%); width: min(720px, 94vw); background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); display: none; z-index: 61; overflow: hidden; }
+  .modal.show { display: block; }
+  .modal input.search { width: 100%; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 14px 16px; font-size: 15px; outline: 0; }
+  .modal .list { max-height: 46vh; overflow: auto; padding: 6px; }
+  .modal .item { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 14px; }
+  .modal .item .hint { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .modal .item.active, .modal .item:hover { background: var(--bg-3); }
+  .modal .foot { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); display: flex; gap: 12px; }
+
+  #settings .body { padding: 16px; max-height: 60vh; overflow: auto; }
+  #settings label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 5px; }
+  #settings input, #settings select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; }
+  #settings .row { display: flex; gap: 10px; }
+  #settings .row > * { flex: 1; }
+  #settings .foot { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid var(--line); }
+
+  #toast { position: fixed; bottom: 44px; left: 50%; transform: translateX(-50%) translateY(60px); background: var(--bg-4); border: 1px solid var(--line); border-radius: 8px; padding: 8px 16px; font-size: 13px; opacity: 0; transition: .18s; pointer-events: none; z-index: 80; }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  @media (max-width: 800px) {
-    aside { position: absolute; inset: 44px 0 0 0; width: 100%; z-index: 20; display: none; }
-    aside.open { display: flex; }
-    #menuBtn { display: inline-block; }
-    textarea { padding: 16px; font-size: 13px; }
-    #preview { padding: 16px; }
+  @media (max-width: 980px) {
+    #left { position: absolute; inset: 40px 0 28px 46px; width: auto; flex: 0 0 auto; z-index: 30; display: none; }
+    #left.open { display: flex; }
+    #right { position: absolute; inset: 40px 0 28px 46px; width: auto; flex: 0 0 auto; z-index: 31; display: none; }
+    #right.open { display: flex; }
+    #editor, #preview { padding: 18px; }
   }
-  #menuBtn { display: none; }
 </style>
 </head>
 <body>
 
 <div id="login">
   <div class="card">
-    <h1>📓 Vault web</h1>
-    <p>Редактор волта просто з GitHub. Токен зберігається лише у твоєму браузері.</p>
+    <h1>📓 Vault</h1>
+    <p>Редактор волта через GitHub. Токен зберігається тільки у твоєму браузері.</p>
     <label for="repo">Репозиторій (owner/repo)</label>
     <input id="repo" value="fawuna/SUPER-GAME" autocomplete="off" spellcheck="false">
     <label for="branch">Гілка</label>
@@ -173,51 +197,114 @@
     <input id="token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
     <div class="actions">
       <button class="primary" id="connect">Підключитись</button>
-      <button id="forget">Забути токен</button>
+      <button class="ghost-border" id="forget">Забути токен</button>
     </div>
     <div id="loginError"></div>
     <div class="hint">
-      Де взяти токен: GitHub → Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> →
-      Generate new token → Repository access: Only select repositories → <code>SUPER-GAME</code> →
-      Permissions → Repository permissions → <b>Contents: Read and write</b> → Generate.
+      GitHub → Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token →
+      Only select repositories → <code>SUPER-GAME</code> → Repository permissions → <b>Contents: Read and write</b>.
     </div>
   </div>
 </div>
 
 <div id="app">
-  <div class="topbar">
-    <button class="icon" id="menuBtn" title="Файли">☰</button>
-    <div class="vault">vault: <b id="repoName">—</b></div>
-    <div class="spacer"></div>
-    <span id="syncState">…</span>
-    <button class="icon" id="modeBtn" title="Editor / Preview (Ctrl+E)">👁</button>
-    <button id="saveBtn" class="primary">Зберегти</button>
-    <button class="icon" id="logout" title="Вийти">⎋</button>
+  <div class="titlebar">
+    <div class="nav">
+      <button class="icon-btn" id="toggleLeft" title="Ліва панель (Ctrl+B)">◧</button>
+      <button class="icon-btn" id="navBack" title="Назад">←</button>
+      <button class="icon-btn" id="navFwd" title="Вперед">→</button>
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <div class="nav">
+      <button class="icon-btn" id="modeBtn" title="Режим читання (Ctrl+E)">👁</button>
+      <button class="primary" id="saveBtn" title="Зберегти (Ctrl+S)">Зберегти</button>
+      <button class="icon-btn" id="toggleRight" title="Права панель">◨</button>
+    </div>
   </div>
 
-  <div class="body">
-    <aside id="sidebar">
-      <div class="search">
-        <input id="filter" placeholder="Пошук…" autocomplete="off">
-        <button class="icon" id="reload" title="Оновити список">⟳</button>
+  <div class="workspace">
+    <nav id="ribbon">
+      <button data-pane="files" class="active" title="Файли">🗂</button>
+      <button data-pane="search" title="Пошук">🔍</button>
+      <button data-pane="tags" title="Теги">🏷</button>
+      <div class="spacer"></div>
+      <button id="openPalette" title="Command palette (Ctrl+P)">⌘</button>
+      <button id="openSwitcher" title="Швидкий перехід (Ctrl+O)">⚡</button>
+      <button id="themeBtn" title="Тема">🌓</button>
+      <button id="openSettings" title="Налаштування">⚙</button>
+    </nav>
+
+    <aside id="left">
+      <div class="pane-head">
+        <span class="title" id="paneTitle">Файли</span>
+        <button class="icon-btn" id="newNote" title="Нова нотатка">＋</button>
+        <button class="icon-btn" id="reloadTree" title="Оновити">⟳</button>
       </div>
-      <div id="tree"></div>
+      <div style="padding:6px 8px;border-bottom:1px solid var(--line)">
+        <input class="filter" id="filter" placeholder="Фільтр файлів…" autocomplete="off">
+      </div>
+      <div class="pane-body" id="tree"></div>
+      <div class="pane-body" id="searchPane" style="display:none">
+        <input class="filter" id="searchInput" placeholder="Шукати по всьому волту…" autocomplete="off">
+        <div id="searchResults" style="margin-top:8px"></div>
+      </div>
+      <div class="pane-body" id="tagsPane" style="display:none"></div>
     </aside>
 
     <main>
-      <div class="tabs" id="tabs"></div>
-      <div class="pane">
-        <div class="editor-wrap"><textarea id="editor" spellcheck="false" placeholder="Обери нотатку…"></textarea></div>
-        <div id="preview"></div>
-      </div>
-      <div class="status">
-        <span id="statusFile">—</span>
-        <span id="statusState"></span>
-        <div class="spacer"></div>
-        <span id="statusMeta"></span>
-      </div>
+      <div class="editor-host"><textarea id="editor" spellcheck="false" placeholder="Обери нотатку або створи нову (＋)"></textarea></div>
+      <div id="previewHost"><div id="preview"></div></div>
     </main>
+
+    <aside id="right">
+      <div class="pane-head">
+        <span class="title">Контекст</span>
+        <button class="icon-btn" id="rebuildIndex" title="Перебудувати індекс">⟳</button>
+      </div>
+      <div class="pane-body" id="context"></div>
+    </aside>
   </div>
+
+  <div class="statusbar">
+    <span id="stPath">—</span>
+    <span id="stState"></span>
+    <span class="spacer"></span>
+    <span id="stMeta"></span>
+    <span id="stBranch"></span>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+
+<div class="modal" id="palette">
+  <input class="search" id="paletteInput" placeholder="Команда…" autocomplete="off" spellcheck="false">
+  <div class="list" id="paletteList"></div>
+  <div class="foot"><span>↑↓ вибір</span><span>Enter виконати</span><span>Esc закрити</span></div>
+</div>
+
+<div class="modal" id="switcher">
+  <input class="search" id="switcherInput" placeholder="Перейти до нотатки…" autocomplete="off" spellcheck="false">
+  <div class="list" id="switcherList"></div>
+  <div class="foot"><span>↑↓ вибір</span><span>Enter відкрити</span><span>Esc закрити</span></div>
+</div>
+
+<div class="modal" id="settings">
+  <div class="pane-head"><span class="title">Налаштування</span></div>
+  <div class="body">
+    <label>Репозиторій</label>
+    <input id="setRepo">
+    <label>Гілка</label>
+    <input id="setBranch">
+    <label>Токен</label>
+    <input id="setToken" type="password">
+    <div class="row">
+      <div><label>Тема</label><select id="setTheme"><option value="dark">Темна</option><option value="light">Світла</option></select></div>
+      <div><label>Шрифт редактора</label><select id="setFont"><option value="15">15px</option><option value="14">14px</option><option value="16">16px</option><option value="17">17px</option></select></div>
+    </div>
+    <label>Ширина тексту</label>
+    <select id="setWidth"><option value="46rem">Звичайна</option><option value="56rem">Широка</option><option value="38rem">Вузька</option></select>
+  </div>
+  <div class="foot"><button class="ghost-border" id="closeSettings">Закрити</button><button class="primary" id="saveSettings">Зберегти</button></div>
 </div>
 
 <div id="toast"></div>
@@ -225,25 +312,31 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script>
 (() => {
+  "use strict";
   const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
   const store = {
-    get: (k) => localStorage.getItem("vw-" + k) || "",
+    get: (k, def = "") => localStorage.getItem("vw-" + k) ?? def,
     set: (k, v) => localStorage.setItem("vw-" + k, v),
     del: (k) => localStorage.removeItem("vw-" + k),
   };
 
   const state = {
-    repo: store.get("repo") || "fawuna/SUPER-GAME",
-    branch: store.get("branch") || "main",
-    token: store.get("token") || "",
+    repo: store.get("repo", "fawuna/SUPER-GAME"),
+    branch: store.get("branch", "main"),
+    token: store.get("token"),
     files: [],
-    open: [],          // [{path, sha, text, dirty}]
+    open: [],
     active: null,
     preview: false,
-    saving: false,
+    index: new Map(),        // path -> text (cache for backlinks/search)
+    pane: "files",
+    history: [],
+    hIndex: -1,
   };
 
-  const api = async (path, options = {}) => {
+  /* ---------------- github ---------------- */
+  async function api(path, options = {}) {
     const res = await fetch("https://api.github.com" + path, {
       ...options,
       headers: {
@@ -253,307 +346,666 @@
         ...(options.headers || {}),
       },
     });
-    const text = await res.text();
+    const raw = await res.text();
     let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+    try { data = raw ? JSON.parse(raw) : null; } catch { data = { raw }; }
     if (!res.ok) {
-      const message = data?.message || res.statusText;
-      const error = new Error(message + " (" + res.status + ")");
-      error.status = res.status;
-      error.data = data;
-      throw error;
+      const err = new Error((data && data.message ? data.message : res.statusText) + " (" + res.status + ")");
+      err.status = res.status;
+      throw err;
     }
     return data;
-  };
+  }
 
   const b64encode = (text) => {
     const bytes = new TextEncoder().encode(text);
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-    }
-    return btoa(binary);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
   };
   const b64decode = (b64) => {
-    const binary = atob(b64.replace(/\s/g, ""));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const bin = atob(String(b64 || "").replace(/\s/g, ""));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return new TextDecoder("utf-8").decode(bytes);
   };
 
+  const repoPath = (path) => "/repos/" + state.repo + "/contents/" + path.split("/").map(encodeURIComponent).join("/");
+
+  async function ghGet(path) {
+    const data = await api(repoPath(path) + "?ref=" + state.branch);
+    return { text: b64decode(data.content), sha: data.sha };
+  }
+  async function ghPut(path, text, sha, message) {
+    const body = { message: message || ("update " + path), content: b64encode(text), branch: state.branch };
+    if (sha) body.sha = sha;
+    return api(repoPath(path), { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  }
+  async function ghDelete(path, sha) {
+    return api(repoPath(path), { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: "delete " + path, sha, branch: state.branch }) });
+  }
+
+  /* ---------------- ui helpers ---------------- */
   const toast = (msg) => {
-    const el = $("toast");
-    el.textContent = msg;
-    el.classList.add("show");
-    clearTimeout(el._t);
-    el._t = setTimeout(() => el.classList.remove("show"), 2000);
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(t._t);
+    t._t = setTimeout(() => t.classList.remove("show"), 2200);
   };
+  const setState = (text, cls) => { $("stState").textContent = text; $("stState").className = cls || ""; };
+  const current = () => state.open.find((f) => f.path === state.active) || null;
 
-  const setSync = (text, cls = "") => {
-    $("syncState").textContent = text;
-    $("syncState").className = cls;
-  };
+  function theme() {
+    const t = store.get("theme", "dark");
+    document.documentElement.dataset.theme = t;
+  }
+  function applyPrefs() {
+    document.documentElement.style.setProperty("--font-mono", store.get("font", "15") === "15" ? '"Cascadia Code","JetBrains Mono",Consolas,monospace' : '"Cascadia Code","JetBrains Mono",Consolas,monospace');
+    $("editor").style.fontSize = store.get("font", "15") + "px";
+    document.documentElement.style.setProperty("--editor-width", store.get("width", "46rem"));
+  }
 
-  // ---------- tree ----------
+  /* ---------------- tree ---------------- */
   async function loadTree() {
-    setSync("завантажую список…");
-    const data = await api(`/repos/${state.repo}/git/trees/${state.branch}?recursive=1`);
+    const data = await api("/repos/" + state.repo + "/git/trees/" + state.branch + "?recursive=1");
     state.files = (data.tree || [])
       .filter((n) => n.type === "blob" && n.path.endsWith(".md"))
       .map((n) => n.path)
-      .sort((a, b) => a.localeCompare(b, "uk"));
+      .sort((a, b) => a.localeCompare(b, "uk", { numeric: true }));
     renderTree();
-    setSync(state.files.length + " нотаток", "ok");
+    renderTags();
   }
 
   function renderTree() {
-    const filter = $("filter").value.trim().toLowerCase();
-    const tree = $("tree");
-    tree.innerHTML = "";
-    const shown = state.files.filter((p) => !filter || p.toLowerCase().includes(filter));
-    const groups = new Map();
-    for (const path of shown) {
-      const slash = path.lastIndexOf("/");
-      const dir = slash === -1 ? "" : path.slice(0, slash);
-      if (!groups.has(dir)) groups.set(dir, []);
-      groups.get(dir).push(path);
-    }
-    for (const [dir, paths] of groups) {
-      if (dir) {
-        const head = document.createElement("div");
-        head.className = "folder";
-        head.textContent = "▾ " + dir;
-        tree.appendChild(head);
+    const q = $("filter").value.trim().toLowerCase();
+    const host = $("tree");
+    host.innerHTML = "";
+    const files = state.files.filter((p) => !q || p.toLowerCase().includes(q));
+    const tree = {};
+    for (const path of files) {
+      const parts = path.split("/");
+      let node = tree;
+      for (let i = 0; i < parts.length - 1; i++) {
+        node[parts[i]] = node[parts[i]] || {};
+        node = node[parts[i]];
       }
-      for (const path of paths) {
-        const el = document.createElement("div");
-        el.className = "file" + (path === state.active ? " active" : "");
-        el.textContent = path.split("/").pop().replace(/\.md$/, "");
-        el.title = path;
-        el.onclick = () => openFile(path);
-        tree.appendChild(el);
+      node[parts[parts.length - 1]] = null;
+    }
+    const collapsed = new Set(JSON.parse(store.get("collapsed", "[]")));
+    const walk = (node, prefix, depth) => {
+      const folders = Object.keys(node).filter((k) => node[k] !== null).sort();
+      const leaves = Object.keys(node).filter((k) => node[k] === null).sort();
+      for (const folder of folders) {
+        const full = prefix ? prefix + "/" + folder : folder;
+        const isCollapsed = collapsed.has(full);
+        const row = el("div", "folder-row");
+        row.style.paddingLeft = 6 + depth * 12 + "px";
+        row.appendChild(el("span", "chev", isCollapsed ? "▸" : "▾"));
+        row.appendChild(el("span", null, folder));
+        row.onclick = () => {
+          if (isCollapsed) collapsed.delete(full); else collapsed.add(full);
+          store.set("collapsed", JSON.stringify([...collapsed]));
+          renderTree();
+        };
+        host.appendChild(row);
+        if (!isCollapsed) walk(node[folder], full, depth + 1);
       }
-    }
-    if (!shown.length) {
-      const empty = document.createElement("div");
-      empty.className = "file";
-      empty.textContent = "нічого не знайдено";
-      tree.appendChild(empty);
-    }
+      for (const leaf of leaves) {
+        const full = prefix ? prefix + "/" + leaf : leaf;
+        const row = el("div", "file-row" + (full === state.active ? " active" : ""));
+        row.style.paddingLeft = 12 + depth * 12 + "px";
+        row.appendChild(el("span", null, "📄"));
+        row.appendChild(el("span", "label", leaf.replace(/\.md$/, "")));
+        const actions = el("span", "actions");
+        const rename = el("button", null, "✎");
+        rename.title = "Перейменувати";
+        rename.onclick = (e) => { e.stopPropagation(); renameNote(full); };
+        const del = el("button", null, "🗑");
+        del.title = "Видалити";
+        del.onclick = (e) => { e.stopPropagation(); deleteNote(full); };
+        actions.append(rename, del);
+        row.appendChild(actions);
+        row.onclick = () => openNote(full);
+        host.appendChild(row);
+      }
+    };
+    walk(tree, "", 0);
+    if (!files.length) host.appendChild(el("div", "empty", "нічого не знайдено"));
   }
 
-  // ---------- files ----------
-  function current() {
-    return state.open.find((f) => f.path === state.active) || null;
-  }
-
-  async function openFile(path) {
+  /* ---------------- notes ---------------- */
+  async function openNote(path, pushHistory = true) {
     const existing = state.open.find((f) => f.path === path);
-    if (existing) { state.active = path; renderTabs(); renderTree(); paint(); return; }
-    setSync("відкриваю " + path + "…");
-    try {
-      const data = await api(`/repos/${state.repo}/contents/${encodeURI(path)}?ref=${state.branch}`);
-      const text = b64decode(data.content || "");
-      state.open.push({ path, sha: data.sha, text, dirty: false });
+    if (existing) {
       state.active = path;
+      if (pushHistory) pushState(path);
+      renderTabs(); renderTree(); paint(); return;
+    }
+    try {
+      setState("відкриваю…");
+      const { text, sha } = await ghGet(path);
+      state.index.set(path, text);
+      state.open.push({ path, sha, text, dirty: false });
+      state.active = path;
+      if (pushHistory) pushState(path);
       renderTabs(); renderTree(); paint();
-      setSync("готово", "ok");
-      $("sidebar").classList.remove("open");
+      setState("", "");
+      if (window.matchMedia("(max-width: 980px)").matches) $("left").classList.remove("open");
     } catch (error) {
-      setSync("помилка: " + error.message, "err");
+      setState("помилка: " + error.message, "err");
       toast("Не відкрилось: " + error.message);
     }
   }
 
+  function pushState(path) {
+    state.history = state.history.slice(0, state.hIndex + 1);
+    if (state.history[state.history.length - 1] !== path) state.history.push(path);
+    state.hIndex = state.history.length - 1;
+  }
+  const goBack = () => { if (state.hIndex > 0) openNote(state.history[--state.hIndex], false); };
+  const goFwd = () => { if (state.hIndex < state.history.length - 1) openNote(state.history[++state.hIndex], false); };
+
+  function closeTab(path) {
+    const idx = state.open.findIndex((f) => f.path === path);
+    if (idx === -1) return;
+    if (state.open[idx].dirty && !confirm("Є незбережені зміни. Закрити?")) return;
+    state.open.splice(idx, 1);
+    if (state.active === path) state.active = state.open[Math.max(0, idx - 1)]?.path || null;
+    renderTabs(); renderTree(); paint();
+  }
+
   function renderTabs() {
-    const tabs = $("tabs");
-    tabs.innerHTML = "";
-    state.open.forEach((file) => {
-      const tab = document.createElement("div");
-      tab.className = "tab" + (file.path === state.active ? " active" : "");
-      tab.innerHTML = "";
-      const label = document.createElement("span");
-      label.textContent = file.path.split("/").pop().replace(/\.md$/, "");
-      tab.appendChild(label);
-      if (file.dirty) {
-        const dot = document.createElement("span");
-        dot.className = "dot";
-        dot.textContent = "•";
-        tab.appendChild(dot);
-      }
-      tab.onclick = () => { state.active = file.path; renderTabs(); renderTree(); paint(); };
-      tabs.appendChild(tab);
-    });
+    const host = $("tabs");
+    host.innerHTML = "";
+    for (const file of state.open) {
+      const tab = el("div", "tab" + (file.path === state.active ? " active" : ""));
+      tab.appendChild(el("span", "name", file.path.split("/").pop().replace(/\.md$/, "")));
+      if (file.dirty) tab.appendChild(el("span", "dot", "•"));
+      const x = el("span", "close", "✕");
+      x.onclick = (e) => { e.stopPropagation(); closeTab(file.path); };
+      tab.appendChild(x);
+      tab.onclick = () => { state.active = file.path; pushState(file.path); renderTabs(); renderTree(); paint(); };
+      tab.onauxclick = (e) => { if (e.button === 1) closeTab(file.path); };
+      host.appendChild(tab);
+    }
   }
 
   function paint() {
     const file = current();
     $("editor").value = file ? file.text : "";
-    $("statusFile").textContent = file ? file.path : "—";
-    document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " — " : "") + "Vault";
+    $("editor").readOnly = !file;
+    $("stPath").textContent = file ? file.path : "—";
+    $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch;
+    document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
     renderPreview();
+    renderContext();
     const words = file ? file.text.trim().split(/\s+/).filter(Boolean).length : 0;
-    $("statusMeta").textContent = file ? words + " слів · " + file.text.length + " символів" : "";
-    $("statusState").textContent = file ? (file.dirty ? "не збережено" : "синхронізовано") : "";
-    $("statusState").className = file && file.dirty ? "warn" : "ok";
+    $("stMeta").textContent = file ? words + " слів · " + file.text.length + " симв." : "";
+    setState(file ? (file.dirty ? "не збережено" : "синхронізовано") : "", file && file.dirty ? "warn" : "ok");
+  }
+
+  async function saveNote() {
+    const file = current();
+    if (!file) return;
+    try {
+      setState("зберігаю…");
+      const data = await ghPut(file.path, file.text, file.sha, "edit: " + file.path);
+      file.sha = data.content.sha;
+      file.dirty = false;
+      state.index.set(file.path, file.text);
+      renderTabs(); paint();
+      setState("збережено " + new Date().toLocaleTimeString().slice(0, 5), "ok");
+    } catch (error) {
+      if (error.status === 409 || error.status === 422) { setState("конфлікт: файл змінили ззовні", "err"); toast("Хтось уже змінив файл — онови дерево"); }
+      else { setState("помилка: " + error.message, "err"); toast("Не збереглось: " + error.message); }
+    }
+  }
+
+  async function newNote() {
+    const raw = prompt("Назва нотатки (можна з папкою: папка/назва):", "Нова нотатка");
+    if (!raw) return;
+    let path = raw.trim().replace(/^\/+/, "");
+    if (!path.endsWith(".md")) path += ".md";
+    try {
+      await ghPut(path, "# " + path.split("/").pop().replace(/\.md$/, "") + "\n\n", null, "add " + path);
+      await loadTree();
+      await openNote(path);
+      toast("створено " + path);
+    } catch (error) { toast("Не вийшло: " + error.message); }
+  }
+
+  async function renameNote(path) {
+    const next = prompt("Нове імʼя:", path);
+    if (!next || next === path) return;
+    let target = next.trim().replace(/^\/+/, "");
+    if (!target.endsWith(".md")) target += ".md";
+    try {
+      const { text, sha } = await ghGet(path);
+      await ghPut(target, text, null, "rename " + path + " → " + target);
+      await ghDelete(path, sha);
+      const openFile = state.open.find((f) => f.path === path);
+      if (openFile) openFile.path = target;
+      if (state.active === path) state.active = target;
+      await loadTree(); renderTabs(); paint();
+      toast("перейменовано");
+    } catch (error) { toast("Не вийшло: " + error.message); }
+  }
+
+  async function deleteNote(path) {
+    if (!confirm("Видалити " + path + "?")) return;
+    try {
+      const { sha } = await ghGet(path);
+      await ghDelete(path, sha);
+      state.open = state.open.filter((f) => f.path !== path);
+      if (state.active === path) state.active = state.open[0]?.path || null;
+      await loadTree(); renderTabs(); paint();
+      toast("видалено");
+    } catch (error) { toast("Не вийшло: " + error.message); }
+  }
+
+  /* ---------------- preview ---------------- */
+  function parseProps(text) {
+    const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/);
+    if (!m) return null;
+    const rows = m[1].split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
+    const props = [];
+    for (const line of rows) {
+      const kv = line.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):\s*(.*)$/);
+      if (kv) props.push([kv[1], kv[2].replace(/^["']|["']$/g, "")]);
+    }
+    return { raw: m[0], body: text.slice(m[0].length), props };
   }
 
   function renderPreview() {
     const file = current();
-    if (!file) { $("preview").innerHTML = ""; return; }
-    let text = file.text.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/, "");
-    text = text.replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (m, target, label) => {
-      return `<a class="wikilink" data-target="${target.trim()}">${(label || target).replace(/^\|/, "").trim()}</a>`;
-    });
-    text = text.replace(/!\[\[([^\]]+\.(svg|png|jpe?g|gif|webp))\]\]/gi, (m, name) => {
-      return `![${name}](https://raw.githubusercontent.com/${state.repo}/${state.branch}/${encodeURI(name.trim())})`;
-    });
-    if (window.marked) {
-      $("preview").innerHTML = marked.parse(text, { breaks: true, mangle: false, headerIds: false });
-    } else {
-      const pre = document.createElement("pre");
-      pre.textContent = text;
-      $("preview").innerHTML = "";
-      $("preview").appendChild(pre);
+    const host = $("preview");
+    if (!file) { host.innerHTML = ""; return; }
+    const parsed = parseProps(file.text);
+    let body = parsed ? parsed.body : file.text;
+
+    body = body.replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (m, t, l) =>
+      '<a class="wikilink" data-target="' + t.trim().replace(/"/g, "&quot;") + '">' + (l ? l.slice(1) : t).trim() + "</a>");
+    body = body.replace(/!\[\[([^\]]+\.(svg|png|jpe?g|gif|webp))\]\]/gi, (m, name) =>
+      "![" + name + "](https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.trim()) + ")");
+    body = body.replace(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF-]{2,})/g, (m, pre, tag) => pre + '<span class="tag">#' + tag + "</span>");
+
+    let html = window.marked
+      ? marked.parse(body, { breaks: true, mangle: false, headerIds: false })
+      : "<pre>" + body.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c])) + "</pre>";
+
+    html = html.replace(/<blockquote>\s*<p>\[!(\w+)\]\s*([^<]*)/g, (m, kind, rest) =>
+      '<div class="callout"><b>' + kind.toUpperCase() + "</b> " + rest);
+
+    let head = "";
+    if (parsed && parsed.props.length) {
+      head = '<div class="props">' + parsed.props.map(([k, v]) =>
+        '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + "</span></div>").join("") + "</div>";
     }
-    $("preview").querySelectorAll(".wikilink").forEach((a) => {
+    host.innerHTML = head + html;
+
+    host.querySelectorAll(".wikilink").forEach((a) => {
       a.onclick = () => {
-        const target = a.dataset.target;
+        const target = a.dataset.target.replace(/^#/, "");
         const hit = state.files.find((p) => p === target + ".md" || p === target || p.endsWith("/" + target + ".md"));
-        if (hit) openFile(hit); else toast("Нема такої нотатки: " + target);
+        if (hit) openNote(hit); else toast("Нема такої нотатки: " + target);
       };
     });
-    $("preview").querySelectorAll("img").forEach((img) => {
+    host.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src") || "";
-      if (!/^https?:/.test(src)) {
-        img.src = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + src.replace(/^\.?\//, "");
-      }
+      if (!/^https?:/.test(src)) img.src = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + src.replace(/^\.?\//, "");
     });
+    host.querySelectorAll("a[href]").forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
   }
 
-  async function save() {
-    const file = current();
-    if (!file || state.saving) return;
-    state.saving = true;
-    setSync("зберігаю…");
-    try {
-      const data = await api(`/repos/${state.repo}/contents/${encodeURI(file.path)}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          message: "edit: " + file.path + " (web)",
-          content: b64encode(file.text),
-          sha: file.sha,
-          branch: state.branch,
-        }),
-      });
-      file.sha = data.content.sha;
-      file.dirty = false;
-      renderTabs();
-      paint();
-      setSync("збережено " + new Date().toLocaleTimeString().slice(0, 5), "ok");
-    } catch (error) {
-      if (error.status === 409 || error.status === 422) {
-        setSync("конфлікт: файл змінили ззовні", "err");
-        toast("Хтось уже змінив цей файл — онови список");
-      } else {
-        setSync("помилка: " + error.message, "err");
-        toast("Не збереглось: " + error.message);
-      }
-    } finally {
-      state.saving = false;
+  /* ---------------- backlinks / context ---------------- */
+  async function ensureIndex(exceptPath) {
+    const missing = state.files.filter((p) => !state.index.has(p) && p !== exceptPath);
+    for (const path of missing) {
+      try {
+        const { text } = await ghGet(path);
+        state.index.set(path, text);
+      } catch { state.index.set(path, ""); }
+      if (missing.indexOf(path) % 4 === 3) await new Promise((r) => setTimeout(r, 60));
     }
   }
 
-  // ---------- wiring ----------
+  async function renderContext() {
+    const host = $("context");
+    const file = current();
+    host.innerHTML = "";
+    if (!file) { host.appendChild(el("div", "empty", "Нотатку не відкрито")); return; }
+    const name = file.path.split("/").pop().replace(/\.md$/, "");
+    host.appendChild(el("div", "empty", "шукаю звʼязки…"));
+
+    await ensureIndex(file.path);
+
+    const back = [];
+    const pattern = new RegExp("\\[\\[\\s*" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*(\\||\\]\\])", "i");
+    for (const [path, text] of state.index) {
+      if (path === file.path || !text) continue;
+      if (pattern.test(text)) back.push(path);
+    }
+    const out = [...file.text.matchAll(/\[\[([^\]|]+)/g)].map((m) => m[1].trim());
+    const tags = [...new Set([...file.text.matchAll(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF-]{2,})/g)].map((m) => m[2]))];
+
+    host.innerHTML = "";
+    const section = (title, items, emptyText, onClick) => {
+      const wrap = el("div", "section");
+      const h = el("div", "pane-head");
+      h.style.borderTop = "1px solid var(--line)";
+      h.appendChild(el("span", "title", title + " (" + items.length + ")"));
+      wrap.appendChild(h);
+      if (!items.length) wrap.appendChild(el("div", "empty", emptyText));
+      items.slice(0, 40).forEach((item) => {
+        const b = el("button", "backlink", item.replace(/\.md$/, ""));
+        b.onclick = () => onClick(item);
+        wrap.appendChild(b);
+      });
+      return wrap;
+    };
+
+    host.appendChild(section("Згадки", back, "ніхто не посилається", (p) => openNote(p)));
+    host.appendChild(section("Посилання", out, "нема посилань", (t) => {
+      const hit = state.files.find((p) => p === t + ".md" || p.endsWith("/" + t + ".md"));
+      if (hit) openNote(hit); else toast("Нема нотатки: " + t);
+    }));
+    if (tags.length) {
+      const wrap = el("div");
+      const h = el("div", "pane-head");
+      h.appendChild(el("span", "title", "Теги"));
+      wrap.appendChild(h);
+      tags.forEach((t) => {
+        const chip = el("span", "tag-chip", "#" + t);
+        chip.onclick = () => $("filter").dispatchEvent(new Event("input"));
+        wrap.appendChild(chip);
+      });
+      host.appendChild(wrap);
+    }
+  }
+
+  /* ---------------- tags pane ---------------- */
+  async function renderTags() {
+    const host = $("tagsPane");
+    host.innerHTML = "";
+    const counts = new Map();
+    for (const path of state.files) {
+      const text = state.index.get(path);
+      if (!text) continue;
+      for (const m of text.matchAll(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF-]{2,})/g)) {
+        counts.set(m[2], (counts.get(m[2]) || 0) + 1);
+      }
+    }
+    if (!counts.size) {
+      host.appendChild(el("div", "empty", "Тегів ще нема. Відкрий кілька нотаток — індекс збереться поступово."));
+      return;
+    }
+    [...counts.entries()].sort((a, b) => b[1] - a[1]).forEach(([tag, n]) => {
+      const chip = el("span", "tag-chip", "#" + tag + " · " + n);
+      chip.onclick = () => { $("searchInput").value = "#" + tag; runSearch(); showPane("search"); };
+      host.appendChild(chip);
+    });
+  }
+
+  /* ---------------- search ---------------- */
+  async function runSearch() {
+    const q = $("searchInput").value.trim().toLowerCase();
+    const host = $("searchResults");
+    host.innerHTML = "";
+    if (q.length < 2) { host.appendChild(el("div", "empty", "мінімум 2 символи")); return; }
+    host.appendChild(el("div", "empty", "шукаю…"));
+    await ensureIndex();
+    const results = [];
+    for (const [path, text] of state.index) {
+      if (!text) continue;
+      const lower = text.toLowerCase();
+      let idx = lower.indexOf(q);
+      let hits = 0;
+      while (idx !== -1 && hits < 20) { hits++; idx = lower.indexOf(q, idx + q.length); }
+      if (hits) results.push({ path, hits, snippet: text.slice(Math.max(0, lower.indexOf(q) - 40), lower.indexOf(q) + 80).replace(/\n/g, " ") });
+    }
+    host.innerHTML = "";
+    if (!results.length) { host.appendChild(el("div", "empty", "нічого не знайдено")); return; }
+    results.sort((a, b) => b.hits - a.hits).forEach((r) => {
+      const card = el("div", "backlink");
+      card.style.display = "block";
+      const t = el("div", null, r.path.replace(/\.md$/, "") + "  ·  " + r.hits);
+      t.style.color = "var(--accent)";
+      const s = el("div", null, "…" + r.snippet + "…");
+      s.style.color = "var(--muted)";
+      s.style.fontSize = "12px";
+      card.append(t, s);
+      card.onclick = () => openNote(r.path);
+      host.appendChild(card);
+    });
+  }
+
+  /* ---------------- command palette ---------------- */
+  const commands = [
+    { id: "new", label: "Нова нотатка", run: () => newNote() },
+    { id: "save", label: "Зберегти нотатку", run: () => saveNote() },
+    { id: "mode", label: "Режим читання / редактор", run: () => toggleMode() },
+    { id: "theme", label: "Перемкнути тему", run: () => toggleTheme() },
+    { id: "left", label: "Показати/сховати ліву панель", run: () => toggleLeft() },
+    { id: "right", label: "Показати/сховати праву панель", run: () => toggleRight() },
+    { id: "reload", label: "Оновити список файлів", run: () => loadTree() },
+    { id: "index", label: "Перебудувати індекс звʼязків", run: async () => { state.index.clear(); await ensureIndex(); renderContext(); renderTags(); toast("індекс оновлено"); } },
+    { id: "logout", label: "Забути токен і вийти", run: () => { store.del("token"); location.reload(); } },
+  ];
+
+  let paletteItems = [];
+  let paletteActive = 0;
+
+  function openModal(id) {
+    $("overlay").classList.add("show");
+    $(id).classList.add("show");
+  }
+  function closeModals() {
+    $("overlay").classList.remove("show");
+    ["palette", "switcher", "settings"].forEach((id) => $(id).classList.remove("show"));
+  }
+
+  function showPalette() {
+    $("paletteInput").value = "";
+    paletteItems = commands.slice();
+    renderPalette();
+    openModal("palette");
+    $("paletteInput").focus();
+  }
+  function renderPalette() {
+    const q = $("paletteInput").value.trim().toLowerCase();
+    const list = $("paletteList");
+    list.innerHTML = "";
+    paletteItems = commands.filter((c) => !q || c.label.toLowerCase().includes(q));
+    paletteActive = Math.min(paletteActive, Math.max(0, paletteItems.length - 1));
+    paletteItems.forEach((cmd, i) => {
+      const item = el("div", "item" + (i === paletteActive ? " active" : ""), cmd.label);
+      item.onclick = () => { closeModals(); cmd.run(); };
+      list.appendChild(item);
+    });
+    if (!paletteItems.length) list.appendChild(el("div", "empty", "нічого не знайдено"));
+  }
+
+  let switcherItems = [];
+  let switcherActive = 0;
+  function showSwitcher() {
+    $("switcherInput").value = "";
+    switcherItems = state.files.slice();
+    switcherActive = 0;
+    renderSwitcher();
+    openModal("switcher");
+    $("switcherInput").focus();
+  }
+  function renderSwitcher() {
+    const q = $("switcherInput").value.trim().toLowerCase();
+    const list = $("switcherList");
+    list.innerHTML = "";
+    const scored = state.files
+      .map((path) => {
+        const name = path.split("/").pop().replace(/\.md$/, "").toLowerCase();
+        let score = 0;
+        if (!q) score = 1;
+        else if (name === q) score = 100;
+        else if (name.startsWith(q)) score = 80;
+        else if (name.includes(q)) score = 60;
+        else if (path.toLowerCase().includes(q)) score = 30;
+        return { path, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score);
+    switcherItems = scored.map((s) => s.path);
+    switcherActive = Math.min(switcherActive, Math.max(0, switcherItems.length - 1));
+    switcherItems.slice(0, 60).forEach((path, i) => {
+      const item = el("div", "item" + (i === switcherActive ? " active" : ""));
+      item.appendChild(el("span", null, "📄"));
+      item.appendChild(el("span", null, path.replace(/\.md$/, "")));
+      item.onclick = () => { closeModals(); openNote(path); };
+      list.appendChild(item);
+    });
+    if (!switcherItems.length) list.appendChild(el("div", "empty", "нічого не знайдено"));
+  }
+
+  /* ---------------- settings ---------------- */
+  function openSettings() {
+    $("setRepo").value = state.repo;
+    $("setBranch").value = state.branch;
+    $("setToken").value = state.token;
+    $("setTheme").value = store.get("theme", "dark");
+    $("setFont").value = store.get("font", "15");
+    $("setWidth").value = store.get("width", "46rem");
+    openModal("settings");
+  }
+
+  /* ---------------- modes ---------------- */
+  const toggleMode = () => { state.preview = !state.preview; document.body.classList.toggle("mode-preview", state.preview); };
+  const toggleLeft = () => { if (window.innerWidth <= 980) $("left").classList.toggle("open"); else document.body.classList.toggle("no-left"); };
+  const toggleRight = () => { if (window.innerWidth <= 980) $("right").classList.toggle("open"); else document.body.classList.toggle("no-right"); };
+  const toggleTheme = () => {
+    const next = store.get("theme", "dark") === "dark" ? "light" : "dark";
+    store.set("theme", next);
+    theme();
+  };
+
+  function showPane(pane) {
+    state.pane = pane;
+    ["files", "search", "tags"].forEach((p) => { $(p + "Pane").style.display = p === pane ? "" : "none"; });
+    $("tree").style.display = pane === "files" ? "" : "none";
+    $("paneTitle").textContent = pane === "files" ? "Файли" : pane === "search" ? "Пошук" : "Теги";
+    document.querySelectorAll("#ribbon [data-pane]").forEach((b) => b.classList.toggle("active", b.dataset.pane === pane));
+    if (pane === "tags") renderTags();
+  }
+
+  /* ---------------- wiring ---------------- */
   $("editor").addEventListener("input", () => {
     const file = current();
     if (!file) return;
     file.text = $("editor").value;
     file.dirty = true;
-    $("statusState").textContent = "не збережено";
-    $("statusState").className = "warn";
+    setState("не збережено", "warn");
     const words = file.text.trim().split(/\s+/).filter(Boolean).length;
-    $("statusMeta").textContent = words + " слів · " + file.text.length + " символів";
+    $("stMeta").textContent = words + " слів · " + file.text.length + " симв.";
     renderPreview();
     clearTimeout($("editor")._t);
-    $("editor")._t = setTimeout(save, 3500);
+    $("editor")._t = setTimeout(saveNote, 3000);
   });
 
   $("editor").addEventListener("keydown", (e) => {
     if (e.key === "Tab") {
       e.preventDefault();
-      const el = $("editor"), s = el.selectionStart;
-      el.value = el.value.slice(0, s) + "  " + el.value.slice(el.selectionEnd);
-      el.selectionStart = el.selectionEnd = s + 2;
-      el.dispatchEvent(new Event("input"));
+      const ed = $("editor"), s = ed.selectionStart;
+      ed.value = ed.value.slice(0, s) + "  " + ed.value.slice(ed.selectionEnd);
+      ed.selectionStart = ed.selectionEnd = s + 2;
+      ed.dispatchEvent(new Event("input"));
     }
   });
 
   document.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "e") {
-      e.preventDefault();
-      state.preview = !state.preview;
-      document.body.classList.toggle("mode-preview", state.preview);
-    }
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); saveNote(); }
+    else if (mod && e.key.toLowerCase() === "e") { e.preventDefault(); toggleMode(); }
+    else if (mod && e.key.toLowerCase() === "p") { e.preventDefault(); showPalette(); }
+    else if (mod && e.key.toLowerCase() === "o") { e.preventDefault(); showSwitcher(); }
+    else if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); toggleLeft(); }
+    else if (e.key === "Escape") closeModals();
   });
 
-  $("saveBtn").onclick = save;
-  $("modeBtn").onclick = () => {
-    state.preview = !state.preview;
-    document.body.classList.toggle("mode-preview", state.preview);
-  };
-  $("menuBtn").onclick = () => $("sidebar").classList.toggle("open");
+  $("paletteInput").addEventListener("input", () => { paletteActive = 0; renderPalette(); });
+  $("paletteInput").addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); paletteActive = Math.min(paletteActive + 1, paletteItems.length - 1); renderPalette(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); paletteActive = Math.max(paletteActive - 1, 0); renderPalette(); }
+    if (e.key === "Enter") { const cmd = paletteItems[paletteActive]; if (cmd) { closeModals(); cmd.run(); } }
+  });
+  $("switcherInput").addEventListener("input", () => { switcherActive = 0; renderSwitcher(); });
+  $("switcherInput").addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); switcherActive = Math.min(switcherActive + 1, switcherItems.length - 1); renderSwitcher(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); switcherActive = Math.max(switcherActive - 1, 0); renderSwitcher(); }
+    if (e.key === "Enter") { const path = switcherItems[switcherActive]; if (path) { closeModals(); openNote(path); } }
+  });
+
+  $("overlay").onclick = closeModals;
+  $("saveBtn").onclick = saveNote;
+  $("modeBtn").onclick = toggleMode;
+  $("toggleLeft").onclick = toggleLeft;
+  $("toggleRight").onclick = toggleRight;
+  $("themeBtn").onclick = toggleTheme;
+  $("openPalette").onclick = showPalette;
+  $("openSwitcher").onclick = showSwitcher;
+  $("openSettings").onclick = openSettings;
+  $("closeSettings").onclick = closeModals;
+  $("newNote").onclick = newNote;
+  $("reloadTree").onclick = () => loadTree().catch((e) => toast(e.message));
   $("filter").oninput = renderTree;
-  $("reload").onclick = () => loadTree().catch((e) => toast(e.message));
-  $("logout").onclick = () => {
-    if (!confirm("Забути токен і вийти?")) return;
-    store.del("token");
+  $("searchInput").oninput = () => { clearTimeout($("searchInput")._t); $("searchInput")._t = setTimeout(runSearch, 300); };
+  $("rebuildIndex").onclick = async () => { state.index.clear(); await ensureIndex(); renderContext(); renderTags(); toast("індекс оновлено"); };
+  $("navBack").onclick = goBack;
+  $("navFwd").onclick = goFwd;
+  document.querySelectorAll("#ribbon [data-pane]").forEach((b) => { b.onclick = () => showPane(b.dataset.pane); });
+
+  $("saveSettings").onclick = () => {
+    store.set("repo", $("setRepo").value.trim());
+    store.set("branch", $("setBranch").value.trim());
+    store.set("token", $("setToken").value.trim());
+    store.set("theme", $("setTheme").value);
+    store.set("font", $("setFont").value);
+    store.set("width", $("setWidth").value);
+    theme(); applyPrefs();
+    closeModals();
     location.reload();
   };
-  $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 
-  window.addEventListener("beforeunload", (e) => {
-    if (state.open.some((f) => f.dirty)) { e.preventDefault(); e.returnValue = ""; }
-  });
+  window.addEventListener("beforeunload", (e) => { if (state.open.some((f) => f.dirty)) { e.preventDefault(); e.returnValue = ""; } });
 
-  // ---------- boot ----------
+  /* ---------------- boot ---------------- */
   async function connect(repo, branch, token, remember) {
     state.repo = repo.trim();
     state.branch = branch.trim() || "main";
     state.token = token.trim();
     $("loginError").textContent = "";
     try {
-      const info = await api(`/repos/${state.repo}`);
-      if (!info.permissions || !info.permissions.push) throw new Error("нема прав на запис у цей репозиторій");
-      if (remember) {
-        store.set("repo", state.repo);
-        store.set("branch", state.branch);
-        store.set("token", state.token);
-      }
-      $("repoName").textContent = state.repo + " @ " + state.branch;
+      const info = await api("/repos/" + state.repo);
+      if (!info.permissions || !info.permissions.push) throw new Error("нема прав на запис");
+      if (remember) { store.set("repo", state.repo); store.set("branch", state.branch); store.set("token", state.token); }
       $("login").style.display = "none";
       $("app").classList.add("ready");
       await loadTree();
       const first = state.files[0];
-      if (first) await openFile(first);
+      if (first) await openNote(first);
+      showPane("files");
+      ensureIndex().then(() => { renderTags(); renderContext(); }).catch(() => {});
     } catch (error) {
       $("loginError").textContent = "Не вийшло: " + error.message;
     }
   }
 
+  theme();
+  applyPrefs();
   $("repo").value = state.repo;
   $("branch").value = state.branch;
   $("token").value = state.token;
-
   $("connect").onclick = () => connect($("repo").value, $("branch").value, $("token").value, true);
   $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
-
-  if (state.token) {
-    connect(state.repo, state.branch, state.token, false);
-  }
+  $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
+  if (state.token) connect(state.repo, state.branch, state.token, false);
 })();
 </script>
 </body>
