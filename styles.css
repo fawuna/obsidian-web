@@ -453,6 +453,13 @@ body.view-base #editor, body.view-base #previewHost, body.view-base #liveHost, b
 #baseTable tbody tr:hover { background: var(--bg-3); cursor: pointer; }
 #baseTable td.base-file { color: var(--text); font-weight: 500; }
 #baseTable .tag { margin-right: 4px; }
+.base-cards { display: none; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; padding: 12px 0; }
+.base-card { border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); padding: 10px 12px; cursor: pointer; }
+.base-card:hover { border-color: var(--accent); }
+.base-card-title { font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.base-card-prop { display: flex; gap: 8px; font-size: 12px; color: var(--text-dim); margin: 3px 0; }
+.base-card-prop .key { color: var(--muted); min-width: 70px; }
+.base-card .tag { margin-right: 4px; }
 .canvas-bar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--bg-2); font-size: 12px; color: var(--muted); }
 .canvas-bar .spacer { flex: 1; }
 #canvasBoard { position: relative; flex: 1; overflow: hidden; background:

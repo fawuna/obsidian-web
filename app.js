@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=63";
-import { initCanvas } from "./canvas.js?v=63";
-import { initCollab } from "./collab.js?v=63";
-import { initPlugins } from "./plugins.js?v=63";
-import { exportPdfFile } from "./pdf.js?v=63";
-import { initLive } from "./live.js?v=63";
-import { initDaily } from "./daily.js?v=63";
+import { initGraph } from "./graph.js?v=64";
+import { initCanvas } from "./canvas.js?v=64";
+import { initCollab } from "./collab.js?v=64";
+import { initPlugins } from "./plugins.js?v=64";
+import { exportPdfFile } from "./pdf.js?v=64";
+import { initLive } from "./live.js?v=64";
+import { initDaily } from "./daily.js?v=64";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v63";
+const BUILD = "v64";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -3687,7 +3687,14 @@ function baseColumns(view, rows) {
       if (order.length >= 7) break;
     }
   }
-  return order.map(baseNormalizeKey);
+  return order.map((entry) => {
+    if (entry && typeof entry === "object" && entry.property) {
+      const column = baseNormalizeKey(entry.property);
+      if (entry.displayName) column.label = entry.displayName;
+      return column;
+    }
+    return baseNormalizeKey(entry);
+  });
 }
 
 function baseBuild(config, docs) {
@@ -3722,6 +3729,57 @@ function baseBuild(config, docs) {
     });
   }
   return { rows: filtered, columns, view, views };
+}
+
+function renderBaseCards(data) {
+  const host = $("baseCards");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const row of data.rows.slice(0, 300)) {
+    const card = el("div", "base-card");
+    card.onclick = () => openNote(row.path);
+    card.appendChild(el("div", "base-card-title", row.file.name));
+    for (const column of data.columns) {
+      if (column.source === "file" && column.key === "name") continue;
+      const line = el("div", "base-card-prop");
+      line.appendChild(el("span", "key", column.label));
+      const value = el("span", "val");
+      if (column.source === "tags") {
+        for (const tag of row.tags) {
+          const chip = el("a", "tag", "#" + tag);
+          chip.onclick = (event) => {
+            event.stopPropagation();
+            $("searchInput").value = "tag:#" + tag;
+            showPane("search");
+            runSearch();
+          };
+          value.appendChild(chip);
+        }
+      } else {
+        value.textContent = String(baseCellValue(row, column));
+      }
+      line.appendChild(value);
+      card.appendChild(line);
+    }
+    host.appendChild(card);
+  }
+}
+
+function renderBaseView(data) {
+  const isCards = (data.view.type || "table") === "cards";
+  const table = $("baseTable");
+  const cards = $("baseCards");
+  if (table) table.style.display = isCards ? "none" : "";
+  if (cards) cards.style.display = isCards ? "grid" : "none";
+  if (isCards) renderBaseCards(data);
+  else renderBaseTable(data);
+  const empty = $("baseEmpty");
+  if (empty) {
+    empty.style.display = data.rows.length ? "none" : "";
+    empty.textContent = data.rows.length ? "" : "Немає рядків за цим фільтром";
+  }
+  const count = $("baseCount");
+  if (count) count.textContent = data.rows.length + " рядків";
 }
 
 function renderBaseTable(data) {
@@ -3801,7 +3859,7 @@ async function renderBase() {
   }
   const name = $("baseName");
   if (name) name.textContent = (basePath ? noteName(basePath) : "Base") + " · " + (data.view.name || "Table");
-  renderBaseTable(data);
+  renderBaseView(data);
 }
 
 async function openBase(path) {
@@ -3842,10 +3900,10 @@ async function createBase() {
   } catch (error) { toast("Не вийшло: " + error.message); }
 }
 
-function renderBasePreview(config, docs) {
+function renderBasePreview(config, docs, viewIndex = 0) {
   basePath = null;
   baseConfig = config || {};
-  baseViewIndex = 0;
+  baseViewIndex = Math.max(0, Number(viewIndex) || 0);
   baseSort = null;
   setView("base");
   const data = baseBuild(baseConfig, docs || []);
@@ -3858,13 +3916,15 @@ function renderBasePreview(config, docs) {
       option.textContent = view.name || ("View " + (index + 1));
       select.appendChild(option);
     });
+    select.value = String(Math.min(baseViewIndex, data.views.length - 1));
   }
-  renderBaseTable(data);
+  renderBaseView(data);
   return {
     rows: data.rows.length,
     columns: data.columns.length,
     keys: data.columns.map((column) => column.source + ":" + column.key),
     paths: data.rows.map((row) => row.path),
+    viewType: data.view.type || "table",
   };
 }
 
