@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=47">
+<link rel="stylesheet" href="styles.css?v=48">
 </head>
 <body>
 
@@ -148,16 +148,59 @@
     </main>
 
     <aside id="right">
-      <div class="pane-head">
-        <span class="title">Структура</span>
-        <button class="icon-btn" id="copyOutline" title="Скопіювати заголовки">⧉</button>
+      <div class="workspace-tab-header-container">
+        <div class="workspace-tab-header-container-inner" id="rightTabs"></div>
       </div>
-      <div class="pane-body" id="outline"></div>
-      <div class="pane-head">
-        <span class="title">Контекст</span>
-        <button class="icon-btn" id="rebuildIndex" title="Перебудувати індекс">⟳</button>
+      <div class="workspace-sidedock-empty-state" id="rightEmpty" style="display:none">
+        <p class="u-muted">Бічна панель порожня. Відкрий панель із палітри команд.</p>
       </div>
-      <div class="pane-body" id="context"></div>
+      <div class="workspace-tab-container" id="rightPanels">
+        <div class="view-content right-panel" data-tab="backlink">
+          <div class="nav-header">
+            <div class="nav-buttons-container">
+              <button class="clickable-icon nav-action-button" id="blCollapse" title="Згорнути результати">☰</button>
+              <button class="clickable-icon nav-action-button" id="blContext" title="Більше контексту">↕</button>
+              <button class="clickable-icon nav-action-button" id="blSort" title="Порядок сортування">⇅</button>
+              <button class="clickable-icon nav-action-button" id="rebuildIndex" title="Перебудувати індекс">⟳</button>
+            </div>
+            <div class="search-input-container">
+              <input id="blFilter" type="search" placeholder="Фільтр…" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+          <div class="right-scroll" id="backlinks"></div>
+        </div>
+        <div class="view-content right-panel" data-tab="outgoing-link">
+          <div class="nav-header"><span class="nav-title">Outgoing links</span></div>
+          <div class="right-scroll" id="outgoing"></div>
+        </div>
+        <div class="view-content right-panel" data-tab="tag">
+          <div class="nav-header">
+            <span class="nav-title">Tags</span>
+            <div class="search-input-container">
+              <input id="tagFilter" type="search" placeholder="Фільтр…" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+          <div class="right-scroll" id="tagPanel"></div>
+        </div>
+        <div class="view-content right-panel" data-tab="all-properties">
+          <div class="nav-header">
+            <span class="nav-title">All properties</span>
+            <div class="search-input-container">
+              <input id="propFilter" type="search" placeholder="Фільтр…" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+          <div class="right-scroll" id="allProps"></div>
+        </div>
+        <div class="view-content right-panel" data-tab="outline">
+          <div class="nav-header">
+            <span class="nav-title">Outline</span>
+            <div class="nav-buttons-container">
+              <button class="clickable-icon nav-action-button" id="copyOutline" title="Скопіювати заголовки">⧉</button>
+            </div>
+          </div>
+          <div class="right-scroll" id="outline"></div>
+        </div>
+      </div>
     </aside>
   </div>
 
@@ -235,7 +278,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=47"></script>
-<script type="module" src="app.js?v=47"></script>
+<script src="vendor/marked.min.js?v=48"></script>
+<script type="module" src="app.js?v=48"></script>
 </body>
 </html>

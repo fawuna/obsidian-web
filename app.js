@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=47";
-import { initCanvas } from "./canvas.js?v=47";
-import { initCollab } from "./collab.js?v=47";
-import { initPlugins } from "./plugins.js?v=47";
-import { exportPdfFile } from "./pdf.js?v=47";
-import { initLive } from "./live.js?v=47";
-import { initDaily } from "./daily.js?v=47";
+import { initGraph } from "./graph.js?v=48";
+import { initCanvas } from "./canvas.js?v=48";
+import { initCollab } from "./collab.js?v=48";
+import { initPlugins } from "./plugins.js?v=48";
+import { exportPdfFile } from "./pdf.js?v=48";
+import { initLive } from "./live.js?v=48";
+import { initDaily } from "./daily.js?v=48";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v47";
+const BUILD = "v48";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1228,8 +1228,8 @@ function paint() {
     else if (livePath !== file.path) { liveApi.reset(file.text); livePath = file.path; }
     else liveApi.setDoc(file.text);
   }
-  renderContext();
-  renderOutline();
+  renderRightTabs();
+  renderRightPanels();
   syncHighlight();
   for (let index = 1; index < state.groups.length; index++) paintGroup(index);
   const words = file ? file.text.trim().split(/\s+/).filter(Boolean).length : 0;
@@ -1765,7 +1765,7 @@ function wireRendered(root, sourceText, lineOffset = 0) {
     t.onclick = (event) => {
       event.preventDefault();
       const input = $("searchInput");
-      if (input) { input.value = "#" + t.dataset.tag; showPane("search"); input.dispatchEvent(new Event("input")); }
+      if (input) { input.value = "tag:#" + t.dataset.tag; showPane("search"); input.dispatchEvent(new Event("input")); }
     };
   });
 }
@@ -1825,50 +1825,403 @@ async function ensureIndex(exceptPath) {
   }
 }
 
-async function renderContext() {
-  const host = $("context");
-  const file = currentFile();
+/* ---------------- right sidebar ---------------- */
+const RIGHT_TABS = [
+  { id: "backlink", label: "Backlinks" },
+  { id: "outgoing-link", label: "Outgoing links" },
+  { id: "tag", label: "Tags" },
+  { id: "all-properties", label: "All properties" },
+  { id: "outline", label: "Outline" },
+];
+
+const RIGHT_ICONS = {
+  backlink: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon links-coming-in"><path d="M8.70467 12C8.21657 11.6404 7.81269 11.1817 7.52044 10.6549C7.22819 10.1281 7.0544 9.54553 7.01086 8.94677C6.96732 8.348 7.05504 7.74701 7.26808 7.18456C7.48112 6.62212 7.81449 6.11138 8.24558 5.68697L10.7961 3.17516C11.5978 2.41258 12.6716 1.99062 13.7861 2.00016C14.9007 2.0097 15.9668 2.44997 16.755 3.22615C17.5431 4.00234 17.9902 5.05233 17.9998 6.14998C18.0095 7.24763 17.5811 8.30511 16.8067 9.09467L15.9014 10"></path><path d="M11.2953 8C11.7834 8.35957 12.1873 8.81831 12.4796 9.34512C12.7718 9.87192 12.9456 10.4545 12.9891 11.0532C13.0327 11.652 12.945 12.253 12.7319 12.8154C12.5189 13.3779 12.1855 13.8886 11.7544 14.313L9.20392 16.8248C8.40221 17.5874 7.32844 18.0094 6.21389 17.9998C5.09933 17.9903 4.03318 17.55 3.24504 16.7738C2.4569 15.9977 2.00985 14.9477 2.00016 13.85C1.99047 12.7524 2.41893 11.6949 3.19326 10.9053L4.09859 10"></path><path d="M17 21L14 18L17 15"></path><path d="M21 18H14"></path></svg>',
+  "outgoing-link": '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon links-going-out"><path d="M8.70467 12C8.21657 11.6404 7.81269 11.1817 7.52044 10.6549C7.22819 10.1281 7.0544 9.54553 7.01086 8.94677C6.96732 8.348 7.05504 7.74701 7.26808 7.18456C7.48112 6.62212 7.81449 6.11138 8.24558 5.68697L10.7961 3.17516C11.5978 2.41258 12.6716 1.99062 13.7861 2.00016C14.9007 2.0097 15.9668 2.44997 16.755 3.22615C17.5431 4.00234 17.9902 5.05233 17.9998 6.14998C18.0095 7.24763 17.5811 8.30511 16.8067 9.09467L15.9014 10"></path><path d="M11.2953 8C11.7834 8.35957 12.1873 8.81831 12.4796 9.34512C12.7718 9.87192 12.9456 10.4545 12.9891 11.0532C13.0327 11.652 12.945 12.253 12.7319 12.8154C12.5189 13.3779 12.1855 13.8886 11.7544 14.313L9.20392 16.8248C8.40221 17.5874 7.32844 18.0094 6.21389 17.9998C5.09933 17.9903 4.03318 17.55 3.24504 16.7738C2.4569 15.9977 2.00985 14.9477 2.00016 13.85C1.99047 12.7524 2.41893 11.6949 3.19326 10.9053L4.09859 10"></path><path d="M17 3L20 6L17 9"></path><path d="M10 6H20"></path></svg>',
+  tag: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-tags"><path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 5 9.172V4a2 2 0 0 1 2-2z"></path><path d="M7 7h.01"></path></svg>',
+  "all-properties": '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-text"><path d="M21 5H3"></path><path d="M15 12H3"></path><path d="M17 19H3"></path></svg>',
+  outline: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-list"><path d="M3 5h.01"></path><path d="M3 12h.01"></path><path d="M3 19h.01"></path><path d="M8 5h13"></path><path d="M8 12h13"></path><path d="M8 19h13"></path></svg>',
+};
+
+let rightTab = store.get("rightTab", "backlink");
+let rightClosed = [];
+try {
+  const savedClosed = JSON.parse(store.get("rightClosed", "[]"));
+  if (Array.isArray(savedClosed)) rightClosed = savedClosed.filter((id) => RIGHT_TABS.some((tab) => tab.id === id));
+} catch { rightClosed = []; }
+let backlinkMoreContext = false;
+let backlinkSort = "name";
+const backlinkCollapsed = new Set();
+
+function persistRightSidebar() {
+  store.set("rightTab", rightTab);
+  store.set("rightClosed", JSON.stringify(rightClosed));
+}
+
+function renderRightTabs() {
+  const host = $("rightTabs");
+  if (!host) return;
+  const available = RIGHT_TABS.filter((tab) => !rightClosed.includes(tab.id));
+  if (!available.some((tab) => tab.id === rightTab)) rightTab = available.length ? available[0].id : "";
   host.innerHTML = "";
-  if (!file) { host.appendChild(el("div", "empty", "Нотатку не відкрито")); return; }
-  const name = file.path.split("/").pop().replace(/\.md$/, "");
+  for (const tab of available) {
+    const head = el("div", "workspace-tab-header tappable" + (tab.id === rightTab ? " is-active" : ""));
+    head.dataset.type = tab.id;
+    head.setAttribute("aria-label", tab.label);
+    head.title = tab.label;
+    const inner = el("div", "workspace-tab-header-inner");
+    const icon = el("div", "workspace-tab-header-inner-icon");
+    icon.innerHTML = RIGHT_ICONS[tab.id] || RIGHT_ICONS.outline;
+    const title = el("div", "workspace-tab-header-inner-title", tab.label);
+    const status = el("div", "workspace-tab-header-status-container");
+    const close = el("div", "workspace-tab-header-inner-close-button");
+    close.setAttribute("aria-label", "Close");
+    close.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-x"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>';
+    close.onclick = (event) => { event.stopPropagation(); closeRightTab(tab.id); };
+    inner.append(icon, title, status, close);
+    head.appendChild(inner);
+    head.onclick = () => switchRightTab(tab.id);
+    host.appendChild(head);
+  }
+  const empty = $("rightEmpty");
+  const panels = $("rightPanels");
+  if (empty) empty.style.display = available.length ? "none" : "flex";
+  if (panels) panels.style.display = available.length ? "flex" : "none";
+  document.querySelectorAll("#right .right-panel").forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.tab === rightTab);
+  });
+  persistRightSidebar();
+}
+
+function switchRightTab(id) {
+  if (!RIGHT_TABS.some((tab) => tab.id === id)) return;
+  rightClosed = rightClosed.filter((item) => item !== id);
+  rightTab = id;
+  persistRightSidebar();
+  renderRightTabs();
+  renderRightPanels();
+}
+
+function closeRightTab(id) {
+  if (!rightClosed.includes(id)) rightClosed.push(id);
+  if (rightTab === id) {
+    const available = RIGHT_TABS.filter((tab) => !rightClosed.includes(tab.id));
+    rightTab = available.length ? available[0].id : "";
+  }
+  persistRightSidebar();
+  renderRightTabs();
+  renderRightPanels();
+}
+
+function openRightTab(id) {
+  if (!RIGHT_TABS.some((tab) => tab.id === id)) return;
+  rightClosed = rightClosed.filter((item) => item !== id);
+  switchRightTab(id);
+}
+
+function renderRightPanels() {
+  if (!rightTab) return;
+  if (rightTab === "outline") renderOutline();
+  else if (rightTab === "backlink") renderBacklinks();
+  else if (rightTab === "outgoing-link") renderOutgoingLinks();
+  else if (rightTab === "tag") renderTagPanel();
+  else if (rightTab === "all-properties") renderAllProperties();
+}
+
+function noteName(path) { return String(path || "").split("/").pop().replace(/\.md$/, ""); }
+
+function escapeRegExp(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+function resolveLinkTarget(target) {
+  const clean = String(target || "").split("|")[0].split("#")[0].replace(/\.md$/i, "").trim();
+  if (!clean) return null;
+  return state.files.find((path) => path === clean + ".md" || path === clean || path.endsWith("/" + clean + ".md")) || null;
+}
+
+function wikiLinks(text) {
+  const links = [];
+  const re = /\[\[([^\]]+)\]\]/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const target = match[1].split("|")[0].trim();
+    if (!target) continue;
+    links.push({ target, raw: match[0], start: match.index, end: match.index + match[0].length });
+  }
+  return links;
+}
+
+function lineAt(text, index) {
+  const before = text.slice(0, index);
+  const start = before.lastIndexOf("\n") + 1;
+  const end = text.indexOf("\n", index);
+  return {
+    line: before.split("\n").length - 1,
+    start,
+    text: text.slice(start, end < 0 ? text.length : end),
+  };
+}
+
+function snippetPieces(lineText, from, to, wide) {
+  const width = wide ? 150 : 90;
+  let start = Math.max(0, from - Math.floor((width - (to - from)) / 2));
+  let end = Math.min(lineText.length, to + Math.floor((width - (to - from)) / 2));
+  if (end - start < width) start = Math.max(0, end - width);
+  if (end - start < width) end = Math.min(lineText.length, start + width);
+  return [
+    { text: (start > 0 ? "…" : "") + lineText.slice(start, from) },
+    { text: lineText.slice(from, to), match: true },
+    { text: lineText.slice(to) + (end < lineText.length ? "…" : "") },
+  ];
+}
+
+function renderGroupSection(container, sectionKey, label, groups, emptyText) {
+  const head = el("div", "tree-item-self is-clickable");
+  head.setAttribute("aria-label", "Click to collapse");
+  head.dataset.section = sectionKey;
+  const icon = el("span", "tree-item-icon collapse-icon");
+  icon.innerHTML = READING_TRIANGLE_SVG;
+  const inner = el("div", "tree-item-inner", label);
+  const flair = el("div", "tree-item-flair-outer");
+  flair.appendChild(el("span", "tree-item-flair", String(groups.size)));
+  head.append(icon, inner, flair);
+  const holder = el("div", "search-result-container");
+  const children = el("div", "search-results-children");
+  const collapsed = backlinkCollapsed.has(sectionKey);
+  head.classList.toggle("is-collapsed", collapsed);
+  holder.style.display = collapsed ? "none" : "";
+  head.onclick = () => {
+    if (backlinkCollapsed.has(sectionKey)) backlinkCollapsed.delete(sectionKey);
+    else backlinkCollapsed.add(sectionKey);
+    const nowCollapsed = backlinkCollapsed.has(sectionKey);
+    head.classList.toggle("is-collapsed", nowCollapsed);
+    holder.style.display = nowCollapsed ? "none" : "";
+  };
+  if (!groups.size) children.appendChild(el("div", "empty", emptyText));
+  const entries = [...groups.entries()];
+  if (backlinkSort === "count") entries.sort((a, b) => b[1].length - a[1].length || noteName(a[0]).localeCompare(noteName(b[0])));
+  else entries.sort((a, b) => noteName(a[0]).localeCompare(noteName(b[0])));
+  for (const [fileKey, hits] of entries) {
+    const resolved = state.files.includes(fileKey) ? fileKey : resolveLinkTarget(fileKey);
+    const item = el("div", "tree-item search-result");
+    const title = el("div", "tree-item-self search-result-file-title is-clickable" + (resolved ? "" : " is-unresolved"));
+    title.draggable = true;
+    title.title = resolved || fileKey;
+    const tri = el("div", "tree-item-icon collapse-icon");
+    tri.innerHTML = READING_TRIANGLE_SVG;
+    const name = el("div", "tree-item-inner", noteName(fileKey));
+    const count = el("div", "tree-item-flair-outer");
+    count.appendChild(el("span", "tree-item-flair", String(hits.length)));
+    title.append(tri, name, count);
+    const matches = el("div", "search-result-file-matches");
+    title.onclick = () => {
+      const next = !title.classList.contains("is-collapsed");
+      title.classList.toggle("is-collapsed", next);
+      matches.style.display = next ? "none" : "";
+    };
+    title.ondblclick = () => { if (resolved) openNote(resolved); };
+    for (const hit of hits.slice(0, 40)) {
+      const row = el("div", "search-result-file-match tappable");
+      for (const piece of hit.pieces) {
+        if (!piece.text) continue;
+        row.appendChild(el("span", piece.match ? "search-result-file-matched-text" : null, piece.text));
+      }
+      row.title = resolved ? "Відкрити " + resolved : "Немає нотатки: " + fileKey;
+      row.onclick = async () => {
+        if (!resolved) { toast("Немає нотатки: " + fileKey); return; }
+        await openNote(resolved);
+        jumpToLine(hit.line);
+      };
+      matches.appendChild(row);
+    }
+    item.append(title, matches);
+    children.appendChild(item);
+  }
+  holder.appendChild(children);
+  container.append(head, holder);
+}
+
+async function renderBacklinks() {
+  const host = $("backlinks");
+  if (!host) return;
+  const file = currentFile();
+  if (!file) { host.innerHTML = ""; host.appendChild(el("div", "empty", "Немає відкритої нотатки")); return; }
+  host.innerHTML = "";
   host.appendChild(el("div", "empty", "шукаю звʼязки…"));
   await ensureIndex(file.path);
-
-  const back = [];
-  const pattern = new RegExp("\\[\\[\\s*" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*(\\||\\]\\])", "i");
+  if (rightTab !== "backlink") return;
+  const current = currentFile();
+  if (!current || current.path !== file.path) return;
+  host.innerHTML = "";
+  const name = noteName(file.path);
+  const filter = ($("blFilter")?.value || "").trim().toLowerCase();
+  const linked = new Map();
+  const unlinked = new Map();
   for (const [path, text] of state.index) {
     if (path === file.path || !text) continue;
-    if (pattern.test(text)) back.push(path);
+    const linkedHits = [];
+    for (const link of wikiLinks(text)) {
+      if (resolveLinkTarget(link.target) !== file.path) continue;
+      const info = lineAt(text, link.start);
+      const from = link.start - info.start;
+      linkedHits.push({ line: info.line, pieces: snippetPieces(info.text, from, from + link.raw.length, backlinkMoreContext) });
+    }
+    if (linkedHits.length) linked.set(path, linkedHits);
+    if (name.length > 1) {
+      const stripped = text.replace(/\[\[[^\]]+\]\]/g, (value) => " ".repeat(value.length));
+      const plainHits = [];
+      const re = new RegExp("(?<![\\p{L}\\p{N}_])" + escapeRegExp(name) + "(?![\\p{L}\\p{N}_])", "giu");
+      let match;
+      while ((match = re.exec(stripped)) !== null) {
+        const info = lineAt(stripped, match.index);
+        const from = match.index - info.start;
+        plainHits.push({ line: info.line, pieces: snippetPieces(info.text, from, from + match[0].length, backlinkMoreContext) });
+        if (plainHits.length >= 40) break;
+      }
+      if (plainHits.length) unlinked.set(path, plainHits);
+    }
   }
-  const out = [...file.text.matchAll(/\[\[([^\]|]+)/g)].map((m) => m[1].trim());
-  const tags = [...new Set([...file.text.matchAll(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF-]{2,})/g)].map((m) => m[2]))];
+  if (filter) {
+    const keep = (groups) => {
+      for (const [path, hits] of [...groups]) {
+        const text = hits.map((hit) => hit.pieces.map((piece) => piece.text).join("")).join(" ").toLowerCase();
+        if (!noteName(path).toLowerCase().includes(filter) && !text.includes(filter)) groups.delete(path);
+      }
+    };
+    keep(linked);
+    keep(unlinked);
+  }
+  const pane = el("div", "backlink-pane node-insert-event");
+  renderGroupSection(pane, "backlink:Linked mentions", "Linked mentions", linked, "Немає згадок");
+  renderGroupSection(pane, "backlink:Unlinked mentions", "Unlinked mentions", unlinked, "Немає непривʼязаних згадок");
+  host.appendChild(pane);
+}
 
+async function renderOutgoingLinks() {
+  const host = $("outgoing");
+  if (!host) return;
+  const file = currentFile();
+  if (!file) { host.innerHTML = ""; host.appendChild(el("div", "empty", "Немає відкритої нотатки")); return; }
   host.innerHTML = "";
-  const section = (title, items, emptyText, onClick) => {
-    const wrap = el("div");
-    const h = el("div", "pane-head");
-    h.appendChild(el("span", "title", title + " (" + items.length + ")"));
-    wrap.appendChild(h);
-    if (!items.length) wrap.appendChild(el("div", "empty", emptyText));
-    items.slice(0, 60).forEach((item) => {
-      const b = el("button", "backlink", item.replace(/\.md$/, ""));
-      b.onclick = () => onClick(item);
-      wrap.appendChild(b);
-    });
-    return wrap;
-  };
-  host.appendChild(section("Згадки", back, "ніхто не посилається", (p) => openNote(p)));
-  host.appendChild(section("Посилання", out, "нема посилань", (t) => {
-    const hit = state.files.find((p) => p === t + ".md" || p.endsWith("/" + t + ".md"));
-    if (hit) openNote(hit); else toast("Нема нотатки: " + t);
-  }));
-  if (tags.length) {
-    const wrap = el("div");
-    const h = el("div", "pane-head");
-    h.appendChild(el("span", "title", "Теги"));
-    wrap.appendChild(h);
-    tags.forEach((t) => wrap.appendChild(el("span", "tag-chip", "#" + t)));
-    host.appendChild(wrap);
+  const links = new Map();
+  for (const link of wikiLinks(file.text)) {
+    const resolved = resolveLinkTarget(link.target);
+    const key = resolved || link.target.split("|")[0].trim();
+    const info = lineAt(file.text, link.start);
+    const from = link.start - info.start;
+    const hits = links.get(key) || [];
+    hits.push({ line: info.line, pieces: snippetPieces(info.text, from, from + link.raw.length, false) });
+    links.set(key, hits);
+  }
+  const unlinked = new Map();
+  const stripped = file.text.replace(/\[\[[^\]]+\]\]/g, (value) => " ".repeat(value.length));
+  for (const path of state.files) {
+    if (!path.endsWith(".md") || path === file.path) continue;
+    const otherName = noteName(path);
+    if (otherName.length < 2) continue;
+    const re = new RegExp("(?<![\\p{L}\\p{N}_])" + escapeRegExp(otherName) + "(?![\\p{L}\\p{N}_])", "giu");
+    const hits = [];
+    let match;
+    while ((match = re.exec(stripped)) !== null) {
+      const info = lineAt(stripped, match.index);
+      const from = match.index - info.start;
+      hits.push({ line: info.line, pieces: snippetPieces(info.text, from, from + match[0].length, false) });
+      if (hits.length >= 40) break;
+    }
+    if (hits.length) unlinked.set(path, hits);
+  }
+  const pane = el("div", "outgoing-link-pane node-insert-event");
+  renderGroupSection(pane, "outgoing:Links", "Links", links, "Немає посилань");
+  renderGroupSection(pane, "outgoing:Unlinked mentions", "Unlinked mentions", unlinked, "Немає непривʼязаних згадок");
+  host.appendChild(pane);
+}
+
+function noteTags(text) {
+  const tags = new Set();
+  const parsed = parseProps(String(text || ""));
+  if (parsed) {
+    for (const [key, value] of parsed.props) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== "tags" && lowerKey !== "tag") continue;
+      for (const part of String(value).split(/[,\s]+/)) {
+        const tag = part.replace(/^#/, "").replace(/^["']|["']$/g, "").trim();
+        if (tag) tags.add(tag);
+      }
+    }
+  }
+  for (const match of String(text || "").matchAll(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]*)/g)) {
+    tags.add(match[2]);
+  }
+  return tags;
+}
+
+function renderTagPanel() {
+  const host = $("tagPanel");
+  if (!host) return;
+  const filter = ($("tagFilter")?.value || "").trim().toLowerCase().replace(/^#/, "");
+  const counts = new Map();
+  for (const [, text] of state.index) {
+    if (!text) continue;
+    for (const tag of noteTags(text)) counts.set(tag, (counts.get(tag) || 0) + 1);
+  }
+  host.innerHTML = "";
+  const rows = [...counts.entries()]
+    .filter(([tag]) => !filter || tag.toLowerCase().includes(filter))
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  if (!rows.length) { host.appendChild(el("div", "empty", counts.size ? "Нічого не знайдено" : "Немає тегів")); return; }
+  for (const [tag, count] of rows) {
+    const item = el("div", "tree-item");
+    const self = el("div", "tree-item-self is-clickable");
+    const icon = el("div", "tree-item-icon");
+    icon.innerHTML = RIGHT_ICONS.tag;
+    const inner = el("div", "tree-item-inner");
+    inner.appendChild(el("div", "tree-item-inner-text", "#" + tag));
+    const flair = el("div", "tree-item-flair-outer");
+    flair.appendChild(el("span", "tree-item-flair", String(count)));
+    self.append(icon, inner, flair);
+    self.onclick = () => {
+      $("searchInput").value = "tag:#" + tag;
+      runSearch();
+      showPane("search");
+    };
+    item.appendChild(self);
+    host.appendChild(item);
+  }
+}
+
+function renderAllProperties() {
+  const host = $("allProps");
+  if (!host) return;
+  const filter = ($("propFilter")?.value || "").trim().toLowerCase();
+  const counts = new Map();
+  for (const [, text] of state.index) {
+    if (!text) continue;
+    const parsed = parseProps(text);
+    if (!parsed) continue;
+    for (const [key] of parsed.props) counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  host.innerHTML = "";
+  const rows = [...counts.entries()].filter(([key]) => !filter || key.toLowerCase().includes(filter)).sort((a, b) => a[0].localeCompare(b[0]));
+  if (!rows.length) { host.appendChild(el("div", "empty", counts.size ? "Нічого не знайдено" : "Немає властивостей")); return; }
+  for (const [key, count] of rows) {
+    const item = el("div", "tree-item");
+    const self = el("div", "tree-item-self tappable is-clickable");
+    const icon = el("div", "tree-item-icon");
+    icon.innerHTML = /date|time|created|updated/i.test(key)
+      ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path></svg>'
+      : key === "tags" || key === "aliases"
+        ? RIGHT_ICONS.tag
+        : RIGHT_ICONS["all-properties"];
+    const inner = el("div", "tree-item-inner");
+    inner.appendChild(el("div", "tree-item-inner-text", key));
+    const flair = el("div", "tree-item-flair-outer");
+    flair.appendChild(el("span", "tree-item-flair", String(count)));
+    self.append(icon, inner, flair);
+    self.onclick = () => {
+      $("searchInput").value = '["' + key + '"]';
+      runSearch();
+      showPane("search");
+    };
+    item.appendChild(self);
+    host.appendChild(item);
   }
 }
 
@@ -1878,12 +2231,12 @@ function renderTags() {
   const counts = new Map();
   for (const [, text] of state.index) {
     if (!text) continue;
-    for (const m of text.matchAll(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF-]{2,})/g)) counts.set(m[2], (counts.get(m[2]) || 0) + 1);
+    for (const tag of noteTags(text)) counts.set(tag, (counts.get(tag) || 0) + 1);
   }
   if (!counts.size) { host.appendChild(el("div", "empty", "Тегів ще нема. Відкрий кілька нотаток — індекс збереться.")); return; }
   [...counts.entries()].sort((a, b) => b[1] - a[1]).forEach(([tag, n]) => {
     const chip = el("span", "tag-chip", "#" + tag + " · " + n);
-    chip.onclick = () => { $("searchInput").value = "#" + tag; runSearch(); showPane("search"); };
+    chip.onclick = () => { $("searchInput").value = "tag:#" + tag; runSearch(); showPane("search"); };
     host.appendChild(chip);
   });
 }
@@ -1903,7 +2256,22 @@ async function runSearch() {
     const lower = text.toLowerCase();
     const pathLower = path.toLowerCase();
     if (parsed.path.some((p) => !pathLower.includes(p))) continue;
-    if (parsed.tags.some((t) => !lower.includes("#" + t))) continue;
+    if (parsed.tags.some((t) => {
+      for (const tag of noteTags(text)) {
+        if (tag === t || tag.startsWith(t + "/")) return false;
+      }
+      return true;
+    })) continue;
+    if (parsed.props.some((spec) => {
+      const parsedProps = parseProps(text);
+      if (!parsedProps) return true;
+      const splitAt = spec.indexOf(":");
+      const key = splitAt >= 0 ? spec.slice(0, splitAt) : spec;
+      const wanted = splitAt >= 0 ? spec.slice(splitAt + 1) : null;
+      const found = parsedProps.props.find(([name]) => name.toLowerCase() === key);
+      if (!found) return true;
+      return wanted != null && !String(found[1]).toLowerCase().includes(wanted);
+    })) continue;
     if (parsed.not.some((t) => lower.includes(t))) continue;
     if (parsed.terms.some((t) => !lower.includes(t))) continue;
     if (parsed.phrases.some((t) => !lower.includes(t))) continue;
@@ -1938,16 +2306,22 @@ async function runSearch() {
 }
 
 function parseSearchQuery(raw) {
-  const out = { terms: [], phrases: [], path: [], tags: [], not: [] };
-  const re = /(-?)("([^"]+)"|(\S+))/g;
+  const out = { terms: [], phrases: [], path: [], tags: [], props: [], not: [] };
+  const re = /(-?)("([^"]+)"|(\[[^\]]+\])|(\S+))/g;
   let m;
   while ((m = re.exec(raw)) !== null) {
     const neg = m[1] === "-";
-    const token = (m[3] || m[4] || "").trim();
+    const token = (m[3] || m[4] || m[5] || "").trim();
     if (!token) continue;
     if (neg) { out.not.push(token.toLowerCase()); continue; }
     if (/^path:/i.test(token)) { out.path.push(token.slice(5).toLowerCase()); continue; }
     if (/^tag:/i.test(token)) { out.tags.push(token.slice(4).replace(/^#/, "").toLowerCase()); continue; }
+    if (/^\[[^\]]+\]$/.test(token)) {
+      let inner = token.slice(1, -1).trim();
+      if ((inner.startsWith('"') && inner.endsWith('"')) || (inner.startsWith("'") && inner.endsWith("'"))) inner = inner.slice(1, -1);
+      if (inner) out.props.push(inner.toLowerCase());
+      continue;
+    }
     if (m[3]) out.phrases.push(token.toLowerCase());
     else out.terms.push(token.toLowerCase());
   }
@@ -2102,7 +2476,7 @@ export const Vault = {
   state, api, ghGet, ghPut, ghPutRaw, ghDelete, b64encode, b64decode,
   contentsPath, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
-  renderTree, renderTabs, paint, renderPreview, renderContext, renderTags, showPane, showSwitcher,
+  renderTree, renderTabs, paint, renderPreview, renderRightPanels, renderTags, showPane, showSwitcher,
   moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote, openInSecond, closeSecond,
   exportPdfFile: (opts = {}) => exportPdfFile($("preview"), (currentFile()?.path || "note").split("/").pop().replace(/\.md$/, ""), opts),
   get files() { return state.files; },
@@ -2207,10 +2581,15 @@ function renderOutline() {
   }
   if (!items.length) { host.appendChild(el("div", "empty", "немає заголовків")); return; }
   for (const item of items) {
-    const btn = el("button", "outline-item l" + item.level, item.text);
+    const row = el("div", "tree-item");
+    const btn = el("div", "tree-item-self is-clickable outline-item l" + item.level);
+    btn.style.paddingInlineStart = 6 + (item.level - 1) * 14 + "px";
+    const inner = el("div", "tree-item-inner", item.text);
+    btn.appendChild(inner);
     btn.title = "рядок " + (item.line + 1);
     btn.onclick = () => jumpToLine(item.line);
-    host.appendChild(btn);
+    row.appendChild(btn);
+    host.appendChild(row);
   }
 }
 
@@ -2614,7 +2993,21 @@ else if (mobileMedia.addListener) mobileMedia.addListener(onMobileMediaChange);
 $("reloadTree").onclick = () => loadTree().catch((e) => toast(e.message));
 $("filter").oninput = renderTree;
 $("searchInput").oninput = () => { clearTimeout($("searchInput")._t); $("searchInput")._t = setTimeout(runSearch, 300); };
-$("rebuildIndex").onclick = async () => { state.index.clear(); await ensureIndex(); renderContext(); renderTags(); toast("індекс оновлено"); };
+$("rebuildIndex").onclick = async () => { state.index.clear(); await ensureIndex(); renderRightPanels(); renderTags(); toast("індекс оновлено"); };
+$("blCollapse").onclick = () => {
+  const keys = ["backlink:Linked mentions", "backlink:Unlinked mentions", "outgoing:Links", "outgoing:Unlinked mentions"];
+  const allCollapsed = keys.every((key) => backlinkCollapsed.has(key));
+  for (const key of keys) {
+    if (allCollapsed) backlinkCollapsed.delete(key);
+    else backlinkCollapsed.add(key);
+  }
+  renderRightPanels();
+};
+$("blContext").onclick = () => { backlinkMoreContext = !backlinkMoreContext; renderRightPanels(); };
+$("blSort").onclick = () => { backlinkSort = backlinkSort === "name" ? "count" : "name"; renderRightPanels(); };
+$("blFilter").oninput = () => { clearTimeout($("blFilter")._t); $("blFilter")._t = setTimeout(renderBacklinks, 150); };
+$("tagFilter").oninput = () => { clearTimeout($("tagFilter")._t); $("tagFilter")._t = setTimeout(renderTagPanel, 120); };
+$("propFilter").oninput = () => { clearTimeout($("propFilter")._t); $("propFilter")._t = setTimeout(renderAllProperties, 120); };
 $("copyOutline").onclick = () => {  const items = [...document.querySelectorAll("#outline .outline-item")].map((b) => b.textContent);
   if (!items.length) { toast("немає заголовків"); return; }
   navigator.clipboard.writeText(items.map((t) => "- " + t).join("\n")).then(
@@ -2784,7 +3177,7 @@ async function connect(repo, branch, token, remember) {
       applyMobilePane();
     }
     showPane("files");
-    ensureIndex().then(() => { renderTags(); renderContext(); emit("index"); }).catch(() => {});
+    ensureIndex().then(() => { renderTags(); renderRightPanels(); emit("index"); }).catch(() => {});
     initGraph(Vault);
     canvasApi = initCanvas(Vault);
     initCollab(Vault);
@@ -2817,7 +3210,12 @@ registerCommand({ id: "theme", label: "Перемкнути тему", run: togg
 registerCommand({ id: "left", label: "Показати/сховати ліву панель", hint: "Ctrl+B", run: toggleLeft });
 registerCommand({ id: "right", label: "Показати/сховати праву панель", run: toggleRight });
 registerCommand({ id: "reload", label: "Оновити список файлів", run: () => loadTree() });
-registerCommand({ id: "index", label: "Перебудувати індекс звʼязків", run: async () => { state.index.clear(); await ensureIndex(); renderContext(); renderTags(); toast("індекс оновлено"); } });
+registerCommand({ id: "index", label: "Перебудувати індекс звʼязків", run: async () => { state.index.clear(); await ensureIndex(); renderRightPanels(); renderTags(); toast("індекс оновлено"); } });
+registerCommand({ id: "show-backlinks", label: "Backlinks: показати згадки", run: () => openRightTab("backlink") });
+registerCommand({ id: "show-outgoing", label: "Outgoing links: показати посилання", run: () => openRightTab("outgoing-link") });
+registerCommand({ id: "show-tags", label: "Tags: показати теги", run: () => openRightTab("tag") });
+registerCommand({ id: "show-properties", label: "Properties: усі властивості", run: () => openRightTab("all-properties") });
+registerCommand({ id: "show-outline", label: "Outline: показати структуру", run: () => openRightTab("outline") });
 registerCommand({ id: "collab", label: "Спільна робота (real-time)", hint: "👥", run: () => emit("collab:open") });
 registerCommand({ id: "logout", label: "Забути токен і вийти", run: () => { store.del("token"); location.reload(); } });
 
