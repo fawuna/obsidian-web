@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=37";
-import { initCanvas } from "./canvas.js?v=37";
-import { initCollab } from "./collab.js?v=37";
-import { initPlugins } from "./plugins.js?v=37";
-import { exportPdfFile } from "./pdf.js?v=37";
-import { initLive } from "./live.js?v=37";
-import { initDaily } from "./daily.js?v=37";
+import { initGraph } from "./graph.js?v=39";
+import { initCanvas } from "./canvas.js?v=39";
+import { initCollab } from "./collab.js?v=39";
+import { initPlugins } from "./plugins.js?v=39";
+import { exportPdfFile } from "./pdf.js?v=39";
+import { initLive } from "./live.js?v=39";
+import { initDaily } from "./daily.js?v=39";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v37";
+const BUILD = "v39";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -44,6 +44,10 @@ const state = {
 
 let liveApi = null;
 let livePath = null;
+let live2Api = null;
+let live2Path = null;
+let activePane = 1;
+let linkPane = 1;
 let dailyApi = null;
 
 /* ---------------- events ---------------- */
@@ -551,6 +555,7 @@ function renderPane2Tabs() {
     x.onclick = (event) => { event.stopPropagation(); closeTab(path, 1); };
     tab.appendChild(x);
     tab.onclick = () => {
+      activePane = 2;
       group.active = path;
       syncSecond();
       paintSecond();
@@ -622,6 +627,15 @@ function paintSecond() {
   syncHighlight2();
   syncSecond();
   renderPane2Tabs();
+  if (live2Api) {
+    const path = file ? file.path : null;
+    if (live2Path !== path) {
+      live2Api.reset(file ? file.text : "");
+      live2Path = path;
+    } else {
+      live2Api.setDoc(file ? file.text : "");
+    }
+  }
 }
 
 /* ---------------- notes ---------------- */
@@ -768,7 +782,7 @@ function renderTabs() {
     const x = el("span", "close", "✕");
     x.onclick = (e) => { e.stopPropagation(); closeTab(path); };
     tab.appendChild(x);
-    tab.onclick = () => { state.active = path; group1().active = path; setView("note"); pushHistoryState(path); renderTabs(); renderTree(); paint(); };
+    tab.onclick = () => { activePane = 1; state.active = path; group1().active = path; setView("note"); pushHistoryState(path); renderTabs(); renderTree(); paint(); };
     tab.onauxclick = (e) => { if (e.button === 1) closeTab(path); };
     makeTabDraggable(tab, path, "main");
     tab.addEventListener("dragover", (event) => {
@@ -931,8 +945,9 @@ async function deleteNote(path) {
 
 /* ---------------- images ---------------- */
 function insertAtCursor(text) {
-  if (state.mode === "live" && liveApi) { liveApi.insertAtCaret(text); return; }
-  const ed = $("editor");
+  const api = activePane === 2 && live2Api ? live2Api : liveApi;
+  if (state.mode === "live" && api) { api.insertAtCaret(text); return; }
+  const ed = activePane === 2 ? $("editor2") : $("editor");
   const start = ed.selectionStart ?? ed.value.length;
   ed.value = ed.value.slice(0, start) + text + ed.value.slice(ed.selectionEnd ?? start);
   ed.selectionStart = ed.selectionEnd = start + text.length;
@@ -1347,6 +1362,7 @@ let linkPos = null;
 function showSwitcher(mode) {
   switcherMode = mode === "link" ? "link" : mode === "template" ? "template" : "open";
   linkPos = null;
+  if (switcherMode === "link") linkPane = activePane;
   $("switcherInput").value = "";
   $("switcherInput").placeholder = switcherMode === "link" ? "Вставити [[посилання]] на…" : switcherMode === "template" ? "Вставити шаблон…" : "Перейти до нотатки…";
   switcherActive = 0;
@@ -1364,7 +1380,8 @@ function chooseSwitcherItem(path) {
   }
   if (switcherMode === "link") {
     const link = "[[" + path.replace(/\.(md|canvas)$/, "") + "]]";
-    if (state.mode === "live" && liveApi && linkPos !== null) liveApi.insertAt(linkPos, link);
+    const api = linkPane === 2 && live2Api ? live2Api : liveApi;
+    if (state.mode === "live" && api && linkPos !== null) api.insertAt(linkPos, link);
     else insertAtCursor(link);
     linkPos = null;
     switcherMode = "open";
@@ -1426,6 +1443,7 @@ function setMode(mode) {
   if (mode === "live") {
     liveApi?.setDoc(currentFile() ? currentFile().text : "");
     liveApi?.focus();
+    paintSecond();
   }
 }
 const toggleMode = () => setMode(MODES[(MODES.indexOf(state.mode) + 1) % MODES.length]);
@@ -1469,6 +1487,7 @@ export const Vault = {
   get token() { return state.token; },
   get openFiles() { return state.open; },
   get live() { return liveApi; },
+  get live2() { return live2Api; },
 };
 window.Vault = Vault;
 
@@ -1788,6 +1807,8 @@ function wrapSelection(marker) {
 }
 
 $("editor").addEventListener("scroll", () => syncHighlight());
+$("editor").addEventListener("focus", () => { activePane = 1; });
+$("editor2").addEventListener("focus", () => { activePane = 2; });
 
 $("editor2").addEventListener("input", () => {
   const file = groupFile(state.groups[1]);
@@ -2141,6 +2162,7 @@ liveApi = initLive({
     if (!file) return;
     file.text = text;
     $("editor").value = text;
+    if (live2Path === file.path) live2Api?.setDoc(text);
     noteEdited(prev);
     renderPreview();
     syncHighlight();
@@ -2156,7 +2178,44 @@ liveApi = initLive({
     if (hit) openNote(hit); else toast("Немає такої нотатки: " + name);
   },
   imageUrl: (name) => "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.replace(/^\.?\//, "")),
-  onLinkTrigger: (pos) => { showSwitcher("link"); linkPos = pos; },
+  onLinkTrigger: (pos) => { linkPane = 1; showSwitcher("link"); linkPos = pos; },
+  onFocus: () => { activePane = 1; },
+});
+
+live2Api = initLive({
+  hostId: "live2",
+  getText: () => {
+    const file = groupFile(state.groups[1]);
+    return file ? file.text : "";
+  },
+  onChange: (text, prev) => {
+    const file = groupFile(state.groups[1]);
+    if (!file) return;
+    file.text = text;
+    $("editor2").value = text;
+    if (livePath === file.path) liveApi?.setDoc(text);
+    file.dirty = true;
+    state.index.set(file.path, text);
+    setState("не збережено", "warn");
+    syncHighlight2();
+    renderTabs();
+    renderPane2Tabs();
+    clearTimeout($("editor2")._t);
+    $("editor2")._t = setTimeout(() => saveNote(true, file), 1500);
+    emit("modify", { path: file.path, text, prev });
+  },
+  onCursor: (line, ch) => {
+    const node = $("stCursor");
+    if (node) node.textContent = line + ":" + ch;
+  },
+  onOpenNote: (target) => {
+    const name = String(target || "").replace(/^#/, "");
+    const hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
+    if (hit) openNote(hit); else toast("Немає такої нотатки: " + name);
+  },
+  imageUrl: (name) => "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.replace(/^\.?\//, "")),
+  onLinkTrigger: (pos) => { linkPane = 2; showSwitcher("link"); linkPos = pos; },
+  onFocus: () => { activePane = 2; },
 });
 
 theme();

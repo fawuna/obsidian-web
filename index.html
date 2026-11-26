@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=37">
+<link rel="stylesheet" href="styles.css?v=39">
 </head>
 <body>
 
@@ -99,6 +99,7 @@
           <div class="hl-layer" aria-hidden="true"><pre id="hlCode2"></pre></div>
           <textarea id="editor2" spellcheck="false" placeholder="Друга панель: перетягни вкладку сюди або правою кнопкою по файлу → «Відкрити в другій панелі»"></textarea>
         </div>
+        <div id="live2Host"><div id="live2" class="cm-host"></div></div>
       </div>
       <div id="findBar" class="find-bar">
         <input id="findInput" placeholder="Знайти…" autocomplete="off" spellcheck="false">
@@ -111,7 +112,7 @@
         <button class="icon-btn" id="findClose" title="Закрити">✕</button>
       </div>
       <div id="previewHost"><div id="preview"></div></div>
-      <div id="liveHost"><div id="live"></div></div>
+      <div id="liveHost"><div id="live" class="cm-host"></div></div>
 
       <div id="graphHost">
         <div class="graph-bar">
@@ -230,7 +231,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=37"></script>
-<script type="module" src="app.js?v=37"></script>
+<script src="vendor/marked.min.js?v=39"></script>
+<script type="module" src="app.js?v=39"></script>
 </body>
 </html>

@@ -14,12 +14,6 @@ import {
   StateField,
 } from "./vendor/cm6.js";
 
-let cfg = null;
-let view = null;
-let lastText = "";
-let suppress = false;
-let linkPending = false;
-
 const IMAGE_RE = /\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i;
 
 function mark(decos, from, to, cls, attrs) {
@@ -37,7 +31,7 @@ class CheckboxWidget extends WidgetType {
     this.checked = checked;
   }
   eq(other) { return other.lineFrom === this.lineFrom && other.checked === this.checked; }
-  toDOM() {
+  toDOM(editorView) {
     const box = document.createElement("input");
     box.type = "checkbox";
     box.className = "cm-task";
@@ -46,14 +40,13 @@ class CheckboxWidget extends WidgetType {
     box.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (!view) return;
-      const line = view.state.doc.lineAt(this.lineFrom);
+      const line = editorView.state.doc.lineAt(this.lineFrom);
       const open = line.text.indexOf("[");
       if (open < 0) return;
       const at = line.from + open + 1;
-      const ch = view.state.sliceDoc(at, at + 1);
-      view.dispatch({ changes: { from: at, to: at + 1, insert: ch === " " ? "x" : " " } });
-      view.focus();
+      const ch = editorView.state.sliceDoc(at, at + 1);
+      editorView.dispatch({ changes: { from: at, to: at + 1, insert: ch === " " ? "x" : " " } });
+      editorView.focus();
     });
     return box;
   }
@@ -92,7 +85,7 @@ class ImageWidget extends WidgetType {
 const INLINE_RE = /\*\*([^*\n]+)\*\*|__([^_\n]+)__|(?<![*_])\*([^*\n]+)\*(?![*_])|(?<![*_])_([^_\n]+)_(?![*_])|`([^`\n]+)`|==([^=\n]+)==|~~([^~\n]+)~~|!\[\[([^\]\n]+?)\]\]|\[\[([^\]\n]+?)\]\]|\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 const TAG_RE = /(^|[\s(])#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]*)/g;
 
-function decorateInline(decos, text, lineFrom) {
+function decorateInline(decos, text, lineFrom, imageUrl) {
   INLINE_RE.lastIndex = 0;
   let m;
   while ((m = INLINE_RE.exec(text))) {
@@ -123,7 +116,7 @@ function decorateInline(decos, text, lineFrom) {
     } else if (m[8] !== undefined) {
       const name = m[8].split("|")[0].trim();
       if (IMAGE_RE.test(name)) {
-        const src = cfg.imageUrl(name);
+        const src = imageUrl(name);
         decos.push(Decoration.replace({ widget: new ImageWidget(src, name) }).range(at, at + full.length));
       }
     } else if (m[9] !== undefined) {
@@ -407,7 +400,7 @@ class TableWidget extends WidgetType {
 }
 
 
-function buildDecorations(state) {
+function buildDecorations(state, imageUrl) {
   const doc = state.doc;
   const head = state.selection.main.head;
   const activeFrom = doc.lineAt(head).from;
@@ -514,21 +507,23 @@ function buildDecorations(state) {
         const start = line.from + bullet[1].length;
         decos.push(Decoration.replace({ widget: new BulletWidget() }).range(start, start + bullet[0].length - bullet[1].length));
       }
-      decorateInline(decos, text, line.from);
+      decorateInline(decos, text, line.from, imageUrl);
     }
     n++;
   }
   return Decoration.set(decos, true);
 }
 
-const liveDecorations = StateField.define({
-  create(state) { return buildDecorations(state); },
-  update(decorations, tr) {
-    if (tr.docChanged || tr.selection) return buildDecorations(tr.state);
-    return decorations;
-  },
-  provide: (field) => EditorView.decorations.from(field),
-});
+function makeDecorations(imageUrl) {
+  return StateField.define({
+    create(state) { return buildDecorations(state, imageUrl); },
+    update(decorations, tr) {
+      if (tr.docChanged || tr.selection) return buildDecorations(tr.state, imageUrl);
+      return decorations;
+    },
+    provide: (field) => EditorView.decorations.from(field),
+  });
+}
 
 function wrapSelection(editorView, before, after) {
   const { from, to } = editorView.state.selection.main;
@@ -540,7 +535,7 @@ function wrapSelection(editorView, before, after) {
   return true;
 }
 
-function buildExtensions() {
+function makeExtensions(options, instance) {
   return [
     history(),
     drawSelection(),
@@ -553,130 +548,124 @@ function buildExtensions() {
       ...defaultKeymap,
       ...historyKeymap,
     ]),
-    liveDecorations,
+    makeDecorations(options.imageUrl),
     EditorView.contentAttributes.of({ spellcheck: "false", autocapitalize: "off", autocorrect: "off" }),
     EditorView.domEventHandlers({
       mousedown(event) {
         const link = event.target.closest && event.target.closest(".cm-wikilink");
         if (link && (event.metaKey || event.ctrlKey)) {
           event.preventDefault();
-          cfg.onOpenNote(link.dataset.target || "");
+          options.onOpenNote(link.dataset.target || "");
           return true;
         }
         return false;
       },
     }),
     EditorView.updateListener.of((update) => {
-      if (update.docChanged && !suppress) {
+      if (update.docChanged && !instance.suppress) {
         const text = update.state.doc.toString();
-        const prev = lastText;
-        lastText = text;
-        cfg.onChange(text, prev);
+        const prev = instance.lastText;
+        instance.lastText = text;
+        options.onChange(text, prev);
         const head = update.state.selection.main.head;
         const typed = update.transactions.some((tr) => tr.isUserEvent("input.type"));
-        if (typed && !linkPending && head >= 2 && update.state.sliceDoc(head - 2, head) === "[[") {
-          linkPending = true;
+        if (typed && !instance.linkPending && head >= 2 && update.state.sliceDoc(head - 2, head) === "[[") {
+          instance.linkPending = true;
           const from = head - 2;
           setTimeout(() => {
-            linkPending = false;
-            if (!view) return;
-            const at = Math.min(from, view.state.doc.length);
-            if (view.state.sliceDoc(at, at + 2) === "[[") {
-              view.dispatch({ changes: { from: at, to: at + 2 } });
+            instance.linkPending = false;
+            if (!instance.view) return;
+            const at = Math.min(from, instance.view.state.doc.length);
+            if (instance.view.state.sliceDoc(at, at + 2) === "[[") {
+              instance.view.dispatch({ changes: { from: at, to: at + 2 } });
             }
-            cfg.onLinkTrigger(from);
+            options.onLinkTrigger(from);
           }, 0);
         }
       }
       if ((update.selectionSet || update.docChanged) && update.view.hasFocus) {
         const head = update.state.selection.main.head;
         const line = update.state.doc.lineAt(head);
-        cfg.onCursor(line.number, head - line.from + 1);
+        options.onCursor(line.number, head - line.from + 1);
       }
     }),
   ];
 }
 
 export function initLive(options) {
-  cfg = options;
-  const host = document.getElementById("live");
+  const host = document.getElementById(options.hostId || "live");
   if (!host) return null;
 
+  const instance = { view: null, lastText: "", suppress: false, linkPending: false };
   const state = EditorState.create({
     doc: options.getText(),
-    extensions: buildExtensions(),
+    extensions: makeExtensions(options, instance),
   });
 
-  view = new EditorView({ state, parent: host });
-  lastText = view.state.doc.toString();
-  host.classList.add("cm-live-host");
+  const view = new EditorView({ state, parent: host });
+  instance.view = view;
+  instance.lastText = view.state.doc.toString();
+  host.classList.add("cm-host");
+  view.dom.addEventListener("focusin", () => { if (options.onFocus) options.onFocus(); });
+  view.dom.addEventListener("mousedown", () => { if (options.onFocus) options.onFocus(); });
 
   return {
     reset(text) {
-      if (!view) return;
-      suppress = true;
-      view.setState(EditorState.create({ doc: text, extensions: buildExtensions() }));
-      suppress = false;
-      lastText = text;
+      instance.suppress = true;
+      view.setState(EditorState.create({ doc: text, extensions: makeExtensions(options, instance) }));
+      instance.suppress = false;
+      instance.lastText = text;
       view.scrollDOM.scrollTop = 0;
-      cfg.onCursor(1, 1);
+      options.onCursor(1, 1);
     },
     setDoc(text) {
-      if (!view) return;
-      if (view.state.doc.toString() === text) { lastText = text; return; }
-      suppress = true;
+      if (view.state.doc.toString() === text) { instance.lastText = text; return; }
+      instance.suppress = true;
       const head = Math.min(view.state.selection.main.head, text.length);
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: text },
         selection: { anchor: head },
       });
-      suppress = false;
-      lastText = text;
+      instance.suppress = false;
+      instance.lastText = text;
     },
-    getText() { return view ? view.state.doc.toString() : ""; },
-    focus() { if (view) view.focus(); },
+    getText() { return view.state.doc.toString(); },
+    focus() { view.focus(); },
     caret() {
-      if (!view) return null;
       const head = view.state.selection.main.head;
       const line = view.state.doc.lineAt(head);
       return { pos: head, line: line.number, ch: head - line.from + 1 };
     },
     goToLine(n) {
-      if (!view) return;
       const number = Math.max(1, Math.min(view.state.doc.lines, n));
       const line = view.state.doc.line(number);
       view.dispatch({ selection: { anchor: line.from }, scrollIntoView: true });
       view.focus();
     },
     insertAtCaret(text) {
-      if (!view) return;
       const head = view.state.selection.main.head;
       view.dispatch({ changes: { from: head, insert: text }, selection: { anchor: head + text.length } });
       view.focus();
     },
     insertAt(pos, text) {
-      if (!view) return;
       const at = Math.max(0, Math.min(pos, view.state.doc.length));
       view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });
       view.focus();
     },
-    wrap(marker) { if (view) wrapSelection(view, marker, marker); },
+    wrap(marker) { wrapSelection(view, marker, marker); },
     select(from, to) {
-      if (!view) return;
       view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
     },
     selection() {
-      if (!view) return null;
       const main = view.state.selection.main;
       return { from: main.from, to: main.to, text: view.state.sliceDoc(main.from, main.to) };
     },
     replaceSelection(text) {
-      if (!view) return;
       const main = view.state.selection.main;
       view.dispatch({ changes: { from: main.from, to: main.to, insert: text }, selection: { anchor: main.from + text.length } });
     },
     replaceAll(query, replacement) {
-      if (!view || !query) return 0;
+      if (!query) return 0;
       const text = view.state.doc.toString();
       const hay = text.toLowerCase();
       const needle = query.toLowerCase();
