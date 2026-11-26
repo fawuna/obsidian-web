@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=69";
-import { initCanvas } from "./canvas.js?v=69";
-import { initCollab } from "./collab.js?v=69";
-import { initPlugins } from "./plugins.js?v=69";
-import { exportPdfFile } from "./pdf.js?v=69";
-import { initLive } from "./live.js?v=69";
-import { initDaily } from "./daily.js?v=69";
+import { initGraph } from "./graph.js?v=70";
+import { initCanvas } from "./canvas.js?v=70";
+import { initCollab } from "./collab.js?v=70";
+import { initPlugins } from "./plugins.js?v=70";
+import { exportPdfFile } from "./pdf.js?v=70";
+import { initLive } from "./live.js?v=70";
+import { initDaily } from "./daily.js?v=70";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v69";
+const BUILD = "v70";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -526,7 +526,18 @@ function setMobileGroup(index) {
   }
 }
 
-function theme() { document.documentElement.dataset.theme = store.get("theme", "dark"); }
+function theme() {
+  const pref = store.get("theme", "dark");
+  const systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = pref === "system" ? (systemDark ? "dark" : "light") : pref;
+}
+
+const themeMedia = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+const onThemeMediaChange = () => { if (store.get("theme", "dark") === "system") theme(); };
+if (themeMedia) {
+  if (themeMedia.addEventListener) themeMedia.addEventListener("change", onThemeMediaChange);
+  else if (themeMedia.addListener) themeMedia.addListener(onThemeMediaChange);
+}
 
 const ACCENT_PRESETS = ["#a882ff", "#5d9cff", "#52c98a", "#e0b458", "#e5686c", "#ff7ac6", "#7ad7d7", "#9a9a9a"];
 
@@ -564,6 +575,13 @@ function applyPrefs() {
   $("editor").style.fontSize = "";
   document.documentElement.style.setProperty("--editor-width", store.get("width", "46rem"));
   applyAccent();
+  applySpellcheck();
+}
+
+function applySpellcheck() {
+  const on = store.get("spellcheck", "1") !== "0";
+  ["editor", "editor2"].forEach((id) => { const node = $(id); if (node) node.spellcheck = on; });
+  document.querySelectorAll(".cm-content").forEach((node) => { node.spellcheck = on; });
 }
 
 function comboFromEvent(event) {
@@ -1331,6 +1349,7 @@ function createPane(index) {
   paneRefs[index] = pane;
   liveApis[index] = api;
   livePaths[index] = null;
+  applySpellcheck();
   return pane;
 }
 
@@ -3680,7 +3699,11 @@ function setMode(mode) {
 const toggleMode = () => setMode(MODES[(MODES.indexOf(state.mode) + 1) % MODES.length]);
 const toggleLeft = () => { if (window.innerWidth <= 980) $("left").classList.toggle("open"); else document.body.classList.toggle("no-left"); };
 const toggleRight = () => { if (window.innerWidth <= 980) $("right").classList.toggle("open"); else document.body.classList.toggle("no-right"); };
-const toggleTheme = () => { store.set("theme", store.get("theme", "dark") === "dark" ? "light" : "dark"); theme(); };
+const toggleTheme = () => {
+  const actual = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  store.set("theme", actual);
+  theme();
+};
 
 function exportPdf() {
   if (!currentFile()) { toast("Спочатку відкрий нотатку"); return; }
@@ -4809,6 +4832,64 @@ function renderCorePlugins() {
   }
 }
 
+let snippets = [];
+let snippetsLoaded = false;
+
+async function loadSnippets() {
+  const host = $("snippetList");
+  if (host && !snippetsLoaded) host.textContent = "завантажую…";
+  try {
+    const data = await api("/repos/" + state.repo + "/contents/.obsidian/snippets?ref=" + encodeURIComponent(state.branch));
+    snippets = (Array.isArray(data) ? data : []).filter((item) => item.type === "file" && item.name.endsWith(".css"));
+  } catch { snippets = []; }
+  snippetsLoaded = true;
+  renderSnippets();
+  await applySnippets();
+}
+
+function renderSnippets() {
+  const host = $("snippetList");
+  if (!host) return;
+  host.innerHTML = "";
+  if (!snippets.length) {
+    host.appendChild(el("div", "empty", "Немає CSS-сніпетів у .obsidian/snippets"));
+    return;
+  }
+  const enabled = new Set(JSON.parse(store.get("snippets", "[]")));
+  for (const item of snippets) {
+    const row = el("label", "snippet-row");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = enabled.has(item.name);
+    input.onchange = () => {
+      const next = new Set(JSON.parse(store.get("snippets", "[]")));
+      if (input.checked) next.add(item.name); else next.delete(item.name);
+      store.set("snippets", JSON.stringify([...next]));
+      applySnippets();
+    };
+    row.append(input, el("span", null, item.name));
+    host.appendChild(row);
+  }
+}
+
+async function applySnippets() {
+  document.querySelectorAll("style[data-snippet]").forEach((node) => node.remove());
+  let names = [];
+  try { names = JSON.parse(store.get("snippets", "[]")); } catch { names = []; }
+  for (const name of names) {
+    const item = snippets.find((entry) => entry.name === name);
+    if (!item || !item.download_url) continue;
+    try {
+      const res = await fetch(item.download_url);
+      if (!res.ok) continue;
+      const style = document.createElement("style");
+      style.dataset.snippet = name;
+      style.textContent = await res.text();
+      document.head.appendChild(style);
+    } catch { /* skip */ }
+  }
+}
+
 function openSettings() {
   $("setRepo").value = state.repo;
   $("setBranch").value = state.branch;
@@ -4818,6 +4899,8 @@ function openSettings() {
   $("setWidth").value = store.get("width", "46rem");
   $("setGraphForce").value = store.get("graphForce", "120");
   $("setPagePreview").checked = previewEnabled();
+  $("setDefaultMode").value = store.get("defaultMode", "live");
+  $("setSpellcheck").checked = store.get("spellcheck", "1") !== "0";
   const computed = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
   $("setAccent").value = /^#[0-9a-f]{6}$/i.test(computed) ? computed : "#a882ff";
   renderAccentPresets();
@@ -4827,6 +4910,8 @@ function openSettings() {
   showSettingsSection(store.get("settingsTab", "appearance"));
   const version = $("settingsVersion");
   if (version) version.textContent = "Vault · " + BUILD + " · " + state.repo + " · " + state.branch;
+  if (!snippetsLoaded) loadSnippets().catch(() => {});
+  else renderSnippets();
   openModal("settings");
 }
 $("setAccent").addEventListener("input", () => {
@@ -4853,6 +4938,8 @@ $("saveSettings").onclick = () => {
   store.set("accent", $("setAccent").value);
   store.set("graphForce", $("setGraphForce").value);
   store.set("pagePreview", $("setPagePreview").checked ? "1" : "0");
+  store.set("defaultMode", $("setDefaultMode").value);
+  store.set("spellcheck", $("setSpellcheck").checked ? "1" : "0");
   store.set("hotkeys", JSON.stringify(hotkeys));
   theme(); applyPrefs();
   saveVault();
@@ -4860,6 +4947,7 @@ $("saveSettings").onclick = () => {
   location.reload();
 };
 $("openPluginsPane").onclick = () => { closeModals(); showPane("plugins"); };
+$("reloadSnippets").onclick = () => { snippetsLoaded = false; loadSnippets(); };
 $("mobLeft").onclick = toggleLeft;
 $("mobBack").onclick = goBack;
 $("mobFwd").onclick = goFwd;
@@ -4918,6 +5006,7 @@ async function connect(repo, branch, token, remember) {
     canvasApi = initCanvas(Vault);
     initCollab(Vault);
     initPlugins(Vault);
+    loadSnippets().catch(() => {});
     window.__vaultReady = true;
   } catch (error) {
     $("loginError").textContent = "Не вийшло: " + error.message;
@@ -5023,7 +5112,7 @@ setupPaneRefs();
 
 theme();
 applyPrefs();
-setMode(store.get("mode", window.innerWidth <= 980 ? "edit" : "split"));
+setMode(store.get("mode", store.get("defaultMode", window.innerWidth <= 980 ? "edit" : "live")));
 renderBookmarks();
 renderVaultButton();
 updateSplitButtons();$("repo").value = state.repo;

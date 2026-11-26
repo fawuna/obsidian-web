@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=69">
+<link rel="stylesheet" href="styles.css?v=70">
 </head>
 <body>
 
@@ -295,7 +295,7 @@
         <section class="settings-section" data-settings="appearance">
           <h3>Appearance</h3>
           <div class="row">
-            <div><label>Тема</label><select id="setTheme"><option value="dark">Темна</option><option value="light">Світла</option></select></div>
+            <div><label>Тема</label><select id="setTheme"><option value="dark">Темна</option><option value="light">Світла</option><option value="system">Системна</option></select></div>
             <div><label>Шрифт редактора</label><select id="setFont"><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17">17px</option></select></div>
             <div><label>Ширина</label><select id="setWidth"><option value="46rem">Звичайна</option><option value="56rem">Широка</option><option value="38rem">Вузька</option></select></div>
           </div>
@@ -305,10 +305,21 @@
             <button class="ghost-border" id="accentReset" title="Скинути до теми">↺</button>
             <div id="accentPresets" class="accent-presets"></div>
           </div>
+          <label style="margin-top:18px">CSS-сніпети</label>
+          <div id="snippetList" class="snippet-list"></div>
+          <button class="ghost-border" id="reloadSnippets" style="margin-top:6px">Оновити список</button>
         </section>
         <section class="settings-section" data-settings="editor">
           <h3>Editor</h3>
           <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="setPagePreview" checked> Прев'ю нотатки при наведенні на посилання</label>
+          <label style="margin-top:18px;display:block">Режим за замовчуванням</label>
+          <select id="setDefaultMode">
+            <option value="live">Live preview</option>
+            <option value="edit">Редактор</option>
+            <option value="split">Редактор + читання</option>
+            <option value="read">Читання</option>
+          </select>
+          <label style="margin-top:12px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setSpellcheck" checked> Перевірка орфографії</label>
           <label style="margin-top:18px;display:block">Graph view: сила відштовхування</label>
           <input id="setGraphForce" type="range" min="40" max="220" step="10">
         </section>
@@ -359,7 +370,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=69"></script>
-<script type="module" src="app.js?v=69"></script>
+<script src="vendor/marked.min.js?v=70"></script>
+<script type="module" src="app.js?v=70"></script>
 </body>
 </html>
