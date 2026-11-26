@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=99">
+<link rel="stylesheet" href="styles.css?v=100">
 </head>
 <body>
 
@@ -146,6 +146,7 @@
           <label style="display:flex;gap:6px;align-items:center">вузли <input type="range" id="graphNodeSize" min="60" max="160" value="100" style="width:64px"></label>
           <label style="display:flex;gap:6px;align-items:center">лінії <input type="range" id="graphLinkWidth" min="50" max="300" value="100" style="width:64px"></label>
           <label style="display:flex;gap:6px;align-items:center">глибина <input type="number" id="graphDepth" min="1" max="3" value="1" style="width:44px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:2px 4px"></label>
+          <button class="ghost-border" id="graphGroups">Групи</button>
           <button class="ghost-border" id="graphFit">Вписати</button>
           <button class="ghost-border" id="graphRefresh">Перебудувати</button>
         </div>
@@ -504,7 +505,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=99"></script>
-<script type="module" src="app.js?v=99"></script>
+<script src="vendor/marked.min.js?v=100"></script>
+<script type="module" src="app.js?v=100"></script>
 </body>
 </html>

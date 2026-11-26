@@ -47,6 +47,29 @@ function tagsOfNote(text) {
   return [...tags];
 }
 
+function readGraphGroups() {
+  try {
+    const list = JSON.parse(localStorage.getItem("vw-graphGroups") || "[]");
+    return Array.isArray(list) ? list.filter((group) => group && typeof group.query === "string" && group.query.trim()) : [];
+  } catch { return []; }
+}
+
+function saveGraphGroups(list) {
+  localStorage.setItem("vw-graphGroups", JSON.stringify(Array.isArray(list) ? list : []));
+}
+
+function matchesGraphGroup(query, path) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return false;
+  if (q.startsWith("#")) {
+    const tag = q.slice(1);
+    const text = Vault.index.get(path) || "";
+    return tagsOfNote(text).some((item) => item.toLowerCase() === tag || item.toLowerCase().startsWith(tag + "/"));
+  }
+  const name = path.split("/").pop().replace(/\.md$/, "").toLowerCase();
+  return name.includes(q) || path.toLowerCase().includes(q);
+}
+
 function buildGraph() {
   const onlyMd = Vault.files.filter((p) => p.endsWith(".md"));
   const active = Vault.state.active;
@@ -128,12 +151,15 @@ function buildGraph() {
     }
   }
   const cx = 0, cy = 0, radius = 90 + (list.length + tagSet.size) * 6;
+  const groups = readGraphGroups();
   nodes = list.map((path, i) => {
     const angle = (i / list.length) * Math.PI * 2;
+    const group = groups.find((item) => matchesGraphGroup(item.query, path));
     return {
       id: path,
       label: path.split("/").pop().replace(/\.md$/, ""),
       folder: path.includes("/") ? path.split("/")[0] : "",
+      color: group ? group.color : "",
       x: cx + Math.cos(angle) * radius * (0.6 + Math.random() * 0.6),
       y: cy + Math.sin(angle) * radius * (0.6 + Math.random() * 0.6),
       vx: 0, vy: 0,
@@ -300,7 +326,7 @@ function draw() {
     const isTag = n.type === "tag";
     ctx.beginPath();
     ctx.arc(n.x, n.y, n.r * nodeScale + (isHover ? 2 : 0), 0, Math.PI * 2);
-    ctx.fillStyle = isActive ? accent : isTag ? "#e0b458" : (n.folder ? "#5d7cff" : "#6cc9a8");
+    ctx.fillStyle = isActive ? accent : (n.color || (isTag ? "#e0b458" : (n.folder ? "#5d7cff" : "#6cc9a8")));
     ctx.globalAlpha = isActive || isHover ? 1 : 0.85;
     ctx.fill();
     ctx.globalAlpha = 1;
@@ -383,6 +409,35 @@ export function initGraph(vault) {
   }
   document.getElementById("graphRefresh").onclick = () => { needsRebuild = true; };
   document.getElementById("graphFit").onclick = () => fit();
+  const groupsBtn = document.getElementById("graphGroups");
+  if (groupsBtn) {
+    groupsBtn.onclick = () => {
+      const groups = readGraphGroups();
+      const items = groups.map((group) => ({
+        label: "✕ " + group.query,
+        run: () => {
+          saveGraphGroups(groups.filter((item) => item !== group));
+          needsRebuild = true;
+          if (!raf) loop();
+        },
+      }));
+      if (items.length) items.push({ sep: true });
+      items.push({
+        label: "＋ Додати групу",
+        run: () => {
+          const query = prompt("Запит групи (назва, шлях або #тег):", "");
+          if (!query || !query.trim()) return;
+          const color = prompt("Колір (hex):", "#e5686c");
+          if (!color || !color.trim()) return;
+          saveGraphGroups([...groups, { query: query.trim(), color: color.trim() }]);
+          needsRebuild = true;
+          if (!raf) loop();
+        },
+      });
+      const rect = groupsBtn.getBoundingClientRect();
+      Vault.showCtx(rect.right - 8, rect.bottom + 4, items);
+    };
+  }
 
   window.addEventListener("resize", () => { if (Vault.state.view === "graph") resize(); });
 
@@ -465,12 +520,19 @@ export function initGraph(vault) {
 
   window.__graphTest = {
     get: () => ({
-      nodes: nodes.map((n) => ({ id: n.id, type: n.type || "note", label: n.label })),
+      nodes: nodes.map((n) => ({ id: n.id, type: n.type || "note", label: n.label, color: n.color || "" })),
       edges: edges.map((e) => ({ a: e.a, b: e.b })),
       info: document.getElementById("graphInfo").textContent,
       local: document.getElementById("graphLocal")?.checked === true,
       depth: Number(document.getElementById("graphDepth")?.value) || 1,
     }),
+    setGroups(list) {
+      saveGraphGroups(list);
+      needsRebuild = true;
+      if (!raf) loop();
+      return readGraphGroups();
+    },
+    getGroups: () => readGraphGroups(),
     setLocal(enabled, depth) {
       const cb = document.getElementById("graphLocal");
       if (cb) {
