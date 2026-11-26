@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=42";
-import { initCanvas } from "./canvas.js?v=42";
-import { initCollab } from "./collab.js?v=42";
-import { initPlugins } from "./plugins.js?v=42";
-import { exportPdfFile } from "./pdf.js?v=42";
-import { initLive } from "./live.js?v=42";
-import { initDaily } from "./daily.js?v=42";
+import { initGraph } from "./graph.js?v=44";
+import { initCanvas } from "./canvas.js?v=44";
+import { initCollab } from "./collab.js?v=44";
+import { initPlugins } from "./plugins.js?v=44";
+import { exportPdfFile } from "./pdf.js?v=44";
+import { initLive } from "./live.js?v=44";
+import { initDaily } from "./daily.js?v=44";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v42";
+const BUILD = "v44";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1162,6 +1162,20 @@ function toggleTaskLine(lineIndex, prefixLen) {
   toast("позначено");
 }
 
+function stripYamlComment(value) {
+  let quote = null;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (quote) {
+      if (ch === quote && value[i - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; continue; }
+    if (ch === "#" && (i === 0 || /\s/.test(value[i - 1]))) return value.slice(0, i).trimEnd();
+  }
+  return value.trimEnd();
+}
+
 function parseProps(text) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/);
   if (!m) return null;
@@ -1169,11 +1183,16 @@ function parseProps(text) {
   const props = [];
   for (const line of rows) {
     const kv = line.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):\s*(.*)$/);
-    if (kv) { props.push([kv[1], kv[2].replace(/^["']|["']$/g, "")]); continue; }
+    if (kv) {
+      const raw = stripYamlComment(kv[2]);
+      props.push([kv[1], raw.replace(/^["']|["']$/g, "")]);
+      continue;
+    }
     const item = line.match(/^\s*-\s*(.*)$/);
     if (item && props.length) {
       const last = props[props.length - 1];
-      last[1] = last[1] ? last[1] + ", " + item[1].trim() : item[1].trim();
+      const value = stripYamlComment(item[1]).replace(/^["']|["']$/g, "").trim();
+      last[1] = last[1] ? last[1] + ", " + value : value;
     }
   }
   return { raw: m[0], body: text.slice(m[0].length), props };
@@ -1210,10 +1229,15 @@ function markdownToHtml(body) {
     }
     return '<div class="embed-note" data-note="' + encodeURIComponent(name) + '">…</div>';
   });
-  src = src.replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (m, t, l) =>
-    '<a class="wikilink" data-target="' + t.trim().replace(/"/g, "&quot;") + '">' + escapeHtml((l ? l.slice(1) : t).trim()) + "</a>");
+  src = src.replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (m, t, l) => {
+    const target = t.trim();
+    const label = (l ? l.slice(1) : t).trim();
+    const safe = target.replace(/"/g, "&quot;");
+    return '<a class="internal-link" data-target="' + safe + '" data-href="' + safe + '" href="' + encodeURI(target) + '">' + escapeHtml(label) + "</a>";
+  });
   src = src.replace(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]{1,})/g, (m, pre, tag) =>
-    pre + '<span class="tag" data-tag="' + escapeHtml(tag) + '">#' + escapeHtml(tag) + "</span>");
+    pre + '<a class="tag" data-tag="' + escapeHtml(tag) + '" href="#' + escapeHtml(tag) + '">#' + escapeHtml(tag) + "</a>");
+  src = src.replace(/==([^=\n]+)==/g, '<mark data-highlight="">$1</mark>');
   src = src.replace(/^>\s*\[!(\w+)\]([+-]?)\s*(.*)$/gm, (m, kind, fold, title) =>
     "> <span class=\"callout-kind\" data-kind=\"" + kind.toLowerCase() + "\" data-fold=\"" + fold + "\">" + escapeHtml(title) + "</span>");
   src = src.replace(/\u0000F(\d+)\u0000/g, (m, i) => fences[Number(i)]);
@@ -1231,28 +1255,68 @@ function markdownToHtml(body) {
 
 const CALLOUT_TITLES = { note: "Нотатка", tip: "Порада", info: "Інфо", success: "Готово", warning: "Увага", danger: "Небезпека", bug: "Баг", example: "Приклад", quote: "Цитата", todo: "Зробити" };
 
+function calloutIconSvg(kind) {
+  const paths = {
+    note: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"></path><path d="m15 5 4 4"></path>',
+    tip: '<path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V18h6v-1.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"></path>',
+    warning: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path>',
+    danger: '<path d="M12 2 2 22h20z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path>',
+    success: '<path d="M20 6 9 17l-5-5"></path>',
+    info: '<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path>',
+    quote: '<path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"></path>',
+  };
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-' + kind + '">' + (paths[kind] || paths.info) + "</svg>";
+}
+
 function styleCallouts(root) {
   root.querySelectorAll("blockquote").forEach((bq) => {
     const kindEl = bq.querySelector(".callout-kind");
     if (!kindEl) return;
     const kind = (kindEl.dataset.kind || "note").toLowerCase();
     const fold = kindEl.dataset.fold || "";
-    const title = kindEl.textContent.trim();
-    kindEl.remove();
-    bq.classList.add("callout", "callout-" + kind);
+    const titleText = kindEl.textContent.trim() || CALLOUT_TITLES[kind] || kind;
+    const div = document.createElement("div");
+    div.className = "callout";
+    div.dataset.callout = kind;
+    div.dataset.calloutMetadata = "";
+    div.dataset.calloutFold = fold;
     const head = document.createElement("div");
     head.className = "callout-title";
-    head.textContent = (title || CALLOUT_TITLES[kind] || kind);
+    head.dir = "auto";
+    const icon = document.createElement("div");
+    icon.className = "callout-icon";
+    icon.innerHTML = calloutIconSvg(kind);
+    const inner = document.createElement("div");
+    inner.className = "callout-title-inner";
+    inner.textContent = titleText;
+    head.append(icon, inner);
+    if (fold) {
+      const foldEl = document.createElement("div");
+      foldEl.className = "callout-fold";
+      foldEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-chevron-down"><path d="m6 9 6 6 6-6"></path></svg>';
+      head.appendChild(foldEl);
+    }
+    const content = document.createElement("div");
+    content.className = "callout-content";
+    kindEl.remove();
+    while (bq.firstChild && bq.firstChild.nodeType === Node.TEXT_NODE && !bq.firstChild.textContent.trim()) bq.removeChild(bq.firstChild);
+    const firstP = bq.querySelector("p");
+    if (firstP) {
+      while (firstP.firstChild && firstP.firstChild.nodeName === "BR") firstP.removeChild(firstP.firstChild);
+      if (!firstP.textContent.trim() && !firstP.querySelector("img")) firstP.remove();
+    }
+    while (bq.firstChild) content.appendChild(bq.firstChild);
+    div.append(head, content);
+    bq.replaceWith(div);
+    div.classList.toggle("is-collapsed", fold === "-");
+    div.classList.toggle("collapsed", fold === "-");
     if (fold) {
       head.classList.add("foldable");
-      head.textContent = (fold === "-" ? "▸ " : "▾ ") + head.textContent;
-      if (fold === "-") bq.classList.add("collapsed");
       head.onclick = () => {
-        bq.classList.toggle("collapsed");
-        head.textContent = (bq.classList.contains("collapsed") ? "▸ " : "▾ ") + (title || CALLOUT_TITLES[kind] || kind);
+        const collapsed = div.classList.toggle("is-collapsed");
+        div.classList.toggle("collapsed", collapsed);
       };
     }
-    bq.prepend(head);
   });
 }
 
@@ -1266,8 +1330,10 @@ function wireRendered(root, sourceText, lineOffset = 0) {
     if (!info) return;
     box.disabled = false;
     box.checked = info.checked;
+    box.classList.add("task-list-item-checkbox");
+    li.classList.add("task-list-item");
     box.title = info.checked ? "Зняти позначку" : "Позначити виконаним";
-    if (info.checked) li.classList.add("done");
+    if (info.checked) { li.classList.add("is-checked"); }
     box.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1275,8 +1341,9 @@ function wireRendered(root, sourceText, lineOffset = 0) {
     });
   });
 
-  root.querySelectorAll(".wikilink").forEach((a) => {
-    a.onclick = () => {
+  root.querySelectorAll(".internal-link[data-target]").forEach((a) => {
+    a.onclick = (event) => {
+      event.preventDefault();
       const target = a.dataset.target.replace(/^#/, "");
       const hit = state.files.find((p) => p === target + ".md" || p === target || p.endsWith("/" + target + ".md"));
       if (hit) openNote(hit); else toast("Нема такої нотатки: " + target);
@@ -1286,9 +1353,14 @@ function wireRendered(root, sourceText, lineOffset = 0) {
     const src = img.getAttribute("src") || "";
     if (!/^https?:/.test(src)) img.src = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + src.replace(/^\.?\//, "");
   });
-  root.querySelectorAll("a[href]").forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
+  root.querySelectorAll("a[href]").forEach((a) => {
+    if (a.classList.contains("internal-link") || a.classList.contains("tag")) return;
+    a.target = "_blank";
+    a.rel = "noopener";
+  });
   root.querySelectorAll(".tag[data-tag]").forEach((t) => {
-    t.onclick = () => {
+    t.onclick = (event) => {
+      event.preventDefault();
       const input = $("searchInput");
       if (input) { input.value = "#" + t.dataset.tag; showPane("search"); input.dispatchEvent(new Event("input")); }
     };
