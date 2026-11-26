@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=111">
+<link rel="stylesheet" href="styles.css?v=112">
 </head>
 <body>
 
@@ -186,6 +186,16 @@
           <span id="baseName">Base</span>
           <select id="baseViewSelect"></select>
           <select id="baseGroupBy" title="Групувати за"></select>
+          <select id="baseSummary" title="Підсумки">
+            <option value="">Без підсумків</option>
+            <option value="sum">Сума</option>
+            <option value="average">Середнє</option>
+            <option value="min">Мін</option>
+            <option value="max">Макс</option>
+            <option value="count">Кількість</option>
+            <option value="empty">Порожні</option>
+            <option value="unique">Унікальні</option>
+          </select>
           <input id="baseSearch" class="graph-input" placeholder="Пошук…" autocomplete="off">
           <input id="baseFilter" class="graph-input" placeholder='Фільтр: status == "alpha"' autocomplete="off">
           <div class="spacer"></div>
@@ -510,7 +520,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=111"></script>
-<script type="module" src="app.js?v=111"></script>
+<script src="vendor/marked.min.js?v=112"></script>
+<script type="module" src="app.js?v=112"></script>
 </body>
 </html>

@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=111";
-import { initCanvas } from "./canvas.js?v=111";
-import { initCollab } from "./collab.js?v=111";
-import { initPlugins } from "./plugins.js?v=111";
-import { exportPdfFile } from "./pdf.js?v=111";
-import { initLive } from "./live.js?v=111";
-import { initDaily } from "./daily.js?v=111";
-import { initRecorder } from "./recorder.js?v=111";
-import { initPdfViewer } from "./pdfviewer.js?v=111";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=111";
+import { initGraph } from "./graph.js?v=112";
+import { initCanvas } from "./canvas.js?v=112";
+import { initCollab } from "./collab.js?v=112";
+import { initPlugins } from "./plugins.js?v=112";
+import { exportPdfFile } from "./pdf.js?v=112";
+import { initLive } from "./live.js?v=112";
+import { initDaily } from "./daily.js?v=112";
+import { initRecorder } from "./recorder.js?v=112";
+import { initPdfViewer } from "./pdfviewer.js?v=112";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=112";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v111";
+const BUILD = "v112";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -5329,17 +5329,28 @@ function renderBaseControls(data) {
     const current = groupBy ? (typeof groupBy === "string" ? groupBy : (groupBy.property || "")) : "";
     groupSelect.value = current;
   }
+  const summarySelect = $("baseSummary");
+  if (summarySelect) {
+    const summaries = data.view && data.view.summaries;
+    const values = summaries && typeof summaries === "object" ? Object.values(summaries).filter((value) => typeof value === "string") : [];
+    summarySelect.value = values.length && values.every((value) => value.toLowerCase() === values[0].toLowerCase()) ? values[0].toLowerCase() : "";
+  }
 }
 
-async function renderBase() {
-  if (!baseConfig) return;
-  await ensureIndex();
+function baseDocs() {
   const docs = [];
   for (const path of state.files) {
     if (!path.endsWith(".md")) continue;
     const text = state.index.get(path);
     if (text != null) docs.push({ path, text });
   }
+  return docs;
+}
+
+async function renderBase() {
+  if (!baseConfig) return;
+  await ensureIndex();
+  const docs = baseDocs();
   const data = baseBuild(baseConfig, docs);
   renderBaseControls(data);
   const filterInput = $("baseFilter");
@@ -6006,6 +6017,29 @@ $("baseGroupBy").onchange = () => {
   const view = baseConfig.views[Math.min(baseViewIndex, baseConfig.views.length - 1)];
   const value = $("baseGroupBy").value;
   if (value) view.groupBy = value; else delete view.groupBy;
+  renderBase();
+};
+$("baseSummary").onchange = () => {
+  if (!baseConfig) return;
+  if (!Array.isArray(baseConfig.views) || !baseConfig.views.length) {
+    baseConfig.views = [{ type: "table", name: "Table", order: [] }];
+  }
+  const view = baseConfig.views[Math.min(baseViewIndex, baseConfig.views.length - 1)];
+  const value = $("baseSummary").value;
+  if (!value) {
+    delete view.summaries;
+  } else {
+    const data = baseBuild(baseConfig, baseDocs());
+    const numericOnly = ["sum", "average", "min", "max"].includes(value);
+    view.summaries = {};
+    for (const column of data.columns) {
+      if (numericOnly && !data.rows.some((row) => {
+        const raw = String(baseCellValue(row, column) ?? "").trim().replace(",", ".");
+        return raw !== "" && Number.isFinite(Number(raw));
+      })) continue;
+      view.summaries[baseColumnKey(column)] = value;
+    }
+  }
   renderBase();
 };
 $("baseSave").onclick = async () => {
