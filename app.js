@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=46";
-import { initCanvas } from "./canvas.js?v=46";
-import { initCollab } from "./collab.js?v=46";
-import { initPlugins } from "./plugins.js?v=46";
-import { exportPdfFile } from "./pdf.js?v=46";
-import { initLive } from "./live.js?v=46";
-import { initDaily } from "./daily.js?v=46";
+import { initGraph } from "./graph.js?v=47";
+import { initCanvas } from "./canvas.js?v=47";
+import { initCollab } from "./collab.js?v=47";
+import { initPlugins } from "./plugins.js?v=47";
+import { exportPdfFile } from "./pdf.js?v=47";
+import { initLive } from "./live.js?v=47";
+import { initDaily } from "./daily.js?v=47";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v46";
+const BUILD = "v47";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -40,7 +40,7 @@ const state = {
   folders: new Set(),
   second: null,
   groups: [{ tabs: [], active: null }],
-  mobileGroup: Number(store.get("mobileGroup", "1")) === 2 ? 2 : 1,
+  mobileGroup: (() => { const value = Number(store.get("mobileGroup", "1")); return Number.isFinite(value) && value >= 1 ? Math.floor(value) : 1; })(),
 };
 
 let liveApi = null;
@@ -49,6 +49,9 @@ let live2Api = null;
 let live2Path = null;
 let activePane = 1;
 let linkPane = 1;
+const liveApis = [];
+const livePaths = [];
+const paneRefs = [];
 let dailyApi = null;
 
 /* ---------------- events ---------------- */
@@ -159,6 +162,22 @@ function syncSecond() {
   state.second = state.groups[1] ? state.groups[1].active : null;
 }
 
+function groupIndexFile(index) {
+  const group = state.groups[index];
+  if (!group || !group.active) return null;
+  return state.open.find((file) => file.path === group.active) || null;
+}
+
+function imageUrlFor(name) {
+  return "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(String(name).replace(/^\.?\//, ""));
+}
+
+function openTargetNote(target) {
+  const name = String(target || "").replace(/^#/, "");
+  const hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
+  if (hit) openNote(hit); else toast("Немає такої нотатки: " + name);
+}
+
 let workspaceTimer = null;
 
 function saveWorkspace() {
@@ -182,7 +201,7 @@ async function restoreWorkspace() {
   try { data = JSON.parse(store.get("workspace", "")); } catch { data = null; }
   if (!data || !Array.isArray(data.groups)) return false;
   const valid = (path) => typeof path === "string" && path.endsWith(".md") && state.files.includes(path);
-  const specs = data.groups.slice(0, 2).map((group) => ({
+  const specs = data.groups.map((group) => ({
     tabs: Array.isArray(group.tabs) ? group.tabs.filter(valid) : [],
     active: valid(group.active) ? group.active : null,
   }));
@@ -202,15 +221,13 @@ async function restoreWorkspace() {
     const tabs = spec.tabs.filter((path) => loaded.has(path));
     return { tabs, active: tabs.includes(spec.active) ? spec.active : (tabs[0] || null) };
   };
-  let groups = specs.map(build);
-  if (!groups[0] || !groups[0].tabs.length) {
-    if (groups[1] && groups[1].tabs.length) groups = [groups[1]];
-    else return false;
-  }
-  if (groups[1] && !groups[1].tabs.length) groups = [groups[0]];
+  let groups = specs.map(build).filter((group) => group.tabs.length);
+  if (!groups.length) return false;
   state.groups = groups;
   state.active = groups[0].active;
   syncSecond();
+  destroyExtraPanes();
+  for (let at = 2; at < groups.length; at++) getPane(at);
   if (groups[1]) {
     document.body.classList.add("split");
     const saved = Number(data.pane2Width);
@@ -237,46 +254,63 @@ async function restoreWorkspace() {
 function isMobileLayout() { return window.matchMedia("(max-width: 760px)").matches; }
 
 function activeGroupIndex() {
-  return isMobileLayout() && state.mobileGroup === 2 && state.groups[1] ? 1 : 0;
+  if (!isMobileLayout()) return 0;
+  const index = state.mobileGroup - 1;
+  return index >= 0 && index < state.groups.length ? index : 0;
 }
 
 function applyMobilePane() {
+  const toggle = $("mobileSwitch");
+  const pane1Editor = document.querySelector('main > .editor-host[data-pane="1"]');
+  const pane1Live = $("liveHost");
   if (!isMobileLayout()) {
     document.body.classList.remove("mobile-pane2");
-    const toggle = $("mobileSwitch");
+    document.querySelectorAll(".mobile-hidden").forEach((node) => node.classList.remove("mobile-hidden"));
     if (toggle) toggle.style.display = "none";
     renderTabs();
     return;
   }
-  if (!state.groups[1]) state.mobileGroup = 1;
-  if (state.mobileGroup === 1 && !group1().tabs.length && state.groups[1] && state.groups[1].tabs.length) state.mobileGroup = 2;
-  if (state.mobileGroup === 2 && !state.groups[1]) state.mobileGroup = 1;
+  const count = state.groups.length;
+  state.mobileGroup = Math.max(1, Math.min(state.mobileGroup || 1, count));
   store.set("mobileGroup", String(state.mobileGroup));
-  const showSecond = !!state.groups[1] && state.mobileGroup === 2;
-  document.body.classList.toggle("mobile-pane2", showSecond);
-  const toggle = $("mobileSwitch");
+  const selected = state.mobileGroup - 1;
+  if (pane1Editor) pane1Editor.classList.toggle("mobile-hidden", selected !== 0);
+  if (pane1Live) pane1Live.classList.toggle("mobile-hidden", selected !== 0);
+  const previewHost = $("previewHost");
+  if (previewHost) previewHost.classList.toggle("mobile-hidden", selected !== 0);
+  for (let index = 1; index < count; index++) {
+    const pane = getPane(index);
+    if (pane && pane.wrapper) pane.wrapper.classList.toggle("mobile-hidden", selected !== index);
+  }
   if (toggle) {
-    toggle.style.display = state.groups[1] ? "flex" : "none";
-    toggle.querySelectorAll("button").forEach((btn) => {
-      btn.classList.toggle("active", Number(btn.dataset.group) === (showSecond ? 2 : 1));
-    });
+    toggle.style.display = count > 1 ? "flex" : "none";
+    toggle.innerHTML = "";
+    for (let index = 0; index < count; index++) {
+      const btn = document.createElement("button");
+      btn.dataset.group = String(index + 1);
+      btn.textContent = String(index + 1);
+      btn.title = "Група " + (index + 1);
+      btn.classList.toggle("active", index === selected);
+      btn.onclick = () => setMobileGroup(index + 1);
+      toggle.appendChild(btn);
+    }
   }
   renderTabs();
-  if (showSecond) paintSecond();
+  if (selected > 0) paintGroup(selected);
 }
 
 function setMobileGroup(index) {
-  state.mobileGroup = index === 2 ? 2 : 1;
+  state.mobileGroup = Math.max(1, Math.min(index, state.groups.length));
   store.set("mobileGroup", String(state.mobileGroup));
   applyMobilePane();
-  if (isMobileLayout()) {
-    if (state.mobileGroup === 2) {
-      if (state.mode === "live") live2Api?.focus(); else $("editor2").focus();
-    } else if (state.mode === "live") {
-      liveApi?.focus();
-    } else {
-      $("editor").focus();
-    }
+  if (!isMobileLayout()) return;
+  const groupIndex = state.mobileGroup - 1;
+  if (state.mode === "live") {
+    const api = groupIndex === 0 ? liveApi : groupIndex === 1 ? live2Api : liveApis[groupIndex];
+    api?.focus();
+  } else {
+    const editor = groupIndex === 0 ? $("editor") : getPane(groupIndex)?.editor;
+    editor?.focus();
   }
 }
 
@@ -615,118 +649,206 @@ async function newFolder() {
   } catch (error) { toast("Не вийшло: " + error.message); }
 }
 
-function openInSecond(path) {
+function ensureGroupAt(index) {
+  while (state.groups.length <= index) {
+    state.groups.push({ tabs: [], active: null });
+    const created = state.groups.length - 1;
+    if (created >= 2) getPane(created);
+  }
+  return state.groups[index];
+}
+
+function openInGroup(path, index = 1) {
   if (!path) return;
   const apply = () => {
-    const group = ensureGroup2();
+    ensureGroupAt(index);
+    const group = state.groups[index];
     addTab(group, path);
     document.body.classList.add("split");
-    if (isMobileLayout()) state.mobileGroup = 2;
-    syncSecond();
+    if (isMobileLayout()) state.mobileGroup = index + 1;
+    if (index === 1) syncSecond();
+    renderTabs();
     paint();
     updateSplitButtons();
     applyMobilePane();
+    scheduleWorkspaceSave();
   };
   if (state.open.some((f) => f.path === path)) { apply(); return; }
   openNote(path).then(apply, apply);
 }
 
-function closeSecond() {
-  const group = state.groups[1];
-  if (group) {
-    const orphanDirty = group.tabs
-      .filter((path) => !group1().tabs.includes(path))
-      .map((path) => state.open.find((file) => file.path === path))
-      .filter((file) => file && file.dirty);
-    if (orphanDirty.length && !confirm("У другій панелі є незбережені зміни. Закрити?")) return;
-    for (const path of group.tabs.slice()) {
-      if (!group1().tabs.includes(path)) {
-        const at = state.open.findIndex((f) => f.path === path);
-        if (at >= 0) state.open.splice(at, 1);
-      }
-    }
-    state.groups.splice(1, 1);
+function openInSecond(path) {
+  openInGroup(path, 1);
+}
+
+function addPane(path) {
+  const index = state.groups.length;
+  state.groups.push({ tabs: [], active: null });
+  if (index >= 2) getPane(index);
+  if (path) addTab(state.groups[index], path);
+  document.body.classList.add("split");
+  if (isMobileLayout()) state.mobileGroup = index + 1;
+  renderTabs();
+  paint();
+  updateSplitButtons();
+  applyMobilePane();
+  scheduleWorkspaceSave();
+}
+
+function destroyExtraPanes() {
+  for (const key of Object.keys(paneRefs)) {
+    const index = Number(key);
+    if (index < 2) continue;
+    const pane = paneRefs[index];
+    if (pane && pane.wrapper) pane.wrapper.remove();
+    delete paneRefs[index];
+    delete liveApis[index];
+    delete livePaths[index];
   }
-  document.body.classList.remove("split");
-  $("pane2").style.flex = "";
-  state.mobileGroup = 1;
-  syncSecond();
+}
+
+function removeGroupAt(index) {
+  if (index <= 0 || index >= state.groups.length) return;
+  state.groups.splice(index, 1);
+  destroyExtraPanes();
+  for (let at = 2; at < state.groups.length; at++) getPane(at);
+  if (state.groups.length === 1) {
+    document.body.classList.remove("split");
+    $("pane2").style.flex = "";
+  }
+  state.mobileGroup = Math.min(state.mobileGroup, state.groups.length);
   state.active = group1().active;
+  syncSecond();
+}
+
+function closeGroup(index) {
+  if (index <= 0) return;
+  const group = state.groups[index];
+  if (!group) return;
+  const otherGroups = state.groups.filter((_, at) => at !== index);
+  const orphanDirty = group.tabs
+    .filter((path) => !otherGroups.some((item) => item.tabs.includes(path)))
+    .map((path) => state.open.find((file) => file.path === path))
+    .filter((file) => file && file.dirty);
+  if (orphanDirty.length && !confirm("У панелі є незбережені зміни. Закрити?")) return;
+  for (const path of group.tabs) {
+    if (!otherGroups.some((item) => item.tabs.includes(path))) {
+      const at = state.open.findIndex((file) => file.path === path);
+      if (at >= 0) state.open.splice(at, 1);
+    }
+  }
+  removeGroupAt(index);
   renderTabs(); renderTree(); paint(); updateSplitButtons();
   applyMobilePane();
+  scheduleWorkspaceSave();
+}
+
+function closeSecond() {
+  closeGroup(1);
 }
 
 function updateSplitButtons() {
   const btn = $("splitBtn");
-  const open = !!state.groups[1];
   if (btn) {
-    btn.textContent = open ? "▣" : "▢";
-    btn.title = open ? "Закрити другу панель" : "Відкрити другу панель";
+    btn.textContent = "▢";
+    btn.title = "Додати панель";
   }
 }
 
-function renderPane2Tabs() {
-  const host = $("pane2Tabs");
-  if (!host) return;
-  host.innerHTML = "";
-  const group = state.groups[1];
-  if (!group) { syncSecond(); return; }
-  for (const path of group.tabs) {
-    const file = state.open.find((f) => f.path === path);
-    if (!file) continue;
-    const tab = el("div", "tab" + (path === group.active ? " active" : ""));
-    tab.appendChild(el("span", "name", path.split("/").pop().replace(/\.md$/, "")));
-    if (file.dirty) tab.appendChild(el("span", "dot", "•"));
-    const x = el("span", "close", "✕");
-    x.onclick = (event) => { event.stopPropagation(); closeTab(path, 1); };
-    tab.appendChild(x);
-    tab.onclick = () => {
-      activePane = 2;
-      group.active = path;
-      syncSecond();
-      paintSecond();
-      renderPane2Tabs();
-    };
-    tab.onauxclick = (event) => { if (event.button === 1) closeTab(path, 1); };
-    makeTabDraggable(tab, path, "pane2");
-    tab.addEventListener("dragover", (event) => {
-      if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      const rect = tab.getBoundingClientRect();
-      const after = event.clientX > rect.left + rect.width / 2;
-      tab.classList.toggle("drop-after", after);
-      tab.classList.toggle("drop-before", !after);
-    });
-    tab.addEventListener("dragleave", () => tab.classList.remove("drop-before", "drop-after"));
-    tab.addEventListener("drop", (event) => {
-      const moved = event.dataTransfer.getData("text/vault-tab");
-      const source = event.dataTransfer.getData("text/vault-tab-source");
-      if (!moved) return;
-      event.preventDefault();
-      event.stopPropagation();
-      clearTabDropMarkers();
-      if (source === "main") { moveTabBetweenGroups(0, moved, 1); return; }
-      const rect = tab.getBoundingClientRect();
-      const after = event.clientX > rect.left + rect.width / 2;
-      reorderGroupTabs(1, moved, path, after);
-    });
-    host.appendChild(tab);
-  }
-  host.ondragover = (event) => {
-    if ([...event.dataTransfer.types].includes("text/vault-tab")) event.preventDefault();
+function parseGroupSource(source) {
+  const match = String(source || "").match(/^group:(\d+)$/);
+  return match ? Number(match[1]) : -1;
+}
+
+function groupBar(index) {
+  if (index === 0) return $("tabs");
+  const pane = getPane(index);
+  return pane ? pane.tabs : null;
+}
+
+function makeGroupTab(index, path, bar) {
+  const group = state.groups[index];
+  const file = state.open.find((item) => item.path === path);
+  if (!group || !file) return;
+  const tab = el("div", "tab" + (path === group.active ? " active" : ""));
+  tab.appendChild(el("span", "name", path.split("/").pop().replace(/\.md$/, "")));
+  if (file.dirty) tab.appendChild(el("span", "dot", "•"));
+  const close = el("span", "close", "✕");
+  close.onclick = (event) => { event.stopPropagation(); closeTab(path, index); };
+  tab.appendChild(close);
+  tab.onclick = () => {
+    group.active = path;
+    if (index === 0) {
+      state.active = path;
+      setView("note");
+      pushHistoryState(path);
+      renderTabs(); renderTree(); paint();
+    } else {
+      activePane = index + 1;
+      if (index === 1) syncSecond();
+      paintGroup(index);
+      renderGroupTabsInto(index, bar);
+    }
   };
-  host.ondrop = (event) => {
+  tab.onauxclick = (event) => { if (event.button === 1) closeTab(path, index); };
+  makeTabDraggable(tab, path, "group:" + index);
+  tab.addEventListener("dragover", (event) => {
+    if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const rect = tab.getBoundingClientRect();
+    const after = event.clientX > rect.left + rect.width / 2;
+    tab.classList.toggle("drop-after", after);
+    tab.classList.toggle("drop-before", !after);
+  });
+  tab.addEventListener("dragleave", () => tab.classList.remove("drop-before", "drop-after"));
+  tab.addEventListener("drop", (event) => {
     const moved = event.dataTransfer.getData("text/vault-tab");
-    const source = event.dataTransfer.getData("text/vault-tab-source");
-    if (!moved) return;
+    const sourceIndex = parseGroupSource(event.dataTransfer.getData("text/vault-tab-source"));
+    if (!moved || sourceIndex < 0) return;
     event.preventDefault();
     event.stopPropagation();
-    if (source === "main") moveTabBetweenGroups(0, moved, 1);
-    else reorderGroupTabs(1, moved, null, false);
+    clearTabDropMarkers();
+    if (sourceIndex === index) {
+      const rect = tab.getBoundingClientRect();
+      const after = event.clientX > rect.left + rect.width / 2;
+      reorderGroupTabs(index, moved, path, after);
+    } else {
+      moveTabBetweenGroups(sourceIndex, moved, index);
+    }
+  });
+  bar.appendChild(tab);
+}
+
+function renderGroupTabsInto(index, bar) {
+  if (!bar) return;
+  const group = state.groups[index];
+  bar.innerHTML = "";
+  if (!group) return;
+  for (const path of group.tabs) makeGroupTab(index, path, bar);
+  if (index > 0) {
+    const close = el("button", "icon-btn pane-close", "✕");
+    close.title = "Закрити панель";
+    close.onclick = (event) => { event.stopPropagation(); closeGroup(index); };
+    bar.appendChild(close);
+  }
+  bar.ondragover = (event) => {
+    if ([...event.dataTransfer.types].includes("text/vault-tab")) event.preventDefault();
   };
-  syncSecond();
-  scheduleWorkspaceSave();
+  bar.ondrop = (event) => {
+    if (event.target.closest(".tab")) return;
+    const moved = event.dataTransfer.getData("text/vault-tab");
+    const sourceIndex = parseGroupSource(event.dataTransfer.getData("text/vault-tab-source"));
+    if (!moved || sourceIndex < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (sourceIndex === index) reorderGroupTabs(index, moved, null, false);
+    else moveTabBetweenGroups(sourceIndex, moved, index);
+  };
+}
+
+function renderPane2Tabs() {
+  if (state.groups[1]) renderGroupTabsInto(1, $("pane2Tabs"));
 }
 
 function moveTabToSecond(path) {
@@ -744,6 +866,190 @@ function syncHighlight2() {
   pre.innerHTML = highlightMarkdown(ed.value) + "\n";
   pre.style.transform = "translateY(" + -ed.scrollTop + "px)";
 }
+
+function setupPaneRefs() {
+  paneRefs[0] = { tabs: $("tabs"), editor: $("editor"), hl: $("hlCode"), liveHost: $("liveHost"), live: $("live"), api: liveApi };
+  paneRefs[1] = { wrapper: $("pane2"), tabs: $("pane2Tabs"), editor: $("editor2"), hl: $("hlCode2"), liveHost: $("live2Host"), live: $("live2"), api: live2Api };
+  liveApis[0] = liveApi;
+  liveApis[1] = live2Api;
+  livePaths[0] = livePath;
+  livePaths[1] = live2Path;
+}
+
+function getPane(index) {
+  if (paneRefs[index]) return paneRefs[index];
+  if (index < 2) return null;
+  return createPane(index);
+}
+
+function createPane(index) {
+  const n = index + 1;
+  const wrapper = document.createElement("div");
+  wrapper.className = "pane";
+  wrapper.id = "pane" + n;
+  const tabs = document.createElement("div");
+  tabs.className = "tabs pane-tabs";
+  tabs.id = "pane" + n + "Tabs";
+  const editorHost = document.createElement("div");
+  editorHost.className = "editor-host";
+  editorHost.dataset.pane = String(n);
+  const hlLayer = document.createElement("div");
+  hlLayer.className = "hl-layer";
+  hlLayer.setAttribute("aria-hidden", "true");
+  const pre = document.createElement("pre");
+  pre.id = "hlCode" + n;
+  hlLayer.appendChild(pre);
+  const textarea = document.createElement("textarea");
+  textarea.id = "editor" + n;
+  textarea.className = "pane-editor";
+  textarea.spellcheck = false;
+  textarea.placeholder = "Панель " + n + ": перетягни вкладку сюди";
+  editorHost.append(hlLayer, textarea);
+  const liveHost = document.createElement("div");
+  liveHost.className = "live-host";
+  liveHost.id = "live" + n + "Host";
+  const live = document.createElement("div");
+  live.id = "live" + n;
+  live.className = "cm-host";
+  liveHost.appendChild(live);
+  wrapper.append(tabs, editorHost, liveHost);
+  document.querySelector("main").insertBefore(wrapper, $("findBar"));
+
+  textarea.addEventListener("input", () => handleExtraInput(index));
+  textarea.addEventListener("scroll", () => syncHighlightPane(index));
+  textarea.addEventListener("focus", () => { activePane = index + 1; });
+  wrapper.addEventListener("dragover", (event) => {
+    if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    wrapper.classList.add("drop-target");
+  });
+  wrapper.addEventListener("dragleave", (event) => {
+    if (!wrapper.contains(event.relatedTarget)) wrapper.classList.remove("drop-target");
+  });
+  wrapper.addEventListener("drop", (event) => {
+    wrapper.classList.remove("drop-target");
+    const path = event.dataTransfer.getData("text/vault-tab");
+    const sourceIndex = parseGroupSource(event.dataTransfer.getData("text/vault-tab-source"));
+    if (!path || sourceIndex < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (sourceIndex !== index) moveTabBetweenGroups(sourceIndex, path, index);
+  });
+  const api = initLive({
+    hostId: live.id,
+    getText: () => {
+      const file = groupIndexFile(index);
+      return file ? file.text : "";
+    },
+    onChange: (text, prev) => handleExtraLiveChange(index, text, prev),
+    onCursor: (line, ch) => {
+      const node = $("stCursor");
+      if (node) node.textContent = line + ":" + ch;
+    },
+    onOpenNote: openTargetNote,
+    imageUrl: imageUrlFor,
+    onLinkTrigger: (pos) => {
+      activePane = index + 1;
+      linkPane = index + 1;
+      showSwitcher("link");
+      linkPos = pos;
+    },
+    onFocus: () => { activePane = index + 1; },
+  });
+  const pane = { wrapper, tabs, editorHost, editor: textarea, hl: pre, liveHost, live, api };
+  paneRefs[index] = pane;
+  liveApis[index] = api;
+  livePaths[index] = null;
+  return pane;
+}
+
+function syncHighlightPane(index) {
+  if (index === 0) { syncHighlight(); return; }
+  if (index === 1) { syncHighlight2(); return; }
+  const pane = getPane(index);
+  if (!pane) return;
+  pane.hl.innerHTML = highlightMarkdown(pane.editor.value) + "\n";
+  pane.hl.style.transform = "translateY(" + -pane.editor.scrollTop + "px)";
+}
+
+function syncLiveCopies(exceptIndex, file) {
+  for (let index = 0; index < state.groups.length; index++) {
+    if (index === exceptIndex) continue;
+    const api = index === 0 ? liveApi : index === 1 ? live2Api : liveApis[index];
+    const path = index === 0 ? livePath : index === 1 ? live2Path : livePaths[index];
+    if (api && path === file.path) api.setDoc(file.text);
+    if (index === 0) $("editor").value = file.text;
+    else {
+      const pane = getPane(index);
+      if (pane) pane.editor.value = file.text;
+    }
+  }
+}
+
+function paintExtra(index) {
+  const group = state.groups[index];
+  if (!group) return;
+  const pane = getPane(index);
+  if (!pane) return;
+  const file = groupIndexFile(index);
+  pane.editor.value = file ? file.text : "";
+  pane.editor.readOnly = !file;
+  syncHighlightPane(index);
+  const api = liveApis[index];
+  if (api) {
+    const path = file ? file.path : null;
+    if ((livePaths[index] || null) !== path) {
+      api.reset(file ? file.text : "");
+      livePaths[index] = path;
+    } else {
+      api.setDoc(file ? file.text : "");
+    }
+  }
+  renderGroupTabsInto(index, pane.tabs);
+}
+
+function paintGroup(index) {
+  if (index === 1) { paintSecond(); return; }
+  if (index > 1) paintExtra(index);
+}
+
+function handleExtraInput(index) {
+  const file = groupIndexFile(index);
+  if (!file) return;
+  const pane = getPane(index);
+  file.text = pane.editor.value;
+  file.dirty = true;
+  state.index.set(file.path, file.text);
+  setState("не збережено", "warn");
+  syncHighlightPane(index);
+  if (liveApis[index]) { livePaths[index] = file.path; liveApis[index].setDoc(file.text); }
+  syncLiveCopies(index, file);
+  if (activeGroupIndex() === index) renderTabs();
+  else renderGroupTabsInto(index, pane.tabs);
+  emit("modify", { path: file.path, text: file.text, prev: file.text });
+  clearTimeout(pane._t);
+  pane._t = setTimeout(() => saveNote(true, file), 1500);
+}
+
+function handleExtraLiveChange(index, text, prev) {
+  const file = groupIndexFile(index);
+  if (!file) return;
+  const pane = getPane(index);
+  file.text = text;
+  if (pane) pane.editor.value = text;
+  file.dirty = true;
+  state.index.set(file.path, text);
+  setState("не збережено", "warn");
+  syncHighlightPane(index);
+  syncLiveCopies(index, file);
+  if (activeGroupIndex() === index) renderTabs();
+  else if (pane) renderGroupTabsInto(index, pane.tabs);
+  emit("modify", { path: file.path, text, prev });
+  clearTimeout(pane ? pane._t : null);
+  if (pane) pane._t = setTimeout(() => saveNote(true, file), 1500);
+}
+
 
 function paintSecond() {
   const ed = $("editor2");
@@ -834,17 +1140,17 @@ function closeTab(path, groupIndex = 0) {
   if (groupIndex === 0) {
     state.active = group.active;
   } else {
-    if (!group.tabs.length) {
-      state.groups.splice(1, 1);
-      document.body.classList.remove("split");
-      $("pane2").style.flex = "";
-    }
     syncSecond();
+    if (!group.tabs.length) {
+      closeGroup(groupIndex);
+      return;
+    }
   }
   if (!group1().tabs.length) state.active = group1().active;
-  if (!state.groups[1]) state.mobileGroup = 1;
+  state.mobileGroup = Math.min(state.mobileGroup, state.groups.length);
   renderTabs(); renderTree(); paint(); updateSplitButtons();
   applyMobilePane();
+  scheduleWorkspaceSave();
 }
 
 function clearTabDropMarkers() {
@@ -881,96 +1187,30 @@ function reorderGroupTabs(groupIndex, fromPath, toPath, after) {
 function moveTabBetweenGroups(fromIndex, path, toIndex) {
   const from = state.groups[fromIndex];
   if (!from || fromIndex === toIndex || !from.tabs.includes(path)) return;
-  const to = toIndex === 1 ? ensureGroup2() : state.groups[0];
+  const to = ensureGroupAt(toIndex);
   removeTab(from, path);
   addTab(to, path);
+  if (fromIndex > 0 && !from.tabs.length) removeGroupAt(fromIndex);
   if (toIndex === 0) {
     state.active = path;
     pushHistoryState(path);
   } else {
     state.active = group1().active;
   }
-  if (state.groups[1] && !state.groups[1].tabs.length) {
-    state.groups.splice(1, 1);
-    document.body.classList.remove("split");
-    $("pane2").style.flex = "";
-  }
-  if (isMobileLayout()) state.mobileGroup = toIndex === 1 && state.groups[1] ? 2 : 1;
+  if (isMobileLayout()) state.mobileGroup = Math.max(1, Math.min(toIndex + 1, state.groups.length));
   syncSecond();
   renderTabs(); renderTree(); paint(); updateSplitButtons();
   applyMobilePane();
+  scheduleWorkspaceSave();
 }
 
 function renderTabs() {
-  const host = $("tabs");
-  const groupIndex = activeGroupIndex();
-  const group = state.groups[groupIndex] || group1();
-  const activePath = groupIndex === 1 ? group.active : state.active;
-  host.innerHTML = "";
-  for (const path of group.tabs) {
-    const file = state.open.find((item) => item.path === path);
-    if (!file) continue;
-    const isActive = path === activePath && (groupIndex === 1 || state.view === "note");
-    const tab = el("div", "tab" + (isActive ? " active" : ""));
-    tab.appendChild(el("span", "name", path.split("/").pop().replace(/\.md$/, "")));
-    if (file.dirty) tab.appendChild(el("span", "dot", "•"));
-    const x = el("span", "close", "✕");
-    x.onclick = (e) => { e.stopPropagation(); closeTab(path, groupIndex); };
-    tab.appendChild(x);
-    tab.onclick = () => {
-      if (groupIndex === 1) {
-        group.active = path;
-        syncSecond();
-        paintSecond();
-        renderTabs();
-        return;
-      }
-      activePane = 1;
-      state.active = path;
-      group1().active = path;
-      setView("note");
-      pushHistoryState(path);
-      renderTabs(); renderTree(); paint();
-    };
-    tab.onauxclick = (e) => { if (e.button === 1) closeTab(path, groupIndex); };
-    makeTabDraggable(tab, path, "main");
-    tab.addEventListener("dragover", (event) => {
-      if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      const rect = tab.getBoundingClientRect();
-      const after = event.clientX > rect.left + rect.width / 2;
-      tab.classList.toggle("drop-after", after);
-      tab.classList.toggle("drop-before", !after);
-    });
-    tab.addEventListener("dragleave", () => tab.classList.remove("drop-before", "drop-after"));
-    tab.addEventListener("drop", (event) => {
-      const moved = event.dataTransfer.getData("text/vault-tab");
-      const source = event.dataTransfer.getData("text/vault-tab-source");
-      if (!moved) return;
-      event.preventDefault();
-      event.stopPropagation();
-      clearTabDropMarkers();
-      if (source === "pane2" && !isMobileLayout()) { moveTabBetweenGroups(1, moved, 0); return; }
-      const rect = tab.getBoundingClientRect();
-      const after = event.clientX > rect.left + rect.width / 2;
-      reorderGroupTabs(groupIndex, moved, path, after);
-    });
-    host.appendChild(tab);
+  const titleIndex = activeGroupIndex();
+  renderGroupTabsInto(titleIndex, $("tabs"));
+  for (let index = 1; index < state.groups.length; index++) {
+    const pane = getPane(index);
+    if (pane) renderGroupTabsInto(index, pane.tabs);
   }
-  host.ondragover = (event) => {
-    if ([...event.dataTransfer.types].includes("text/vault-tab")) event.preventDefault();
-  };
-  host.ondrop = (event) => {
-    if (event.target.closest(".tab")) return;
-    const moved = event.dataTransfer.getData("text/vault-tab");
-    const source = event.dataTransfer.getData("text/vault-tab-source");
-    if (!moved) return;
-    event.preventDefault();
-    if (source === "pane2" && !isMobileLayout()) moveTabBetweenGroups(1, moved, 0);
-    else reorderGroupTabs(groupIndex, moved, null, false);
-  };
-  renderPane2Tabs();
   scheduleWorkspaceSave();
 }
 
@@ -991,7 +1231,7 @@ function paint() {
   renderContext();
   renderOutline();
   syncHighlight();
-  paintSecond();
+  for (let index = 1; index < state.groups.length; index++) paintGroup(index);
   const words = file ? file.text.trim().split(/\s+/).filter(Boolean).length : 0;
   $("stMeta").textContent = file ? words + " слів · " + file.text.length + " симв." : "";
   setState(file ? (file.dirty ? "не збережено" : "синхронізовано") : "", file && file.dirty ? "warn" : "ok");
@@ -2094,6 +2334,7 @@ $("editor").addEventListener("input", () => {
   noteEdited(prev);
   renderPreview();
   liveApi?.setDoc(file.text);
+  syncLiveCopies(0, file);
   syncHighlight();
   updateCursorPos();
 
@@ -2203,7 +2444,9 @@ $("editor2").addEventListener("input", () => {
   state.index.set(file.path, file.text);
   setState("не збережено", "warn");
   syncHighlight2();
-  renderPane2Tabs();
+  if (liveApis[1]) { livePaths[1] = file.path; liveApis[1].setDoc(file.text); }
+  syncLiveCopies(1, file);
+  renderTabs();
   clearTimeout($("editor2")._t);
   $("editor2")._t = setTimeout(() => saveNote(true, file), 1500);
 });
@@ -2237,6 +2480,27 @@ $("splitter").addEventListener("mousedown", (e) => {
   window.addEventListener("mouseup", up);
 });
 
+const mainDropZone = document.querySelector('main > .editor-host[data-pane="1"]');
+if (mainDropZone) {
+  mainDropZone.addEventListener("dragover", (event) => {
+    if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    mainDropZone.classList.add("drop-target");
+  });
+  mainDropZone.addEventListener("dragleave", (event) => {
+    if (!mainDropZone.contains(event.relatedTarget)) mainDropZone.classList.remove("drop-target");
+  });
+  mainDropZone.addEventListener("drop", (event) => {
+    mainDropZone.classList.remove("drop-target");
+    const path = event.dataTransfer.getData("text/vault-tab");
+    const sourceIndex = parseGroupSource(event.dataTransfer.getData("text/vault-tab-source"));
+    if (!path || sourceIndex <= 0) return;
+    event.preventDefault();
+    moveTabBetweenGroups(sourceIndex, path, 0);
+  });
+}
+
 $("pane2").addEventListener("dragover", (event) => {
   if (isMobileLayout()) return;
   if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
@@ -2251,10 +2515,10 @@ $("pane2").addEventListener("drop", (event) => {
   $("pane2").classList.remove("drop-target");
   if (isMobileLayout()) return;
   const path = event.dataTransfer.getData("text/vault-tab");
-  const source = event.dataTransfer.getData("text/vault-tab-source");
-  if (!path) return;
+  const sourceIndex = parseGroupSource(event.dataTransfer.getData("text/vault-tab-source"));
+  if (!path || sourceIndex < 0) return;
   event.preventDefault();
-  if (source !== "pane2") moveTabToSecond(path);
+  if (sourceIndex !== 1) moveTabBetweenGroups(sourceIndex, path, 1);
 });
 
 $("tree").addEventListener("contextmenu", (e) => {
@@ -2334,8 +2598,7 @@ $("openSettings").onclick = openSettings;
 $("closeSettings").onclick = closeModals;
 $("newNote").onclick = newNote;
 $("splitBtn").onclick = () => {
-  if (state.groups[1]) closeSecond();
-  else if (state.active) openInSecond(state.active);
+  if (state.active) addPane(state.active);
   else toast("відкрий нотатку");
 };
 document.querySelectorAll("#mobileSwitch button").forEach((btn) => {
@@ -2541,7 +2804,7 @@ registerCommand({ id: "print", label: "Друк / зберегти як PDF (в�
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
 registerCommand({ id: "bookmark", label: "Додати/зняти закладку", run: () => { if (state.active) toggleBookmark(state.active); } });
-registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.groups[1]) closeSecond(); else if (state.active) openInSecond(state.active); else toast("відкрий нотатку"); } });
+registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.active) addPane(state.active); else toast("відкрий нотатку"); } });
 registerCommand({ id: "new-folder", label: "Нова тека", run: newFolder });
 registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
 registerCommand({ id: "bold", label: "Жирний", hint: "Ctrl+B", run: () => { wrapSelection("**"); } });
@@ -2566,6 +2829,7 @@ liveApi = initLive({
     file.text = text;
     $("editor").value = text;
     if (live2Path === file.path) live2Api?.setDoc(text);
+    syncLiveCopies(0, file);
     noteEdited(prev);
     renderPreview();
     syncHighlight();
@@ -2596,13 +2860,12 @@ live2Api = initLive({
     if (!file) return;
     file.text = text;
     $("editor2").value = text;
-    if (livePath === file.path) liveApi?.setDoc(text);
     file.dirty = true;
     state.index.set(file.path, text);
     setState("не збережено", "warn");
     syncHighlight2();
+    syncLiveCopies(1, file);
     renderTabs();
-    renderPane2Tabs();
     clearTimeout($("editor2")._t);
     $("editor2")._t = setTimeout(() => saveNote(true, file), 1500);
     emit("modify", { path: file.path, text, prev });
@@ -2611,15 +2874,13 @@ live2Api = initLive({
     const node = $("stCursor");
     if (node) node.textContent = line + ":" + ch;
   },
-  onOpenNote: (target) => {
-    const name = String(target || "").replace(/^#/, "");
-    const hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
-    if (hit) openNote(hit); else toast("Немає такої нотатки: " + name);
-  },
-  imageUrl: (name) => "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.replace(/^\.?\//, "")),
+  onOpenNote: openTargetNote,
+  imageUrl: imageUrlFor,
   onLinkTrigger: (pos) => { linkPane = 2; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 2; },
 });
+
+setupPaneRefs();
 
 theme();
 applyPrefs();

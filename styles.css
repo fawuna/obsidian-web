@@ -139,7 +139,14 @@ html[data-theme="light"] .hl-t { color: #c2410c; }
 .outline-item.l2 { padding-left: 20px; }
 .outline-item.l3 { padding-left: 32px; font-size: 12.5px; }
 .outline-item.l4, .outline-item.l5, .outline-item.l6 { padding-left: 44px; font-size: 12px; color: var(--muted); }
-#editor, #editor2 { width: 100%; max-width: var(--editor-width); height: 100%; border: 0; outline: 0; resize: none; background: transparent; color: var(--text); padding: 30px 40px 120px; font: var(--editor-font-size, 15px)/1.7 var(--font-mono); tab-size: 2; }
+#editor, #editor2, .pane-editor { width: 100%; max-width: var(--editor-width); height: 100%; border: 0; outline: 0; resize: none; background: transparent; color: var(--text); padding: 30px 40px 120px; font: var(--editor-font-size, 15px)/1.7 var(--font-mono); tab-size: 2; }
+.pane { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
+.pane > .editor-host { flex: 1; min-height: 0; width: 100%; }
+.pane > .live-host { display: none; flex: 1; min-height: 0; overflow: hidden; }
+body.mode-live .pane > .live-host { display: flex; }
+body.mode-live .pane > .editor-host { display: none; }
+.pane-tabs { flex: 0 0 34px; height: 34px; align-items: center; padding: 0 4px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.pane-close { margin-left: auto; }
 #previewHost { flex: 1; min-width: 0; overflow: auto; display: none; justify-content: center; }
 #preview { width: 100%; max-width: var(--editor-width); padding: 26px 40px 120px; font: var(--editor-font-size, 15px)/1.75 var(--font-text); color: var(--text); }
 body.mode-edit #editor { display: block; }
@@ -466,11 +473,8 @@ body.split #previewHost { display: none; }
 .mobile-switch button.active { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
 
 @media (max-width: 760px) {
-  body.split #pane2 { display: none; flex: 1 1 100%; }
-  body.split.mobile-pane2 #pane2 { display: flex; }
-  body.split.mobile-pane2 main > .editor-host[data-pane="1"] { display: none; }
-  body.split.mobile-pane2 #liveHost { display: none; }
-  #pane2Tabs { display: none; }
+  .mobile-hidden { display: none !important; }
+  #pane2Tabs, .pane-tabs { display: none; }
   body.split #splitter { display: none; }
   #shareBtn, #saveBtn, #modeSplit, #presence { display: none; }
   #left { position: absolute; inset: 40px 0 28px 46px; width: auto; flex: 0 0 auto; z-index: 30; display: none; }
