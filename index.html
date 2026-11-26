@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=73">
+<link rel="stylesheet" href="styles.css?v=74">
 </head>
 <body>
 
@@ -336,7 +336,9 @@
         <section class="settings-section" data-settings="plugins">
           <h3>Community plugins</h3>
           <p class="hint" style="margin:0 0 10px">Плагіни читаються з теки <code>.obsidian/plugins</code> у волті.</p>
-          <button class="ghost-border" id="openPluginsPane">Відкрити панель плагінів</button>
+          <div id="communityPluginsList" class="plugin-list"></div>
+          <button class="ghost-border" id="reloadPlugins" style="margin-top:8px">Перевірити плагіни</button>
+          <button class="ghost-border" id="openPluginsPane" style="margin-left:6px">Відкрити панель плагінів</button>
         </section>
       </div>
     </div>
@@ -381,7 +383,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=73"></script>
-<script type="module" src="app.js?v=73"></script>
+<script src="vendor/marked.min.js?v=74"></script>
+<script type="module" src="app.js?v=74"></script>
 </body>
 </html>

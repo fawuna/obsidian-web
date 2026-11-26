@@ -668,3 +668,7 @@ body.split #previewHost { display: none; }
 .pane-splitter { flex: 0 0 4px; cursor: col-resize; background: transparent; }
 .pane-splitter:hover, .pane-splitter:active { background: var(--accent); }
 @media (max-width: 760px) { .pane-splitter { display: none !important; } }
+.plugin-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.plugin-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2); }
+.plugin-info { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.plugin-info small { color: var(--muted); font-size: 11.5px; }

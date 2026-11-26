@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=73";
-import { initCanvas } from "./canvas.js?v=73";
-import { initCollab } from "./collab.js?v=73";
-import { initPlugins } from "./plugins.js?v=73";
-import { exportPdfFile } from "./pdf.js?v=73";
-import { initLive } from "./live.js?v=73";
-import { initDaily } from "./daily.js?v=73";
+import { initGraph } from "./graph.js?v=74";
+import { initCanvas } from "./canvas.js?v=74";
+import { initCollab } from "./collab.js?v=74";
+import { initPlugins } from "./plugins.js?v=74";
+import { exportPdfFile } from "./pdf.js?v=74";
+import { initLive } from "./live.js?v=74";
+import { initDaily } from "./daily.js?v=74";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v73";
+const BUILD = "v74";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -120,6 +120,7 @@ const liveApis = [];
 const livePaths = [];
 const paneRefs = [];
 let dailyApi = null;
+let pluginsApi = null;
 
 /* ---------------- events ---------------- */
 function on(event, fn) {
@@ -5014,6 +5015,34 @@ function renderCorePlugins() {
   }
 }
 
+function renderCommunityPlugins() {
+  const host = $("communityPluginsList");
+  if (!host) return;
+  host.innerHTML = "";
+  const list = pluginsApi && pluginsApi.list ? pluginsApi.list() : [];
+  if (!list.length) {
+    host.appendChild(el("div", "empty", "Немає встановлених плагінів у .obsidian/plugins"));
+    return;
+  }
+  for (const plugin of list) {
+    const row = el("div", "plugin-row");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = !!plugin.enabled;
+    box.onchange = async () => {
+      if (!pluginsApi) return;
+      if (box.checked) await pluginsApi.enable(plugin.id);
+      else pluginsApi.disable(plugin.id);
+      renderCommunityPlugins();
+    };
+    const info = el("div", "plugin-info");
+    const meta = plugin.meta || {};
+    info.append(el("b", null, meta.name || plugin.id), el("small", null, "v" + (meta.version || "?") + (meta.description ? " · " + meta.description : "")));
+    row.append(box, info);
+    host.appendChild(row);
+  }
+}
+
 let snippets = [];
 let snippetsLoaded = false;
 
@@ -5089,6 +5118,7 @@ function openSettings() {
   renderHotkeysSettings();
   renderSettingsNav();
   renderCorePlugins();
+  renderCommunityPlugins();
   showSettingsSection(store.get("settingsTab", "appearance"));
   const version = $("settingsVersion");
   if (version) version.textContent = "Vault · " + BUILD + " · " + state.repo + " · " + state.branch;
@@ -5129,6 +5159,11 @@ $("saveSettings").onclick = () => {
   location.reload();
 };
 $("openPluginsPane").onclick = () => { closeModals(); showPane("plugins"); };
+$("reloadPlugins").onclick = async () => {
+  if (!pluginsApi) { renderCommunityPlugins(); return; }
+  try { await pluginsApi.rescan(); } catch { /* ignore */ }
+  renderCommunityPlugins();
+};
 $("reloadSnippets").onclick = () => { snippetsLoaded = false; loadSnippets(); };
 $("mobLeft").onclick = toggleLeft;
 $("mobBack").onclick = goBack;
@@ -5187,7 +5222,7 @@ async function connect(repo, branch, token, remember) {
     initGraph(Vault);
     canvasApi = initCanvas(Vault);
     initCollab(Vault);
-    initPlugins(Vault);
+    initPlugins(Vault).then((api) => { pluginsApi = api; renderCommunityPlugins(); }).catch(() => {});
     loadSnippets().catch(() => {});
     window.__vaultReady = true;
   } catch (error) {
