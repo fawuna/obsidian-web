@@ -7,7 +7,7 @@ import { exportPdfFile } from "./pdf.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v7";
+const BUILD = "v8";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -26,6 +26,7 @@ const state = {
   active: null,
   preview: false,
   view: "note",
+  mode: "split",
   index: new Map(),
   history: [],
   hIndex: -1,
@@ -733,15 +734,26 @@ function showPane(pane) {
   if (pane === "tags") renderTags();
   if (pane === "plugins") emit("plugins:pane");
 }
-const toggleMode = () => { state.preview = !state.preview; document.body.classList.toggle("mode-preview", state.preview); };
+const MODES = ["edit", "split", "read"];
+function setMode(mode) {
+  if (!MODES.includes(mode)) mode = "edit";
+  state.mode = mode;
+  document.body.classList.remove("mode-edit", "mode-split", "mode-read");
+  document.body.classList.add("mode-" + mode);
+  store.set("mode", mode);
+  for (const m of MODES) {
+    const btn = $("mode" + m.charAt(0).toUpperCase() + m.slice(1));
+    if (btn) btn.style.background = m === mode ? "var(--bg-4)" : "";
+  }
+}
+const toggleMode = () => setMode(MODES[(MODES.indexOf(state.mode) + 1) % MODES.length]);
 const toggleLeft = () => { if (window.innerWidth <= 980) $("left").classList.toggle("open"); else document.body.classList.toggle("no-left"); };
 const toggleRight = () => { if (window.innerWidth <= 980) $("right").classList.toggle("open"); else document.body.classList.toggle("no-right"); };
 const toggleTheme = () => { store.set("theme", store.get("theme", "dark") === "dark" ? "light" : "dark"); theme(); };
 
 function exportPdf() {
   if (!currentFile()) { toast("Спочатку відкрий нотатку"); return; }
-  state.preview = true;
-  document.body.classList.add("mode-preview");
+  setMode("read");
   renderPreview();
   exportPdfFile($("preview"), currentFile().path.split("/").pop().replace(/\.md$/, ""), { download: true })
     .then((res) => { toast("PDF готовий: " + res.pages + " стор., " + Math.round(res.bytes / 1024) + " КБ"); setState("PDF: " + res.pages + " стор.", "ok"); })
@@ -750,8 +762,7 @@ function exportPdf() {
 
 function printNote() {
   if (!currentFile()) { toast("Спочатку відкрий нотатку"); return; }
-  state.preview = true;
-  document.body.classList.add("mode-preview");
+  setMode("read");
   renderPreview();
   setTimeout(() => window.print(), 200);
 }
@@ -853,7 +864,9 @@ $("switcherInput").addEventListener("keydown", (e) => {
 
 $("overlay").onclick = closeModals;
 $("saveBtn").onclick = () => saveNote();
-$("modeBtn").onclick = toggleMode;
+$("modeEdit").onclick = () => setMode("edit");
+$("modeSplit").onclick = () => setMode("split");
+$("modeRead").onclick = () => setMode("read");
 $("toggleLeft").onclick = toggleLeft;
 $("toggleRight").onclick = toggleRight;
 $("themeBtn").onclick = toggleTheme;
@@ -952,6 +965,7 @@ registerCommand({ id: "logout", label: "Забути токен і вийти", 
 
 theme();
 applyPrefs();
+setMode(store.get("mode", window.innerWidth <= 980 ? "edit" : "split"));
 $("repo").value = state.repo;
 $("branch").value = state.branch;
 $("token").value = state.token;

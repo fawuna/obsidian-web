@@ -1,32 +1,32 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="uk">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=7">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>рџ““</text></svg>">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
 <div id="login">
   <div class="card">
-    <h1>📓 Vault</h1>
-    <p>Редактор волта через GitHub. Токен зберігається тільки у твоєму браузері.</p>
-    <label for="repo">Репозиторій (owner/repo)</label>
+    <h1>рџ““ Vault</h1>
+    <p>Р РµРґР°РєС‚РѕСЂ РІРѕР»С‚Р° С‡РµСЂРµР· GitHub. РўРѕРєРµРЅ Р·Р±РµСЂС–РіР°С”С‚СЊСЃСЏ С‚С–Р»СЊРєРё Сѓ С‚РІРѕС”РјСѓ Р±СЂР°СѓР·РµСЂС–.</p>
+    <label for="repo">Р РµРїРѕР·РёС‚РѕСЂС–Р№ (owner/repo)</label>
     <input id="repo" value="fawuna/SUPER-GAME" autocomplete="off" spellcheck="false">
-    <label for="branch">Гілка</label>
+    <label for="branch">Р“С–Р»РєР°</label>
     <input id="branch" value="main" autocomplete="off" spellcheck="false">
     <label for="token">GitHub token (fine-grained, Contents: Read and write)</label>
-    <input id="token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
+    <input id="token" type="password" placeholder="github_pat_вЂ¦" autocomplete="off" spellcheck="false">
     <div class="actions">
-      <button class="primary" id="connect">Підключитись</button>
-      <button class="ghost-border" id="forget">Забути токен</button>
+      <button class="primary" id="connect">РџС–РґРєР»СЋС‡РёС‚РёСЃСЊ</button>
+      <button class="ghost-border" id="forget">Р—Р°Р±СѓС‚Рё С‚РѕРєРµРЅ</button>
     </div>
     <div id="loginError"></div>
     <div class="hint">
-      GitHub → Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token →
-      Only select repositories → <code>SUPER-GAME</code> → Repository permissions → <b>Contents: Read and write</b>.
+      GitHub в†’ Settings в†’ Developer settings в†’ Personal access tokens в†’ <b>Fine-grained tokens</b> в†’ Generate new token в†’
+      Only select repositories в†’ <code>SUPER-GAME</code> в†’ Repository permissions в†’ <b>Contents: Read and write</b>.
     </div>
   </div>
 </div>
@@ -34,48 +34,50 @@
 <div id="app">
   <div class="titlebar">
     <div class="nav">
-      <button class="icon-btn" id="toggleLeft" title="Ліва панель (Ctrl+B)">◧</button>
-      <button class="icon-btn" id="navBack" title="Назад">←</button>
-      <button class="icon-btn" id="navFwd" title="Вперед">→</button>
+      <button class="icon-btn" id="toggleLeft" title="Р›С–РІР° РїР°РЅРµР»СЊ (Ctrl+B)">в—§</button>
+      <button class="icon-btn" id="navBack" title="РќР°Р·Р°Рґ">в†ђ</button>
+      <button class="icon-btn" id="navFwd" title="Р’РїРµСЂРµРґ">в†’</button>
     </div>
     <div class="tabs" id="tabs"></div>
     <div class="nav">
       <span id="presence"></span>
-      <button class="icon-btn" id="shareBtn" title="Спільна робота">👥</button>
-      <button class="icon-btn" id="modeBtn" title="Режим читання (Ctrl+E)">👁</button>
-      <button class="primary" id="saveBtn" title="Зберегти (Ctrl+S)">Зберегти</button>
-      <button class="icon-btn" id="toggleRight" title="Права панель">◨</button>
+      <button class="icon-btn" id="shareBtn" title="РЎРїС–Р»СЊРЅР° СЂРѕР±РѕС‚Р°">рџ‘Ґ</button>
+      <button class="icon-btn" id="modeEdit" title="Р РµРґР°РєС‚РѕСЂ">вњЋ</button>
+      <button class="icon-btn" id="modeSplit" title="Р РµРґР°РєС‚РѕСЂ + С‡РёС‚Р°РЅРЅСЏ">в—«</button>
+      <button class="icon-btn" id="modeRead" title="Р§РёС‚Р°РЅРЅСЏ (Ctrl+E)">рџ‘Ѓ</button>
+      <button class="primary" id="saveBtn" title="Р—Р±РµСЂРµРіС‚Рё (Ctrl+S)">Р—Р±РµСЂРµРіС‚Рё</button>
+      <button class="icon-btn" id="toggleRight" title="РџСЂР°РІР° РїР°РЅРµР»СЊ">в—Ё</button>
     </div>
   </div>
 
   <div class="workspace">
     <nav id="ribbon">
-      <button data-pane="files" class="active" title="Файли">🗂</button>
-      <button data-pane="search" title="Пошук">🔍</button>
-      <button data-pane="tags" title="Теги">🏷</button>
-      <button data-pane="plugins" title="Плагіни">🧩</button>
+      <button data-pane="files" class="active" title="Р¤Р°Р№Р»Рё">рџ—‚</button>
+      <button data-pane="search" title="РџРѕС€СѓРє">рџ”Ќ</button>
+      <button data-pane="tags" title="РўРµРіРё">рџЏ·</button>
+      <button data-pane="plugins" title="РџР»Р°РіС–РЅРё">рџ§©</button>
       <div class="spacer"></div>
-      <button id="openGraph" title="Graph view (Ctrl+G)">🕸</button>
-      <button id="openCanvas" title="Canvas">🎨</button>
-      <button id="openPalette" title="Command palette (Ctrl+P)">⌘</button>
-      <button id="openSwitcher" title="Швидкий перехід (Ctrl+O)">⚡</button>
-      <button id="themeBtn" title="Тема">🌓</button>
-      <button id="openSettings" title="Налаштування">⚙</button>
+      <button id="openGraph" title="Graph view (Ctrl+G)">рџ•ё</button>
+      <button id="openCanvas" title="Canvas">рџЋЁ</button>
+      <button id="openPalette" title="Command palette (Ctrl+P)">вЊ</button>
+      <button id="openSwitcher" title="РЁРІРёРґРєРёР№ РїРµСЂРµС…С–Рґ (Ctrl+O)">вљЎ</button>
+      <button id="themeBtn" title="РўРµРјР°">рџЊ“</button>
+      <button id="openSettings" title="РќР°Р»Р°С€С‚СѓРІР°РЅРЅСЏ">вљ™</button>
     </nav>
 
     <aside id="left">
       <div class="pane-head">
-        <span class="title" id="paneTitle">Файли</span>
-        <button class="icon-btn" id="newNote" title="Нова нотатка">＋</button>
-        <button class="icon-btn" id="newCanvas" title="Новий canvas">🎨</button>
-        <button class="icon-btn" id="reloadTree" title="Оновити">⟳</button>
+        <span class="title" id="paneTitle">Р¤Р°Р№Р»Рё</span>
+        <button class="icon-btn" id="newNote" title="РќРѕРІР° РЅРѕС‚Р°С‚РєР°">пј‹</button>
+        <button class="icon-btn" id="newCanvas" title="РќРѕРІРёР№ canvas">рџЋЁ</button>
+        <button class="icon-btn" id="reloadTree" title="РћРЅРѕРІРёС‚Рё">вџі</button>
       </div>
       <div style="padding:6px 8px;border-bottom:1px solid var(--line)">
-        <input class="filter" id="filter" placeholder="Фільтр файлів…" autocomplete="off">
+        <input class="filter" id="filter" placeholder="Р¤С–Р»СЊС‚СЂ С„Р°Р№Р»С–РІвЂ¦" autocomplete="off">
       </div>
       <div class="pane-body" id="filesPane"><div id="tree"></div></div>
       <div class="pane-body" id="searchPane" style="display:none">
-        <input class="filter" id="searchInput" placeholder="Шукати по всьому волту…" autocomplete="off">
+        <input class="filter" id="searchInput" placeholder="РЁСѓРєР°С‚Рё РїРѕ РІСЃСЊРѕРјСѓ РІРѕР»С‚СѓвЂ¦" autocomplete="off">
         <div id="searchResults" style="margin-top:8px"></div>
       </div>
       <div class="pane-body" id="tagsPane" style="display:none"></div>
@@ -83,45 +85,45 @@
     </aside>
 
     <main>
-      <div class="editor-host"><textarea id="editor" spellcheck="false" placeholder="Обери нотатку або створи нову (＋)"></textarea></div>
+      <div class="editor-host"><textarea id="editor" spellcheck="false" placeholder="РћР±РµСЂРё РЅРѕС‚Р°С‚РєСѓ Р°Р±Рѕ СЃС‚РІРѕСЂРё РЅРѕРІСѓ (пј‹)"></textarea></div>
       <div id="previewHost"><div id="preview"></div></div>
 
       <div id="graphHost">
         <div class="graph-bar">
-          <span id="graphInfo">—</span>
+          <span id="graphInfo">вЂ”</span>
           <div class="spacer"></div>
-          <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="graphLocal" checked> лише сусіди відкритої нотатки</label>
-          <button class="ghost-border" id="graphFit">Вписати</button>
-          <button class="ghost-border" id="graphRefresh">Перебудувати</button>
+          <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="graphLocal" checked> Р»РёС€Рµ СЃСѓСЃС–РґРё РІС–РґРєСЂРёС‚РѕС— РЅРѕС‚Р°С‚РєРё</label>
+          <button class="ghost-border" id="graphFit">Р’РїРёСЃР°С‚Рё</button>
+          <button class="ghost-border" id="graphRefresh">РџРµСЂРµР±СѓРґСѓРІР°С‚Рё</button>
         </div>
         <canvas id="graphCanvas"></canvas>
       </div>
 
       <div id="canvasHost">
         <div class="canvas-bar">
-          <span id="canvasName">—</span>
+          <span id="canvasName">вЂ”</span>
           <div class="spacer"></div>
-          <button class="ghost-border" id="cvAddNote">＋ нотатка</button>
-          <button class="ghost-border" id="cvAddText">＋ текст</button>
-          <button class="ghost-border" id="cvConnect">Звʼязати</button>
-          <button class="ghost-border" id="cvFit">Вписати</button>
-          <button class="primary" id="cvSave">Зберегти</button>
+          <button class="ghost-border" id="cvAddNote">пј‹ РЅРѕС‚Р°С‚РєР°</button>
+          <button class="ghost-border" id="cvAddText">пј‹ С‚РµРєСЃС‚</button>
+          <button class="ghost-border" id="cvConnect">Р—РІКјСЏР·Р°С‚Рё</button>
+          <button class="ghost-border" id="cvFit">Р’РїРёСЃР°С‚Рё</button>
+          <button class="primary" id="cvSave">Р—Р±РµСЂРµРіС‚Рё</button>
         </div>
-        <div id="canvasBoard"><div id="canvasWorld"></div><div class="cv-hint">тягни картки · колесо — зум · тягни фон — панорама</div></div>
+        <div id="canvasBoard"><div id="canvasWorld"></div><div class="cv-hint">С‚СЏРіРЅРё РєР°СЂС‚РєРё В· РєРѕР»РµСЃРѕ вЂ” Р·СѓРј В· С‚СЏРіРЅРё С„РѕРЅ вЂ” РїР°РЅРѕСЂР°РјР°</div></div>
       </div>
     </main>
 
     <aside id="right">
       <div class="pane-head">
-        <span class="title">Контекст</span>
-        <button class="icon-btn" id="rebuildIndex" title="Перебудувати індекс">⟳</button>
+        <span class="title">РљРѕРЅС‚РµРєСЃС‚</span>
+        <button class="icon-btn" id="rebuildIndex" title="РџРµСЂРµР±СѓРґСѓРІР°С‚Рё С–РЅРґРµРєСЃ">вџі</button>
       </div>
       <div class="pane-body" id="context"></div>
     </aside>
   </div>
 
   <div class="statusbar">
-    <span id="stPath">—</span>
+    <span id="stPath">вЂ”</span>
     <span id="stState"></span>
     <span class="spacer"></span>
     <span id="stCollab"></span>
@@ -133,57 +135,57 @@
 <div class="overlay" id="overlay"></div>
 
 <div class="modal" id="palette">
-  <input class="search" id="paletteInput" placeholder="Команда…" autocomplete="off" spellcheck="false">
+  <input class="search" id="paletteInput" placeholder="РљРѕРјР°РЅРґР°вЂ¦" autocomplete="off" spellcheck="false">
   <div class="list" id="paletteList"></div>
-  <div class="foot"><span>↑↓ вибір</span><span>Enter виконати</span><span>Esc закрити</span></div>
+  <div class="foot"><span>в†‘в†“ РІРёР±С–СЂ</span><span>Enter РІРёРєРѕРЅР°С‚Рё</span><span>Esc Р·Р°РєСЂРёС‚Рё</span></div>
 </div>
 
 <div class="modal" id="switcher">
-  <input class="search" id="switcherInput" placeholder="Перейти до нотатки…" autocomplete="off" spellcheck="false">
+  <input class="search" id="switcherInput" placeholder="РџРµСЂРµР№С‚Рё РґРѕ РЅРѕС‚Р°С‚РєРёвЂ¦" autocomplete="off" spellcheck="false">
   <div class="list" id="switcherList"></div>
-  <div class="foot"><span>↑↓ вибір</span><span>Enter відкрити</span><span>Esc закрити</span></div>
+  <div class="foot"><span>в†‘в†“ РІРёР±С–СЂ</span><span>Enter РІС–РґРєСЂРёС‚Рё</span><span>Esc Р·Р°РєСЂРёС‚Рё</span></div>
 </div>
 
 <div class="modal" id="settings">
-  <div class="pane-head"><span class="title">Налаштування</span></div>
+  <div class="pane-head"><span class="title">РќР°Р»Р°С€С‚СѓРІР°РЅРЅСЏ</span></div>
   <div class="body">
-    <label>Репозиторій</label>
+    <label>Р РµРїРѕР·РёС‚РѕСЂС–Р№</label>
     <input id="setRepo">
-    <label>Гілка</label>
+    <label>Р“С–Р»РєР°</label>
     <input id="setBranch">
-    <label>Токен</label>
+    <label>РўРѕРєРµРЅ</label>
     <input id="setToken" type="password">
     <div class="row">
-      <div><label>Тема</label><select id="setTheme"><option value="dark">Темна</option><option value="light">Світла</option></select></div>
-      <div><label>Шрифт редактора</label><select id="setFont"><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17">17px</option></select></div>
-      <div><label>Ширина</label><select id="setWidth"><option value="46rem">Звичайна</option><option value="56rem">Широка</option><option value="38rem">Вузька</option></select></div>
+      <div><label>РўРµРјР°</label><select id="setTheme"><option value="dark">РўРµРјРЅР°</option><option value="light">РЎРІС–С‚Р»Р°</option></select></div>
+      <div><label>РЁСЂРёС„С‚ СЂРµРґР°РєС‚РѕСЂР°</label><select id="setFont"><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17">17px</option></select></div>
+      <div><label>РЁРёСЂРёРЅР°</label><select id="setWidth"><option value="46rem">Р—РІРёС‡Р°Р№РЅР°</option><option value="56rem">РЁРёСЂРѕРєР°</option><option value="38rem">Р’СѓР·СЊРєР°</option></select></div>
     </div>
-    <label style="margin-top:18px">Graph view: сила відштовхування</label>
+    <label style="margin-top:18px">Graph view: СЃРёР»Р° РІС–РґС€С‚РѕРІС…СѓРІР°РЅРЅСЏ</label>
     <input id="setGraphForce" type="range" min="40" max="220" step="10">
   </div>
-  <div class="foot"><button class="ghost-border" id="closeSettings">Закрити</button><button class="primary" id="saveSettings">Зберегти</button></div>
+  <div class="foot"><button class="ghost-border" id="closeSettings">Р—Р°РєСЂРёС‚Рё</button><button class="primary" id="saveSettings">Р—Р±РµСЂРµРіС‚Рё</button></div>
 </div>
 
 <div class="modal" id="collabModal">
-  <div class="pane-head"><span class="title">Спільна робота</span></div>
+  <div class="pane-head"><span class="title">РЎРїС–Р»СЊРЅР° СЂРѕР±РѕС‚Р°</span></div>
   <div class="body" style="padding:16px">
     <p style="margin:0 0 12px;color:var(--muted);font-size:13px">
-      Реальний час через WebRTC (Yjs). Обидва вводять однакову кімнату — і бачать правки одне одного одразу.
-      Сервер не потрібен, дані йдуть напряму між браузерами.
+      Р РµР°Р»СЊРЅРёР№ С‡Р°СЃ С‡РµСЂРµР· WebRTC (Yjs). РћР±РёРґРІР° РІРІРѕРґСЏС‚СЊ РѕРґРЅР°РєРѕРІСѓ РєС–РјРЅР°С‚Сѓ вЂ” С– Р±Р°С‡Р°С‚СЊ РїСЂР°РІРєРё РѕРґРЅРµ РѕРґРЅРѕРіРѕ РѕРґСЂР°Р·Сѓ.
+      РЎРµСЂРІРµСЂ РЅРµ РїРѕС‚СЂС–Р±РµРЅ, РґР°РЅС– Р№РґСѓС‚СЊ РЅР°РїСЂСЏРјСѓ РјС–Р¶ Р±СЂР°СѓР·РµСЂР°РјРё.
     </p>
-    <label style="display:block;font-size:12px;color:var(--muted);margin:8px 0 4px">Кімната</label>
+    <label style="display:block;font-size:12px;color:var(--muted);margin:8px 0 4px">РљС–РјРЅР°С‚Р°</label>
     <input id="collabRoom" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px 10px">
-    <label style="display:block;font-size:12px;color:var(--muted);margin:12px 0 4px">Твоє імʼя</label>
+    <label style="display:block;font-size:12px;color:var(--muted);margin:12px 0 4px">РўРІРѕС” С–РјКјСЏ</label>
     <input id="collabName" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px 10px">
     <div id="collabState" style="margin-top:12px;font-size:13px;color:var(--muted)"></div>
   </div>
-  <div class="foot"><button class="ghost-border" id="collabClose">Закрити</button><button class="primary" id="collabToggle">Увімкнути</button></div>
+  <div class="foot"><button class="ghost-border" id="collabClose">Р—Р°РєСЂРёС‚Рё</button><button class="primary" id="collabToggle">РЈРІС–РјРєРЅСѓС‚Рё</button></div>
 </div>
 
-<div id="dropHint">Відпусти, щоб вставити картинку</div>
+<div id="dropHint">Р’С–РґРїСѓСЃС‚Рё, С‰РѕР± РІСЃС‚Р°РІРёС‚Рё РєР°СЂС‚РёРЅРєСѓ</div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=7"></script>
-<script type="module" src="app.js?v=7"></script>
+<script src="vendor/marked.min.js?v=8"></script>
+<script type="module" src="app.js?v=8"></script>
 </body>
 </html>
