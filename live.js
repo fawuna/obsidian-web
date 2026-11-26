@@ -65,18 +65,19 @@ class BulletWidget extends WidgetType {
 }
 
 class ImageWidget extends WidgetType {
-  constructor(src, alt) {
+  constructor(name) {
     super();
-    this.src = src;
-    this.alt = alt;
+    this.name = name;
   }
-  eq(other) { return other.src === this.src; }
+  eq(other) { return other.name === this.name; }
   toDOM() {
     const img = document.createElement("img");
-    img.className = "cm-inline-img";
-    img.src = this.src;
-    img.alt = this.alt;
+    img.className = "cm-inline-img vault-media";
+    img.alt = this.name;
     img.loading = "lazy";
+    if (window.Vault && typeof window.Vault.loadAttachment === "function") {
+      window.Vault.loadAttachment(this.name).then((url) => { img.src = url; }).catch(() => { img.alt = "немає файлу"; });
+    }
     return img;
   }
   ignoreEvent() { return true; }
@@ -86,18 +87,20 @@ const AUDIO_RE = /\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i;
 const VIDEO_RE = /\.(mp4|webm|ogv|mov|mkv|m4v)$/i;
 
 class MediaWidget extends WidgetType {
-  constructor(src, kind) {
+  constructor(name, kind) {
     super();
-    this.src = src;
+    this.name = name;
     this.kind = kind;
   }
-  eq(other) { return other.src === this.src && other.kind === this.kind; }
+  eq(other) { return other.name === this.name && other.kind === this.kind; }
   toDOM() {
     const media = document.createElement(this.kind);
-    media.className = "cm-media-embed";
-    media.src = this.src;
+    media.className = "cm-media-embed vault-media";
     media.controls = true;
     media.preload = "none";
+    if (window.Vault && typeof window.Vault.loadAttachment === "function") {
+      window.Vault.loadAttachment(this.name).then((url) => { media.src = url; }).catch(() => { media.title = "немає файлу"; });
+    }
     return media;
   }
   ignoreEvent() { return true; }
@@ -273,12 +276,11 @@ function decorateInline(decos, text, lineFrom, imageUrl) {
     } else if (m[8] !== undefined) {
       const name = m[8].split("|")[0].trim();
       if (IMAGE_RE.test(name)) {
-        const src = imageUrl(name);
-        decos.push(Decoration.replace({ widget: new ImageWidget(src, name) }).range(at, at + full.length));
+        decos.push(Decoration.replace({ widget: new ImageWidget(name) }).range(at, at + full.length));
       } else if (AUDIO_RE.test(name)) {
-        decos.push(Decoration.replace({ widget: new MediaWidget(imageUrl(name), "audio") }).range(at, at + full.length));
+        decos.push(Decoration.replace({ widget: new MediaWidget(name, "audio") }).range(at, at + full.length));
       } else if (VIDEO_RE.test(name)) {
-        decos.push(Decoration.replace({ widget: new MediaWidget(imageUrl(name), "video") }).range(at, at + full.length));
+        decos.push(Decoration.replace({ widget: new MediaWidget(name, "video") }).range(at, at + full.length));
       } else if (name) {
         decos.push(Decoration.replace({ widget: new NoteEmbedWidget(name) }).range(at, at + full.length));
       }

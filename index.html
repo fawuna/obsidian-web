@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=84">
+<link rel="stylesheet" href="styles.css?v=85">
 </head>
 <body>
 
@@ -211,6 +211,21 @@
           <button class="clickable-icon" id="pdfClose" title="Закрити">✕</button>
         </div>
         <div id="pdfPages" class="pdf-pages"></div>
+      </div>
+      <div id="mediaHost">
+        <div class="media-bar">
+          <span id="mediaTitle">Файл</span>
+          <div class="spacer"></div>
+          <span id="mediaZoomWrap" class="media-zoom">
+            <button class="clickable-icon" id="mediaZoomOut" title="Зменшити">−</button>
+            <span id="mediaZoom">100%</span>
+            <button class="clickable-icon" id="mediaZoomIn" title="Збільшити">+</button>
+            <button class="ghost-border" id="mediaFit">Вписати</button>
+          </span>
+          <button class="clickable-icon" id="mediaExternal" title="Відкрити в браузері">↗</button>
+          <button class="clickable-icon" id="mediaClose" title="Закрити">✕</button>
+        </div>
+        <div id="mediaCanvas" class="media-canvas"></div>
       </div>
     </main>
 
@@ -458,7 +473,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=84"></script>
-<script type="module" src="app.js?v=84"></script>
+<script src="vendor/marked.min.js?v=85"></script>
+<script type="module" src="app.js?v=85"></script>
 </body>
 </html>

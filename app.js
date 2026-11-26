@@ -1,17 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=84";
-import { initCanvas } from "./canvas.js?v=84";
-import { initCollab } from "./collab.js?v=84";
-import { initPlugins } from "./plugins.js?v=84";
-import { exportPdfFile } from "./pdf.js?v=84";
-import { initLive } from "./live.js?v=84";
-import { initDaily } from "./daily.js?v=84";
-import { initRecorder } from "./recorder.js?v=84";
-import { initPdfViewer } from "./pdfviewer.js?v=84";
+import { initGraph } from "./graph.js?v=85";
+import { initCanvas } from "./canvas.js?v=85";
+import { initCollab } from "./collab.js?v=85";
+import { initPlugins } from "./plugins.js?v=85";
+import { exportPdfFile } from "./pdf.js?v=85";
+import { initLive } from "./live.js?v=85";
+import { initDaily } from "./daily.js?v=85";
+import { initRecorder } from "./recorder.js?v=85";
+import { initPdfViewer } from "./pdfviewer.js?v=85";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=85";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v84";
+const BUILD = "v85";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -128,6 +129,7 @@ const paneRefs = [];
 let dailyApi = null;
 let recorderApi = null;
 let pdfApi = null;
+let mediaApi = null;
 let pluginsApi = null;
 
 /* ---------------- events ---------------- */
@@ -246,6 +248,66 @@ function groupIndexFile(index) {
 
 function imageUrlFor(name) {
   return "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(String(name).replace(/^\.?\//, ""));
+}
+
+const attachmentUrls = new Map();
+
+function mimeFor(name) {
+  const ext = String(name).split(".").pop().toLowerCase();
+  return ({
+    svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    gif: "image/gif", webp: "image/webp", bmp: "image/bmp", avif: "image/avif",
+    mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4",
+    flac: "audio/flac", aac: "audio/aac", opus: "audio/ogg",
+    mp4: "video/mp4", webm: "video/webm", ogv: "video/ogg", mov: "video/quicktime",
+    mkv: "video/x-matroska", m4v: "video/mp4", pdf: "application/pdf",
+  }[ext] || "application/octet-stream");
+}
+
+function base64Bytes(value) {
+  const bin = atob(String(value || "").replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function loadAttachment(name) {
+  let path = String(name || "").replace(/^\.?\//, "").split("#")[0];
+  if (!path) throw new Error("empty path");
+  if (!state.files.includes(path)) {
+    const hit = state.files.find((p) => p === path || p.endsWith("/" + path));
+    if (hit) path = hit;
+  }
+  const cacheKey = state.repo + "/" + state.branch + "/" + path;
+  if (attachmentUrls.has(cacheKey)) return attachmentUrls.get(cacheKey);
+  const promise = (async () => {
+    let blob = null;
+    try {
+      const data = await api(contentsPath(path) + "?ref=" + encodeURIComponent(state.branch));
+      if (data && data.encoding === "base64" && data.content) {
+        blob = new Blob([base64Bytes(data.content)], { type: mimeFor(path) });
+      }
+    } catch { /* raw media fallback */ }
+    if (!blob) {
+      const res = await fetch("https://api.github.com" + contentsPath(path) + "?ref=" + encodeURIComponent(state.branch), {
+        headers: {
+          accept: "application/vnd.github.raw",
+          authorization: "Bearer " + state.token,
+          "x-github-api-version": "2022-11-28",
+        },
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      blob = new Blob([await res.arrayBuffer()], { type: mimeFor(path) });
+    }
+    return URL.createObjectURL(blob);
+  })();
+  attachmentUrls.set(cacheKey, promise);
+  try {
+    return await promise;
+  } catch (error) {
+    attachmentUrls.delete(cacheKey);
+    throw error;
+  }
 }
 
 function openTargetNote(target) {
@@ -694,7 +756,7 @@ async function loadTree() {
     if (p.endsWith("/.gitkeep")) state.folders.add(p.slice(0, -"/.gitkeep".length));
   }
   const remote = all
-    .filter((p) => p.endsWith(".md") || p.endsWith(".canvas") || p.endsWith(".base") || p.endsWith(".pdf"))
+    .filter((p) => p.endsWith(".md") || p.endsWith(".canvas") || p.endsWith(".base") || p.endsWith(".pdf") || isMediaPath(p))
     .map((p) => p);
   const remoteSet = new Set(remote);
   for (const p of [...state.pending]) { if (remoteSet.has(p)) state.pending.delete(p); }
@@ -784,8 +846,8 @@ function renderTree() {
         const row = el("div", "file-row" + (full === state.active ? " active" : ""));
         row.style.paddingLeft = 12 + depth * 12 + "px";
         row.draggable = true;
-        row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : full.endsWith(".base") ? "🗃" : full.endsWith(".pdf") ? "📕" : "📄"));
-        row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas|base|pdf)$/, "")));
+        row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : full.endsWith(".base") ? "🗃" : full.endsWith(".pdf") ? "📕" : /\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(full) ? "🖼" : /\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i.test(full) ? "🎵" : /\.(mp4|webm|ogv|mov|mkv|m4v)$/i.test(full) ? "🎬" : "📄"));
+        row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas|base|pdf|svg|png|jpe?g|gif|webp|bmp|avif|mp3|wav|ogg|m4a|flac|aac|opus|mp4|webm|ogv|mov|mkv|m4v)$/i, "")));
         const starred = state.bookmarks.includes(full);
         const star = el("button", "star-btn" + (starred ? " on" : ""), "★");
         star.title = starred ? "Зняти із закладок" : "У закладки";
@@ -1542,6 +1604,7 @@ function setView(view) {
   document.body.classList.toggle("view-base", view === "base");
   document.body.classList.toggle("view-web", view === "web");
   document.body.classList.toggle("view-pdf", view === "pdf");
+  document.body.classList.toggle("view-media", view === "media");
   emit("view", view);
 }
 
@@ -1549,6 +1612,7 @@ async function openNote(path, pushHistory = true) {
   if (path.endsWith(".base")) { openBase(path); return; }
   if (path.endsWith(".canvas")) { openCanvas(path); return; }
   if (path.endsWith(".pdf")) { if (pdfApi) await pdfApi.open(path); return; }
+  if (isMediaPath(path)) { if (mediaApi) await mediaApi.open(path); return; }
   const existing = state.open.find((f) => f.path === path);
   if (existing) {
     state.active = path;
@@ -1691,6 +1755,7 @@ function paint() {
     state.view === "canvas" ? ($("canvasName").textContent || "Canvas") :
     state.view === "web" ? (webView.url || "Web viewer") :
     state.view === "pdf" ? (pdfApi?.path || "PDF") :
+    state.view === "media" ? (mediaApi?.path || "Файл") :
     (file ? file.path : "—");
   $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch + " · " + BUILD;
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
@@ -2413,18 +2478,19 @@ function transformInlineBlocks(text) {
     const parts = inner.split("|").map((part) => part.trim());
     const name = parts[0];
     const size = parts[1] && /^\d+$/.test(parts[1]) ? parts[1] : "";
-    const fileUrl = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + name.split("#")[0].replace(/^\.?\//, "");
+    const target = name.split("#")[0];
+    const attr = ' data-vault-src="' + escapeAttr(target) + '"';
     if (/\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(name)) {
-      return '<img src="' + encodeURI(fileUrl) + '" alt="' + escapeAttr(name) + '"' + (size ? ' width="' + size + '"' : "") + ">";
+      return '<img class="vault-media"' + attr + ' alt="' + escapeAttr(name) + '"' + (size ? ' width="' + size + '"' : "") + ">";
     }
     if (/\.pdf$/i.test(name)) {
-      return '<iframe class="pdf-embed" src="' + encodeURI(fileUrl) + '"' + (size ? ' width="' + size + '"' : "") + ' title="' + escapeAttr(name) + '"></iframe>';
+      return '<iframe class="pdf-embed vault-media"' + attr + (size ? ' width="' + size + '"' : "") + ' title="' + escapeAttr(name) + '"></iframe>';
     }
     if (/\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i.test(name)) {
-      return '<audio class="media-embed" controls preload="none" src="' + encodeURI(fileUrl) + '"' + (size ? ' style="width:' + size + 'px"' : "") + "></audio>";
+      return '<audio class="media-embed vault-media" controls preload="none"' + attr + (size ? ' style="width:' + size + 'px"' : "") + "></audio>";
     }
     if (/\.(mp4|webm|ogv|mov|mkv|m4v)$/i.test(name)) {
-      return '<video class="media-embed" controls preload="none" src="' + encodeURI(fileUrl) + '"' + (size ? ' style="width:' + size + 'px"' : "") + "></video>";
+      return '<video class="media-embed vault-media" controls preload="none"' + attr + (size ? ' style="width:' + size + 'px"' : "") + "></video>";
     }
     return '<div class="embed-note" data-note="' + encodeURIComponent(name) + '">…</div>';
   });
@@ -2772,7 +2838,13 @@ function wireRendered(root, sourceText, lineOffset = 0) {
       const sameNote = raw.startsWith("#");
       const clean = sameNote ? raw.slice(1) : raw;
       const [fileTarget, anchor] = sameNote ? [null, clean] : clean.split("#");
-      if (!sameNote && /\.(pdf|svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(fileTarget)) {
+      if (!sameNote && /\.pdf$/i.test(fileTarget)) {
+        const pdfHit = state.files.find((p) => p === fileTarget || p.endsWith("/" + fileTarget));
+        if (pdfHit) { await openNote(pdfHit); return; }
+      }
+      if (!sameNote && /\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(fileTarget)) {
+        const mediaHit = state.files.find((p) => p === fileTarget || p.endsWith("/" + fileTarget));
+        if (mediaHit && mediaApi) { await mediaApi.open(mediaHit); return; }
         window.open(imageUrlFor(fileTarget), "_blank", "noopener");
         return;
       }
@@ -2794,9 +2866,21 @@ function wireRendered(root, sourceText, lineOffset = 0) {
       if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
     };
   });
+  root.querySelectorAll("[data-vault-src]").forEach((node) => {
+    const target = node.getAttribute("data-vault-src") || "";
+    loadAttachment(target).then((url) => {
+      node.src = url;
+      node.removeAttribute("data-vault-src");
+    }).catch(() => {
+      node.classList.add("missing");
+      node.removeAttribute("data-vault-src");
+    });
+  });
   root.querySelectorAll("img").forEach((img) => {
+    if (img.hasAttribute("data-vault-src")) return;
     const src = img.getAttribute("src") || "";
-    if (!/^https?:/.test(src)) img.src = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + src.replace(/^\.?\//, "");
+    if (!src || /^(https?:|blob:|data:)/i.test(src)) return;
+    loadAttachment(src.replace(/^\.?\//, "")).then((url) => { img.src = url; }).catch(() => {});
   });
   root.querySelectorAll("a[href]").forEach((a) => {
     if (a.classList.contains("internal-link") || a.classList.contains("tag")) return;
@@ -4553,7 +4637,7 @@ function renderBasePreview(config, docs, viewIndex = 0) {
 /* ---------------- API for modules ---------------- */
 export const Vault = {
   state, api, ghGet, ghPut, ghPutRaw, ghDelete, b64encode, b64decode,
-  contentsPath, openNote, openCanvas, openGraph, toast, setState, currentFile,
+  contentsPath, loadAttachment, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
   renderTree, renderTabs, paint, renderPreview, renderRightPanels, renderTags, showPane, showSwitcher,
   moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote, openInSecond, closeSecond,
@@ -5565,6 +5649,7 @@ async function connect(repo, branch, token, remember) {
     recorderApi = await initRecorder(Vault);
     window.__recorder = recorderApi;
     pdfApi = initPdfViewer(Vault);
+    mediaApi = initMediaViewer(Vault);
     const restored = await restoreWorkspace();
     if (!restored) {
       const first = state.files.find((p) => p.endsWith(".md"));
@@ -5713,4 +5798,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null) };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null) };
