@@ -438,6 +438,13 @@ body.view-graph #graphHost { display: flex; }
 body.view-canvas #canvasHost { display: flex; }
 #baseHost { flex: 1; display: none; flex-direction: column; min-width: 0; min-height: 0; }
 body.view-base #baseHost { display: flex; }
+#webHost { flex: 1; display: none; flex-direction: column; min-width: 0; min-height: 0; }
+body.view-web #webHost { display: flex; }
+body.view-web #editor, body.view-web #previewHost, body.view-web #liveHost, body.view-web #splitter, body.view-web #pane2, body.view-web #findBar { display: none !important; }
+.web-bar { display: flex; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
+.web-bar input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; color: var(--text); }
+.web-bar button:disabled { opacity: .35; cursor: default; }
+#webFrame { flex: 1; width: 100%; border: 0; background: #fff; }
 body.view-base #editor, body.view-base #previewHost, body.view-base #liveHost, body.view-base #splitter, body.view-base #pane2, body.view-base #findBar { display: none !important; }
 .base-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
 .base-bar .spacer { flex: 1; }

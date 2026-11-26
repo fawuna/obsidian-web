@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=80";
-import { initCanvas } from "./canvas.js?v=80";
-import { initCollab } from "./collab.js?v=80";
-import { initPlugins } from "./plugins.js?v=80";
-import { exportPdfFile } from "./pdf.js?v=80";
-import { initLive } from "./live.js?v=80";
-import { initDaily } from "./daily.js?v=80";
+import { initGraph } from "./graph.js?v=81";
+import { initCanvas } from "./canvas.js?v=81";
+import { initCollab } from "./collab.js?v=81";
+import { initPlugins } from "./plugins.js?v=81";
+import { exportPdfFile } from "./pdf.js?v=81";
+import { initLive } from "./live.js?v=81";
+import { initDaily } from "./daily.js?v=81";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v80";
+const BUILD = "v81";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -66,6 +66,7 @@ const CORE_PLUGINS = [
   { id: "word-count", label: "Word count", desc: "Слова й символи", def: true },
   { id: "canvas", label: "Canvas", desc: "Полотно", def: true },
   { id: "bases", label: "Bases", desc: "Табличні бази з нотаток", def: true },
+  { id: "webviewer", label: "Web viewer", desc: "Відкривати сайти в застосунку", def: true },
   { id: "file-recovery", label: "File recovery", desc: "Історія версій нотатки", def: true },
   { id: "workspaces", label: "Workspaces", desc: "Збережені розкладки", def: false },
   { id: "random-note", label: "Random note", desc: "Випадкова нотатка", def: false },
@@ -1527,6 +1528,7 @@ function setView(view) {
   document.body.classList.toggle("view-graph", view === "graph");
   document.body.classList.toggle("view-canvas", view === "canvas");
   document.body.classList.toggle("view-base", view === "base");
+  document.body.classList.toggle("view-web", view === "web");
   emit("view", view);
 }
 
@@ -1671,7 +1673,10 @@ function paint() {
   dbg("paint", "active=" + state.active, "fileLen=" + (file ? file.text.length : "none"), "editorBefore=" + $("editor").value.length);
   $("editor").value = file ? file.text : "";
   $("editor").readOnly = !file;
-  $("stPath").textContent = state.view === "graph" ? "Graph view" : state.view === "canvas" ? ($("canvasName").textContent || "Canvas") : (file ? file.path : "—");
+  $("stPath").textContent = state.view === "graph" ? "Graph view" :
+    state.view === "canvas" ? ($("canvasName").textContent || "Canvas") :
+    state.view === "web" ? (webView.url || "Web viewer") :
+    (file ? file.path : "—");
   $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch + " · " + BUILD;
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
   const mobTitle = $("mobSwitcher");
@@ -2780,6 +2785,11 @@ function wireRendered(root, sourceText, lineOffset = 0) {
   });
   root.querySelectorAll("a[href]").forEach((a) => {
     if (a.classList.contains("internal-link") || a.classList.contains("tag")) return;
+    const href = a.getAttribute("href") || "";
+    if (store.get("webLinks", "0") === "1" && /^https?:/i.test(href)) {
+      a.onclick = (event) => { event.preventDefault(); openWebViewer(href); };
+      return;
+    }
     a.target = "_blank";
     a.rel = "noopener";
   });
@@ -3778,6 +3788,93 @@ function openRandomNote() {
   const notes = state.files.filter((path) => path.endsWith(".md"));
   if (!notes.length) { toast("Немає нотаток"); return; }
   openNote(notes[Math.floor(Math.random() * notes.length)]);
+}
+
+/* ---------------- web viewer ---------------- */
+const webView = { history: [], index: -1, url: "" };
+
+function normalizeUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^[\w-]+(\.[\w-]+)+/.test(raw)) return "https://" + raw;
+  return "";
+}
+
+function updateWebNav() {
+  const back = $("webBack");
+  const forward = $("webForward");
+  if (!back || !forward) return;
+  back.disabled = webView.index <= 0;
+  forward.disabled = webView.index >= webView.history.length - 1;
+}
+
+function webNavigate(url, push = true) {
+  const clean = normalizeUrl(url);
+  if (!clean) { toast("Потрібен http(s) URL"); return ""; }
+  if (push) {
+    webView.history = webView.history.slice(0, webView.index + 1);
+    if (webView.history[webView.history.length - 1] !== clean) webView.history.push(clean);
+    webView.index = webView.history.length - 1;
+  }
+  webView.url = clean;
+  $("webAddress").value = clean;
+  $("webFrame").src = clean;
+  updateWebNav();
+  setView("web");
+  $("stPath").textContent = clean;
+  document.title = clean + " · Vault";
+  return clean;
+}
+
+function openWebViewer(url) {
+  webView.history = [];
+  webView.index = -1;
+  return webNavigate(url);
+}
+
+function webBack() {
+  if (webView.index <= 0) return;
+  webView.index -= 1;
+  webView.url = webView.history[webView.index];
+  $("webAddress").value = webView.url;
+  $("webFrame").src = webView.url;
+  updateWebNav();
+  $("stPath").textContent = webView.url;
+}
+
+function webForward() {
+  if (webView.index >= webView.history.length - 1) return;
+  webView.index += 1;
+  webView.url = webView.history[webView.index];
+  $("webAddress").value = webView.url;
+  $("webFrame").src = webView.url;
+  updateWebNav();
+  $("stPath").textContent = webView.url;
+}
+
+function webReload() {
+  if (webView.url) $("webFrame").src = webView.url;
+}
+
+function closeWebViewer() {
+  $("webFrame").src = "about:blank";
+  updateWebNav();
+  setView("note");
+  paint();
+}
+
+function initWebViewer() {
+  if (!$("webHost")) return;
+  $("webGo").onclick = () => webNavigate($("webAddress").value);
+  $("webAddress").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); webNavigate($("webAddress").value); }
+  });
+  $("webBack").onclick = webBack;
+  $("webForward").onclick = webForward;
+  $("webReload").onclick = webReload;
+  $("webExternal").onclick = () => { if (webView.url) window.open(webView.url, "_blank", "noopener"); };
+  $("webClose").onclick = closeWebViewer;
 }
 
 /* ---------------- slides ---------------- */
@@ -5304,6 +5401,7 @@ function openSettings() {
   $("setPagePreview").checked = previewEnabled();
   $("setDefaultMode").value = store.get("defaultMode", "live");
   $("setSpellcheck").checked = store.get("spellcheck", "1") !== "0";
+  $("setWebLinks").checked = store.get("webLinks", "0") === "1";
   const noteCfg = dailyApi && dailyApi.config ? dailyApi.config : null;
   if (noteCfg) {
     $("setDailyFolder").value = noteCfg.daily.folder || "";
@@ -5365,6 +5463,7 @@ $("saveSettings").onclick = async () => {
   store.set("pagePreview", $("setPagePreview").checked ? "1" : "0");
   store.set("defaultMode", $("setDefaultMode").value);
   store.set("spellcheck", $("setSpellcheck").checked ? "1" : "0");
+  store.set("webLinks", $("setWebLinks").checked ? "1" : "0");
   store.set("hotkeys", JSON.stringify(hotkeys));
   try {
     await writeVaultJson(".obsidian/daily-notes.json", {
@@ -5454,6 +5553,7 @@ async function connect(repo, branch, token, remember) {
     initGraph(Vault);
     canvasApi = initCanvas(Vault);
     initSlides();
+    initWebViewer();
     initCollab(Vault);
     initPlugins(Vault).then((api) => { pluginsApi = api; renderCommunityPlugins(); }).catch(() => {});
     loadSnippets().catch(() => {});
@@ -5469,6 +5569,10 @@ registerCommand({ id: "save", label: "Зберегти нотатку", hint: "C
 registerCommand({ id: "mode", label: "Режим читання / редактор", hint: "Ctrl+E", run: toggleMode });
 registerCommand({ id: "pdf", label: "Експорт PDF (файл)", hint: "PDF", run: exportPdf });
 registerCommand({ id: "print", label: "Друк / зберегти як PDF (вікно друку)", hint: "Ctrl+P", run: printNote });
+registerCommand({ id: "web-viewer", label: "Відкрити Web viewer", hint: "URL", plugin: "webviewer", run: () => {
+  const url = prompt("URL для Web viewer:", "https://");
+  if (url) openWebViewer(url);
+} });
 registerCommand({ id: "slides", label: "Почати презентацію", hint: "Slides", plugin: "slides", run: startSlides });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
@@ -5576,4 +5680,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }) };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }) };

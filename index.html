@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=80">
+<link rel="stylesheet" href="styles.css?v=81">
 </head>
 <body>
 
@@ -184,6 +184,18 @@
           <div id="baseEmpty" class="empty" style="display:none"></div>
         </div>
       </div>
+      <div id="webHost">
+        <div class="web-bar">
+          <button class="clickable-icon" id="webBack" title="Назад">‹</button>
+          <button class="clickable-icon" id="webForward" title="Вперед">›</button>
+          <button class="clickable-icon" id="webReload" title="Оновити">⟳</button>
+          <input id="webAddress" placeholder="https://..." autocomplete="off" spellcheck="false">
+          <button class="ghost-border" id="webGo">Відкрити</button>
+          <button class="clickable-icon" id="webExternal" title="Відкрити в браузері">↗</button>
+          <button class="clickable-icon" id="webClose" title="Закрити">✕</button>
+        </div>
+        <iframe id="webFrame" title="Web viewer" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+      </div>
     </main>
 
     <aside id="right">
@@ -321,6 +333,7 @@
             <option value="read">Читання</option>
           </select>
           <label style="margin-top:12px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setSpellcheck" checked> Перевірка орфографії</label>
+          <label style="margin-top:12px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setWebLinks"> Відкривати зовнішні посилання у Web viewer</label>
           <label style="margin-top:18px;display:block">Graph view: сила відштовхування</label>
           <input id="setGraphForce" type="range" min="40" max="220" step="10">
         </section>
@@ -423,7 +436,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=80"></script>
-<script type="module" src="app.js?v=80"></script>
+<script src="vendor/marked.min.js?v=81"></script>
+<script type="module" src="app.js?v=81"></script>
 </body>
 </html>
