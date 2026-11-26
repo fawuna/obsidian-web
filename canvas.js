@@ -53,6 +53,16 @@ function edgePath(a, b) {
   return "M " + ax + " " + ay + " C " + mx + " " + ay + ", " + mx + " " + by + ", " + bx + " " + by;
 }
 
+function linkHost(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
+function isInsideGroup(node, group) {
+  const gx = group.x, gy = group.y;
+  const gw = group.width || 480, gh = group.height || 340;
+  return node.x >= gx && node.y >= gy && node.x + (node.width || 320) <= gx + gw && node.y + (node.height || 200) <= gy + gh;
+}
+
 function render() {
   world.innerHTML = "";
   svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -96,9 +106,12 @@ function render() {
     }
   }
 
-  for (const n of model.nodes) {
+  const ordered = [...model.nodes].sort((a, b) => (a.type === "group" ? 0 : 1) - (b.type === "group" ? 0 : 1));
+  for (const n of ordered) {
+    const isGroup = n.type === "group";
+    const isLink = n.type === "link";
     const node = document.createElement("div");
-    node.className = "cv-node" + (selected === n.id ? " selected" : "");
+    node.className = "cv-node" + (isGroup ? " cv-group" : "") + (isLink ? " cv-link" : "") + (selected === n.id ? " selected" : "");
     node.style.left = n.x + "px";
     node.style.top = n.y + "px";
     node.style.width = (n.width || 320) + "px";
@@ -112,7 +125,7 @@ function render() {
 
     const head = document.createElement("div");
     head.className = "cv-head";
-    head.textContent = (n.type === "file" ? "📄 " : "📝 ") + (n.file || "text");
+    head.textContent = (isGroup ? "🗂 " : isLink ? "🌐 " : n.type === "file" ? "📄 " : "📝 ") + (isGroup ? (n.label || "Група") : isLink ? (n.title || linkHost(n.url)) : (n.file || "text"));
     const dot = document.createElement("span");
     dot.className = "cv-color";
     dot.title = "Колір картки";
@@ -123,14 +136,36 @@ function render() {
     head.onmousedown = (e) => {
       e.stopPropagation();
       selected = n.id;
-      dragging = { node: n, startX: e.clientX, startY: e.clientY, origX: n.x, origY: n.y };
+      const children = isGroup
+        ? model.nodes.filter((other) => other.id !== n.id && other.type !== "group" && isInsideGroup(other, n)).map((other) => ({ node: other, x: other.x, y: other.y }))
+        : [];
+      dragging = { node: n, startX: e.clientX, startY: e.clientY, origX: n.x, origY: n.y, children };
       render();
     };
+    if (isGroup) {
+      head.ondblclick = (e) => {
+        e.stopPropagation();
+        const label = prompt("Назва групи:", n.label || "Група");
+        if (label !== null) { n.label = label.trim() || "Група"; dirty = true; render(); }
+      };
+    } else if (isLink) {
+      head.ondblclick = (e) => { e.stopPropagation(); window.open(n.url, "_blank", "noopener"); };
+    }
     node.appendChild(head);
 
     const body = document.createElement("div");
-    body.className = "cv-body";
-    if (n.type === "text") {
+    body.className = "cv-body" + (isGroup ? " cv-group-body" : "");
+    if (isGroup) {
+      // group cards are visual containers
+    } else if (isLink) {
+      const frame = document.createElement("iframe");
+      frame.className = "cv-iframe";
+      frame.src = n.url;
+      frame.loading = "lazy";
+      frame.setAttribute("sandbox", "allow-scripts allow-popups allow-forms");
+      frame.referrerPolicy = "no-referrer";
+      body.appendChild(frame);
+    } else if (n.type === "text") {
       const ta = document.createElement("textarea");
       ta.value = n.text || "";
       ta.oninput = () => { n.text = ta.value; dirty = true; };
@@ -294,6 +329,14 @@ export function initCanvas(vault) {
       dirty = true;
       const nodeEl = world.querySelector('[data-id="' + dragging.node.id + '"]');
       if (nodeEl) { nodeEl.style.left = dragging.node.x + "px"; nodeEl.style.top = dragging.node.y + "px"; }
+      if (dragging.children && dragging.children.length) {
+        for (const child of dragging.children) {
+          child.node.x = Math.round(child.x + dx);
+          child.node.y = Math.round(child.y + dy);
+          const childEl = world.querySelector('[data-id="' + child.node.id + '"]');
+          if (childEl) { childEl.style.left = child.node.x + "px"; childEl.style.top = child.node.y + "px"; }
+        }
+      }
       const byId = new Map(model.nodes.map((n) => [n.id, n]));
       svg.querySelectorAll("path").forEach((p, i) => {
         const ed = model.edges[i];
@@ -317,6 +360,28 @@ export function initCanvas(vault) {
     if (Vault.state.view !== "canvas") return;
     const w = toWorld(board.getBoundingClientRect().left + 120, board.getBoundingClientRect().top + 120);
     model.nodes.push({ id: uid(), type: "text", text: "", x: Math.round(w.x), y: Math.round(w.y), width: 300, height: 160 });
+    dirty = true;
+    render();
+  };
+
+  document.getElementById("cvAddGroup").onclick = () => {
+    if (Vault.state.view !== "canvas") return;
+    const rect = board.getBoundingClientRect();
+    const w = toWorld(rect.left + 100, rect.top + 100);
+    model.nodes.push({ id: uid(), type: "group", label: "Група", x: Math.round(w.x), y: Math.round(w.y), width: 480, height: 340 });
+    dirty = true;
+    render();
+  };
+
+  document.getElementById("cvAddLink").onclick = () => {
+    if (Vault.state.view !== "canvas") return;
+    const url = prompt("URL для веб-картки:", "https://");
+    if (!url) return;
+    const clean = url.trim();
+    if (!/^https?:\/\//i.test(clean)) { Vault.toast("потрібен http(s) URL"); return; }
+    const rect = board.getBoundingClientRect();
+    const w = toWorld(rect.left + 200, rect.top + 200);
+    model.nodes.push({ id: uid(), type: "link", url: clean, x: Math.round(w.x), y: Math.round(w.y), width: 400, height: 300 });
     dirty = true;
     render();
   };
@@ -374,6 +439,29 @@ export function initCanvas(vault) {
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(false); }
   });
+
+  window.__canvasTest = {
+    show() { Vault.setView("canvas"); },
+    setModel(next) {
+      model = next && Array.isArray(next.nodes) ? next : { nodes: [], edges: [] };
+      if (!Array.isArray(model.edges)) model.edges = [];
+      render();
+    },
+    getModel() { return JSON.parse(JSON.stringify(model)); },
+    addGroup(label, x = 40, y = 40, width = 480, height = 340) {
+      const node = { id: uid(), type: "group", label: label || "Група", x, y, width, height };
+      model.nodes.push(node);
+      render();
+      return node;
+    },
+    addLink(url, x = 100, y = 100, width = 400, height = 300) {
+      const node = { id: uid(), type: "link", url, x, y, width, height };
+      model.nodes.push(node);
+      render();
+      return node;
+    },
+    render,
+  };
 
   return { open, create };
 }

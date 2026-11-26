@@ -461,6 +461,12 @@ body.view-base #editor, body.view-base #previewHost, body.view-base #liveHost, b
 #canvasBoard.dragging { cursor: grabbing; }
 #canvasWorld { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; }
 .cv-node { position: absolute; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.35); padding: 10px 12px; font-size: 12.5px; overflow: hidden; color: var(--text); }
+.cv-node.cv-group { z-index: 0; background: color-mix(in srgb, var(--accent) 6%, transparent); border: 2px dashed color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: none; border-radius: 14px; }
+.cv-node.cv-group .cv-head { color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.cv-node.cv-group .cv-body { display: none; }
+.cv-node:not(.cv-group) { z-index: 1; }
+.cv-node.cv-link .cv-body { padding: 0; height: calc(100% - 26px); max-height: none; overflow: hidden; }
+.cv-node.cv-link .cv-iframe { width: 100%; height: 100%; border: 0; background: #fff; border-radius: 0 0 8px 8px; }
 .cv-node.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 6px 18px rgba(0,0,0,.4); }
 .cv-node .cv-head { display: flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 6px; color: var(--accent); cursor: move; }
 .cv-node .cv-body { white-space: pre-wrap; color: var(--text-dim); max-height: 220px; overflow: auto; }
