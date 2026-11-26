@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=107";
-import { initCanvas } from "./canvas.js?v=107";
-import { initCollab } from "./collab.js?v=107";
-import { initPlugins } from "./plugins.js?v=107";
-import { exportPdfFile } from "./pdf.js?v=107";
-import { initLive } from "./live.js?v=107";
-import { initDaily } from "./daily.js?v=107";
-import { initRecorder } from "./recorder.js?v=107";
-import { initPdfViewer } from "./pdfviewer.js?v=107";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=107";
+import { initGraph } from "./graph.js?v=108";
+import { initCanvas } from "./canvas.js?v=108";
+import { initCollab } from "./collab.js?v=108";
+import { initPlugins } from "./plugins.js?v=108";
+import { exportPdfFile } from "./pdf.js?v=108";
+import { initLive } from "./live.js?v=108";
+import { initDaily } from "./daily.js?v=108";
+import { initRecorder } from "./recorder.js?v=108";
+import { initPdfViewer } from "./pdfviewer.js?v=108";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=108";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v107";
+const BUILD = "v108";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2313,6 +2313,15 @@ function propertyIsList(raw, key) {
   return false;
 }
 
+function inferPropertyType(key, value) {
+  const text = String(value == null ? "" : value).trim();
+  if (/^(true|false)$/i.test(text)) return "checkbox";
+  if (/^-?\d+(?:\.\d+)?$/.test(text)) return "number";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return "date";
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return "datetime";
+  return "text";
+}
+
 function yamlScalar(value) {
   const text = String(value);
   if (!text) return "";
@@ -2433,9 +2442,18 @@ function buildReadingHeader(file, parsed) {
     const icon = el("span", "metadata-property-icon");
     icon.setAttribute("aria-disabled", "false");
     const isList = key === "tags" || key === "aliases" || propertyIsList(parsed.raw, key);
-    icon.innerHTML = isList
-      ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-tags"><path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 5 9.172V4a2 2 0 0 1 2-2z"></path><path d="M7 7h.01"></path></svg>'
-      : '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-text"><path d="M21 5H3"></path><path d="M15 12H3"></path><path d="M17 19H3"></path></svg>';
+    const propertyType = isList ? "tags" : inferPropertyType(key, value);
+    if (isList) {
+      icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-tags"><path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 5 9.172V4a2 2 0 0 1 2-2z"></path><path d="M7 7h.01"></path></svg>';
+    } else if (propertyType === "checkbox") {
+      icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-check-square"><path d="m9 11 3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>';
+    } else if (propertyType === "number") {
+      icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-hash"><line x1="4" x2="20" y1="9" y2="9"></line><line x1="4" x2="20" y1="15" y2="15"></line><line x1="10" x2="8" y1="3" y2="21"></line><line x1="16" x2="14" y1="3" y2="21"></line></svg>';
+    } else if (propertyType === "date" || propertyType === "datetime") {
+      icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path></svg>';
+    } else {
+      icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-text"><path d="M21 5H3"></path><path d="M15 12H3"></path><path d="M17 19H3"></path></svg>';
+    }
     const input = document.createElement("input");
     input.className = "metadata-property-key-input";
     input.value = key;
@@ -2454,7 +2472,7 @@ function buildReadingHeader(file, parsed) {
     });
     keyEl.append(icon, input);
     const valueEl = el("div", "metadata-property-value");
-    valueEl.dataset.propertyType = isList ? "tags" : "text";
+    valueEl.dataset.propertyType = propertyType;
     if (isList) {
       const multi = el("div", "multi-select-container");
       const items = String(value).split(",").map((part) => part.trim()).filter(Boolean);
@@ -2486,6 +2504,39 @@ function buildReadingHeader(file, parsed) {
         setFrontmatterProperty(file, key, [...items, next.trim()]);
       };
       valueEl.appendChild(multi);
+    } else if (propertyType === "checkbox") {
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.className = "metadata-input-checkbox";
+      box.checked = /^true$/i.test(String(value).trim());
+      box.setAttribute("aria-label", key);
+      box.onchange = () => setFrontmatterProperty(file, key, box.checked ? "true" : "false");
+      valueEl.appendChild(box);
+    } else if (propertyType === "number") {
+      const number = document.createElement("input");
+      number.type = "number";
+      number.step = "any";
+      number.className = "metadata-input-number";
+      number.value = String(value);
+      number.setAttribute("aria-label", key);
+      number.addEventListener("change", () => setFrontmatterProperty(file, key, number.value.trim()));
+      valueEl.appendChild(number);
+    } else if (propertyType === "date") {
+      const date = document.createElement("input");
+      date.type = "date";
+      date.className = "metadata-input-date";
+      date.value = /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? String(value) : "";
+      date.setAttribute("aria-label", key);
+      date.addEventListener("change", () => { if (date.value) setFrontmatterProperty(file, key, date.value); });
+      valueEl.appendChild(date);
+    } else if (propertyType === "datetime") {
+      const stamp = document.createElement("input");
+      stamp.type = "datetime-local";
+      stamp.className = "metadata-input-datetime";
+      stamp.value = String(value).slice(0, 16);
+      stamp.setAttribute("aria-label", key);
+      stamp.addEventListener("change", () => { if (stamp.value) setFrontmatterProperty(file, key, stamp.value); });
+      valueEl.appendChild(stamp);
     } else {
       const text = el("div", "metadata-input-longtext", value);
       text.contentEditable = "true";

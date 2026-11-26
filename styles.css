@@ -363,6 +363,9 @@ body.view-graph #liveHost, body.view-canvas #liveHost { display: none; }
 #preview .metadata-property-value { flex: 1; min-width: 0; color: var(--text); }
 #preview .metadata-input-longtext { white-space: pre-wrap; }
 #preview .metadata-input-longtext:focus { outline: none; background: var(--bg-3); box-shadow: 0 0 0 1px var(--accent); border-radius: 4px; }
+#preview .metadata-input-checkbox { width: 16px; height: 16px; margin: 2px 0; accent-color: var(--accent); }
+#preview .metadata-input-number, #preview .metadata-input-date, #preview .metadata-input-datetime { width: 100%; background: transparent; border: 0; color: var(--text); font: inherit; padding: 2px 4px; border-radius: 4px; }
+#preview .metadata-input-number:focus, #preview .metadata-input-date:focus, #preview .metadata-input-datetime:focus { outline: none; background: var(--bg-3); box-shadow: 0 0 0 1px var(--accent); }
 #preview .metadata-property-key-input:focus { outline: none; background: var(--bg-3); border-radius: 4px; }
 #preview .metadata-add-button { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; padding: 6px 4px; cursor: pointer; border-radius: 4px; }
 #preview .metadata-add-button:hover { color: var(--text); background: var(--bg-3); }
