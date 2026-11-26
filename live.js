@@ -18,6 +18,7 @@ let cfg = null;
 let view = null;
 let lastText = "";
 let suppress = false;
+let linkPending = false;
 
 const IMAGE_RE = /\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i;
 
@@ -257,6 +258,21 @@ function buildExtensions() {
         const prev = lastText;
         lastText = text;
         cfg.onChange(text, prev);
+        const head = update.state.selection.main.head;
+        const typed = update.transactions.some((tr) => tr.isUserEvent("input.type"));
+        if (typed && !linkPending && head >= 2 && update.state.sliceDoc(head - 2, head) === "[[") {
+          linkPending = true;
+          const from = head - 2;
+          setTimeout(() => {
+            linkPending = false;
+            if (!view) return;
+            const at = Math.min(from, view.state.doc.length);
+            if (view.state.sliceDoc(at, at + 2) === "[[") {
+              view.dispatch({ changes: { from: at, to: at + 2 } });
+            }
+            cfg.onLinkTrigger(from);
+          }, 0);
+        }
       }
       if ((update.selectionSet || update.docChanged) && update.view.hasFocus) {
         const head = update.state.selection.main.head;
@@ -322,6 +338,13 @@ export function initLive(options) {
       if (!view) return;
       const head = view.state.selection.main.head;
       view.dispatch({ changes: { from: head, insert: text }, selection: { anchor: head + text.length } });
+      view.focus();
+    },
+    insertAt(pos, text) {
+      if (!view) return;
+      const at = Math.max(0, Math.min(pos, view.state.doc.length));
+      view.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length } });
+      view.focus();
     },
     wrap(marker) { if (view) wrapSelection(view, marker, marker); },
     select(from, to) {

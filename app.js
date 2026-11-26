@@ -1,14 +1,14 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=22";
-import { initCanvas } from "./canvas.js?v=22";
-import { initCollab } from "./collab.js?v=22";
-import { initPlugins } from "./plugins.js?v=22";
-import { exportPdfFile } from "./pdf.js?v=22";
-import { initLive } from "./live.js?v=22";
+import { initGraph } from "./graph.js?v=24";
+import { initCanvas } from "./canvas.js?v=24";
+import { initCollab } from "./collab.js?v=24";
+import { initPlugins } from "./plugins.js?v=24";
+import { exportPdfFile } from "./pdf.js?v=24";
+import { initLive } from "./live.js?v=24";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v22";
+const BUILD = "v24";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1001,14 +1001,29 @@ function renderPalette() {
 }
 
 let switcherMode = "open";
+let linkPos = null;
 function showSwitcher(mode) {
   switcherMode = mode === "link" ? "link" : "open";
+  linkPos = null;
   $("switcherInput").value = "";
   $("switcherInput").placeholder = switcherMode === "link" ? "Вставити [[посилання]] на…" : "Перейти до нотатки…";
   switcherActive = 0;
   renderSwitcher();
   openModal("switcher");
   $("switcherInput").focus();
+}
+function chooseSwitcherItem(path) {
+  if (!path) return;
+  closeModals();
+  if (switcherMode === "link") {
+    const link = "[[" + path.replace(/\.(md|canvas)$/, "") + "]]";
+    if (state.mode === "live" && liveApi && linkPos !== null) liveApi.insertAt(linkPos, link);
+    else insertAtCursor(link);
+    linkPos = null;
+    switcherMode = "open";
+  } else {
+    openNote(path);
+  }
 }
 function renderSwitcher() {
   const q = $("switcherInput").value.trim().toLowerCase();
@@ -1034,13 +1049,7 @@ function renderSwitcher() {
     item.appendChild(el("span", null, path.endsWith(".canvas") ? "🎨" : "📄"));
     item.appendChild(el("span", null, path.replace(/\.(md|canvas)$/, "")));
     item.onclick = () => {
-      closeModals();
-      if (switcherMode === "link") {
-        insertAtCursor("[[" + path.replace(/\.(md|canvas)$/, "") + "]]");
-        switcherMode = "open";
-      } else {
-        openNote(path);
-      }
+      chooseSwitcherItem(path);
     };
     list.appendChild(item);
   });
@@ -1543,7 +1552,7 @@ $("switcherInput").addEventListener("input", () => { switcherActive = 0; renderS
 $("switcherInput").addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") { e.preventDefault(); switcherActive = Math.min(switcherActive + 1, switcherItems.length - 1); renderSwitcher(); }
   if (e.key === "ArrowUp") { e.preventDefault(); switcherActive = Math.max(switcherActive - 1, 0); renderSwitcher(); }
-  if (e.key === "Enter") { const path = switcherItems[switcherActive]; if (path) { closeModals(); openNote(path); } }
+  if (e.key === "Enter") { const path = switcherItems[switcherActive]; if (path) chooseSwitcherItem(path); }
 });
 
 $("overlay").onclick = closeModals;
@@ -1705,6 +1714,7 @@ liveApi = initLive({
     if (hit) openNote(hit); else toast("Немає такої нотатки: " + name);
   },
   imageUrl: (name) => "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.replace(/^\.?\//, "")),
+  onLinkTrigger: (pos) => { showSwitcher("link"); linkPos = pos; },
 });
 
 theme();
