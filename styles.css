@@ -577,3 +577,19 @@ body.split #previewHost { display: none; }
   #right.open { display: flex; }
   #editor, #preview { padding: 18px; }
 }
+
+/* settings layout */
+#settings { width: min(820px, 94vw); max-height: 88vh; }
+.settings-layout { display: flex; min-height: 440px; max-height: 72vh; }
+.settings-nav { width: 190px; flex: 0 0 190px; border-right: 1px solid var(--line); padding: 8px; overflow: auto; }
+.settings-nav button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; background: transparent; color: var(--text-dim); border-radius: 6px; font-size: 13px; cursor: pointer; }
+.settings-nav button:hover { background: var(--bg-3); color: var(--text); }
+.settings-nav button.active { background: var(--bg-4); color: var(--text); }
+.settings-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.settings-body { overflow: auto; padding: 14px 18px; flex: 1; }
+.settings-body .settings-section { display: none; }
+.settings-body .settings-section.active { display: block; }
+.settings-body h3 { margin: 0 0 10px; font-size: 15px; }
+.core-plugin-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-dim); }
+.core-plugin-row input { margin-top: 3px; }
+.core-plugin-row small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px; }

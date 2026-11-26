@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=54">
+<link rel="stylesheet" href="styles.css?v=55">
 </head>
 <body>
 
@@ -240,31 +240,57 @@
 </div>
 
 <div class="modal" id="settings">
-  <div class="pane-head"><span class="title">Налаштування</span></div>
-  <div class="body">
-    <label>Репозиторій</label>
-    <input id="setRepo">
-    <label>Гілка</label>
-    <input id="setBranch">
-    <label>Токен</label>
-    <input id="setToken" type="password">
-    <div class="row">
-      <div><label>Тема</label><select id="setTheme"><option value="dark">Темна</option><option value="light">Світла</option></select></div>
-      <div><label>Шрифт редактора</label><select id="setFont"><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17">17px</option></select></div>
-      <div><label>Ширина</label><select id="setWidth"><option value="46rem">Звичайна</option><option value="56rem">Широка</option><option value="38rem">Вузька</option></select></div>
+  <div class="settings-layout">
+    <nav class="settings-nav" id="settingsNav"></nav>
+    <div class="settings-main">
+      <div class="pane-head"><span class="title" id="settingsTitle">Налаштування</span></div>
+      <div class="body settings-body" id="settingsBody">
+        <section class="settings-section" data-settings="about">
+          <h3>About</h3>
+          <label>Репозиторій</label>
+          <input id="setRepo">
+          <label>Гілка</label>
+          <input id="setBranch">
+          <label>Токен</label>
+          <input id="setToken" type="password">
+          <div class="hint" id="settingsVersion" style="margin-top:12px"></div>
+        </section>
+        <section class="settings-section" data-settings="appearance">
+          <h3>Appearance</h3>
+          <div class="row">
+            <div><label>Тема</label><select id="setTheme"><option value="dark">Темна</option><option value="light">Світла</option></select></div>
+            <div><label>Шрифт редактора</label><select id="setFont"><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17">17px</option></select></div>
+            <div><label>Ширина</label><select id="setWidth"><option value="46rem">Звичайна</option><option value="56rem">Широка</option><option value="38rem">Вузька</option></select></div>
+          </div>
+          <label style="margin-top:18px">Акцентний колір</label>
+          <div class="accent-row">
+            <input id="setAccent" type="color" value="#a882ff">
+            <button class="ghost-border" id="accentReset" title="Скинути до теми">↺</button>
+            <div id="accentPresets" class="accent-presets"></div>
+          </div>
+        </section>
+        <section class="settings-section" data-settings="editor">
+          <h3>Editor</h3>
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="setPagePreview" checked> Прев'ю нотатки при наведенні на посилання</label>
+          <label style="margin-top:18px;display:block">Graph view: сила відштовхування</label>
+          <input id="setGraphForce" type="range" min="40" max="220" step="10">
+        </section>
+        <section class="settings-section" data-settings="hotkeys">
+          <h3>Hotkeys</h3>
+          <div id="hotkeyList" class="hotkey-list"></div>
+          <div class="hint">Клікни поле й натисни комбінацію. Backspace — очистити, Esc — скасувати.</div>
+        </section>
+        <section class="settings-section" data-settings="core">
+          <h3>Core plugins</h3>
+          <div id="corePluginsList" class="core-plugins-list"></div>
+        </section>
+        <section class="settings-section" data-settings="plugins">
+          <h3>Community plugins</h3>
+          <p class="hint" style="margin:0 0 10px">Плагіни читаються з теки <code>.obsidian/plugins</code> у волті.</p>
+          <button class="ghost-border" id="openPluginsPane">Відкрити панель плагінів</button>
+        </section>
+      </div>
     </div>
-    <label style="margin-top:18px">Акцентний колір</label>
-    <div class="accent-row">
-      <input id="setAccent" type="color" value="#a882ff">
-      <button class="ghost-border" id="accentReset" title="Скинути до теми">↺</button>
-      <div id="accentPresets" class="accent-presets"></div>
-    </div>
-    <label style="margin-top:18px">Гарячі клавіші</label>
-    <div id="hotkeyList" class="hotkey-list"></div>
-    <div class="hint">Клікни поле й натисни комбінацію. Backspace — очистити, Esc — скасувати.</div>
-    <label style="margin-top:18px">Graph view: сила відштовхування</label>
-    <input id="setGraphForce" type="range" min="40" max="220" step="10">
-    <label style="margin-top:18px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setPagePreview" checked> Прев'ю нотатки при наведенні на посилання</label>
   </div>
   <div class="foot"><button class="ghost-border" id="closeSettings">Закрити</button><button class="primary" id="saveSettings">Зберегти</button></div>
 </div>
@@ -296,7 +322,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=54"></script>
-<script type="module" src="app.js?v=54"></script>
+<script src="vendor/marked.min.js?v=55"></script>
+<script type="module" src="app.js?v=55"></script>
 </body>
 </html>

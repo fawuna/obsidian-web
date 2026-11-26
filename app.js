@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=54";
-import { initCanvas } from "./canvas.js?v=54";
-import { initCollab } from "./collab.js?v=54";
-import { initPlugins } from "./plugins.js?v=54";
-import { exportPdfFile } from "./pdf.js?v=54";
-import { initLive } from "./live.js?v=54";
-import { initDaily } from "./daily.js?v=54";
+import { initGraph } from "./graph.js?v=55";
+import { initCanvas } from "./canvas.js?v=55";
+import { initCollab } from "./collab.js?v=55";
+import { initPlugins } from "./plugins.js?v=55";
+import { exportPdfFile } from "./pdf.js?v=55";
+import { initLive } from "./live.js?v=55";
+import { initDaily } from "./daily.js?v=55";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v54";
+const BUILD = "v55";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -42,6 +42,68 @@ const state = {
   groups: [{ tabs: [], active: null }],
   mobileGroup: (() => { const value = Number(store.get("mobileGroup", "1")); return Number.isFinite(value) && value >= 1 ? Math.floor(value) : 1; })(),
 };
+
+/* ---------------- core plugins ---------------- */
+const CORE_PLUGINS = [
+  { id: "file-explorer", label: "File explorer", desc: "Дерево файлів волту", def: true },
+  { id: "global-search", label: "Search", desc: "Пошук по всьому волту", def: true },
+  { id: "switcher", label: "Quick switcher", desc: "Швидкий перехід між нотатками", def: true },
+  { id: "graph", label: "Graph view", desc: "Граф звʼязків", def: true },
+  { id: "backlink", label: "Backlinks", desc: "Згадки в інших нотатках", def: true },
+  { id: "outgoing-link", label: "Outgoing links", desc: "Посилання з поточної нотатки", def: true },
+  { id: "tag-pane", label: "Tags view", desc: "Панель тегів", def: true },
+  { id: "properties", label: "Properties view", desc: "Усі властивості волту", def: true },
+  { id: "page-preview", label: "Page preview", desc: "Прев'ю при наведенні на посилання", def: true },
+  { id: "daily-notes", label: "Daily notes", desc: "Щоденна нотатка", def: true },
+  { id: "templates", label: "Templates", desc: "Вставка шаблонів", def: true },
+  { id: "note-composer", label: "Note composer", desc: "Витяг і обʼєднання нотаток", def: true },
+  { id: "command-palette", label: "Command palette", desc: "Палітра команд", def: true },
+  { id: "editor-status", label: "Editor status", desc: "Позиція курсора", def: true },
+  { id: "bookmarks", label: "Bookmarks", desc: "Закладки", def: true },
+  { id: "outline", label: "Outline", desc: "Структура нотатки", def: true },
+  { id: "word-count", label: "Word count", desc: "Слова й символи", def: true },
+  { id: "canvas", label: "Canvas", desc: "Полотно", def: true },
+  { id: "file-recovery", label: "File recovery", desc: "Історія версій нотатки", def: true },
+  { id: "sync", label: "Sync / collab", desc: "Спільна робота", def: true },
+];
+
+let corePluginOverrides = {};
+try {
+  const savedCore = JSON.parse(store.get("corePlugins", "{}"));
+  if (savedCore && typeof savedCore === "object" && !Array.isArray(savedCore)) corePluginOverrides = savedCore;
+} catch { corePluginOverrides = {}; }
+
+function isCoreEnabled(id) {
+  if (Object.prototype.hasOwnProperty.call(corePluginOverrides, id)) return !!corePluginOverrides[id];
+  const plugin = CORE_PLUGINS.find((item) => item.id === id);
+  return plugin ? plugin.def : true;
+}
+
+function setCoreEnabled(id, enabled) {
+  corePluginOverrides[id] = !!enabled;
+  store.set("corePlugins", JSON.stringify(corePluginOverrides));
+  applyCorePlugins();
+}
+
+function applyCorePlugins() {
+  const graphBtn = $("openGraph");
+  if (graphBtn) graphBtn.style.display = isCoreEnabled("graph") ? "" : "none";
+  const canvasBtn = $("openCanvas");
+  if (canvasBtn) canvasBtn.style.display = isCoreEnabled("canvas") ? "" : "none";
+  const paletteBtn = $("openPalette");
+  if (paletteBtn) paletteBtn.style.display = isCoreEnabled("command-palette") ? "" : "none";
+  const switcherBtn = $("openSwitcher");
+  if (switcherBtn) switcherBtn.style.display = isCoreEnabled("switcher") ? "" : "none";
+  const meta = $("stMeta");
+  if (meta) meta.style.display = isCoreEnabled("word-count") ? "" : "none";
+  const cursor = $("stCursor");
+  if (cursor) cursor.style.display = isCoreEnabled("editor-status") ? "" : "none";
+  if (!isCoreEnabled("page-preview")) hidePagePreview();
+  renderRibbonExtra();
+  showPane(store.get("leftTab", "files"));
+  renderRightTabs();
+  renderRightPanels();
+}
 
 let liveApi = null;
 let livePath = null;
@@ -410,6 +472,8 @@ function renderRibbonExtra() {
   ribbon.querySelectorAll("[data-extra]").forEach((n) => n.remove());
   const spacer = ribbon.querySelector(".spacer");
   state.ribbonButtons.forEach((btn) => {
+    const core = btn.core || (btn.id === "daily" ? "daily-notes" : btn.id === "template" ? "templates" : null);
+    if (core && !isCoreEnabled(core)) return;
     const b = el("button", null, btn.icon || "◆");
     b.title = btn.title || btn.id;
     b.dataset.extra = "1";
@@ -2268,7 +2332,7 @@ let previewHideTimer = null;
 let previewAnchor = null;
 let previewTarget = null;
 
-function previewEnabled() { return store.get("pagePreview", "1") !== "0"; }
+function previewEnabled() { return isCoreEnabled("page-preview") && store.get("pagePreview", "1") !== "0"; }
 
 function previewLinkFor(node) {
   if (!node || typeof node.closest !== "function") return null;
@@ -2497,7 +2561,8 @@ function persistRightSidebar() {
 function renderRightTabs() {
   const host = $("rightTabs");
   if (!host) return;
-  const available = RIGHT_TABS.filter((tab) => !rightClosed.includes(tab.id));
+  const pluginFor = { backlink: "backlink", "outgoing-link": "outgoing-link", tag: "tag-pane", "all-properties": "properties", outline: "outline" };
+  const available = RIGHT_TABS.filter((tab) => !rightClosed.includes(tab.id) && isCoreEnabled(pluginFor[tab.id]));
   if (!available.some((tab) => tab.id === rightTab)) rightTab = available.length ? available[0].id : "";
   host.innerHTML = "";
   for (const tab of available) {
@@ -3118,11 +3183,14 @@ function renderSwitcher() {
 }
 
 /* ---------------- panes / modes ---------------- */
+const LEFT_TAB_PLUGINS = { files: "file-explorer", search: "global-search", bookmarks: "bookmarks", tags: "tag-pane", plugins: null };
+
 function showPane(pane) {
-  const LEFT_TABS = ["files", "search", "bookmarks", "tags", "plugins"];
-  if (!LEFT_TABS.includes(pane)) pane = "files";
+  const LEFT_TABS = ["files", "search", "bookmarks", "tags", "plugins"].filter((id) => !LEFT_TAB_PLUGINS[id] || isCoreEnabled(LEFT_TAB_PLUGINS[id]));
+  if (!LEFT_TABS.length) LEFT_TABS.push("files");
+  if (!LEFT_TABS.includes(pane)) pane = LEFT_TABS[0];
   store.set("leftTab", pane);
-  LEFT_TABS.forEach((p) => { const node = $(p + "Pane"); if (node) node.style.display = p === pane ? "" : "none"; });
+  ["files", "search", "bookmarks", "tags", "plugins"].forEach((p) => { const node = $(p + "Pane"); if (node) node.style.display = p === pane ? "" : "none"; });
   const toolbar = $("leftToolbar");
   if (toolbar) toolbar.style.display = pane === "files" ? "flex" : "none";
   renderLeftTabs();
@@ -3135,13 +3203,14 @@ function renderLeftTabs() {
   const host = $("leftTabs");
   if (!host) return;
   const tabs = [
-    { id: "files", label: "Files", icon: "🗂" },
-    { id: "search", label: "Search", icon: "🔍" },
-    { id: "bookmarks", label: "Bookmarks", icon: "🔖" },
-    { id: "tags", label: "Tags", icon: "🏷" },
-    { id: "plugins", label: "Plugins", icon: "🧩" },
-  ];
-  const active = store.get("leftTab", "files");
+    { id: "files", label: "Files", icon: "🗂", plugin: "file-explorer" },
+    { id: "search", label: "Search", icon: "🔍", plugin: "global-search" },
+    { id: "bookmarks", label: "Bookmarks", icon: "🔖", plugin: "bookmarks" },
+    { id: "tags", label: "Tags", icon: "🏷", plugin: "tag-pane" },
+    { id: "plugins", label: "Plugins", icon: "🧩", plugin: null },
+  ].filter((tab) => !tab.plugin || isCoreEnabled(tab.plugin));
+  const stored = store.get("leftTab", "files");
+  const active = tabs.some((tab) => tab.id === stored) ? stored : (tabs[0] ? tabs[0].id : "files");
   host.innerHTML = "";
   for (const tab of tabs) {
     const head = el("div", "workspace-tab-header tappable" + (tab.id === active ? " is-active" : ""));
@@ -3873,6 +3942,66 @@ function renderHotkeysSettings() {
   }
 }
 
+const SETTINGS_TABS = [
+  { id: "about", label: "About" },
+  { id: "appearance", label: "Appearance" },
+  { id: "editor", label: "Editor" },
+  { id: "hotkeys", label: "Hotkeys" },
+  { id: "core", label: "Core plugins" },
+  { id: "plugins", label: "Community plugins" },
+];
+
+function renderSettingsNav() {
+  const host = $("settingsNav");
+  if (!host) return;
+  host.innerHTML = "";
+  const active = store.get("settingsTab", "appearance");
+  for (const tab of SETTINGS_TABS) {
+    const btn = el("button", tab.id === active ? "active" : null, tab.label);
+    btn.onclick = () => {
+      store.set("settingsTab", tab.id);
+      renderSettingsNav();
+      showSettingsSection(tab.id);
+    };
+    host.appendChild(btn);
+  }
+}
+
+function showSettingsSection(id) {
+  let found = false;
+  document.querySelectorAll("#settingsBody .settings-section").forEach((section) => {
+    const active = section.dataset.settings === id;
+    section.classList.toggle("active", active);
+    if (active) found = true;
+  });
+  if (!found) {
+    const first = document.querySelector("#settingsBody .settings-section");
+    if (first) first.classList.add("active");
+  }
+  const title = $("settingsTitle");
+  if (title) {
+    const tab = SETTINGS_TABS.find((item) => item.id === id);
+    title.textContent = tab ? tab.label : "Налаштування";
+  }
+}
+
+function renderCorePlugins() {
+  const host = $("corePluginsList");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const plugin of CORE_PLUGINS) {
+    const row = el("label", "core-plugin-row");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = isCoreEnabled(plugin.id);
+    input.onchange = () => setCoreEnabled(plugin.id, input.checked);
+    const text = el("span");
+    text.append(el("b", null, plugin.label), el("small", null, plugin.desc));
+    row.append(input, text);
+    host.appendChild(row);
+  }
+}
+
 function openSettings() {
   $("setRepo").value = state.repo;
   $("setBranch").value = state.branch;
@@ -3886,6 +4015,11 @@ function openSettings() {
   $("setAccent").value = /^#[0-9a-f]{6}$/i.test(computed) ? computed : "#a882ff";
   renderAccentPresets();
   renderHotkeysSettings();
+  renderSettingsNav();
+  renderCorePlugins();
+  showSettingsSection(store.get("settingsTab", "appearance"));
+  const version = $("settingsVersion");
+  if (version) version.textContent = "Vault · " + BUILD + " · " + state.repo + " · " + state.branch;
   openModal("settings");
 }
 $("setAccent").addEventListener("input", () => {
@@ -3917,6 +4051,7 @@ $("saveSettings").onclick = () => {
   closeModals();
   location.reload();
 };
+$("openPluginsPane").onclick = () => { closeModals(); showPane("plugins"); };
 
 window.addEventListener("beforeunload", (e) => { if (state.open.some((f) => f.dirty)) { e.preventDefault(); e.returnValue = ""; } });
 window.addEventListener("beforeunload", saveWorkspace);
