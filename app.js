@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=74";
-import { initCanvas } from "./canvas.js?v=74";
-import { initCollab } from "./collab.js?v=74";
-import { initPlugins } from "./plugins.js?v=74";
-import { exportPdfFile } from "./pdf.js?v=74";
-import { initLive } from "./live.js?v=74";
-import { initDaily } from "./daily.js?v=74";
+import { initGraph } from "./graph.js?v=75";
+import { initCanvas } from "./canvas.js?v=75";
+import { initCollab } from "./collab.js?v=75";
+import { initPlugins } from "./plugins.js?v=75";
+import { exportPdfFile } from "./pdf.js?v=75";
+import { initLive } from "./live.js?v=75";
+import { initDaily } from "./daily.js?v=75";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v74";
+const BUILD = "v75";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2232,15 +2232,12 @@ function buildReadingHeader(file, parsed) {
         pill.append(pillContent, remove);
         multi.appendChild(pill);
       }
-      const addPill = el("div", "multi-select-pill multi-select-pill-add", "＋");
-      addPill.title = "Додати";
-      addPill.onclick = (event) => {
+      multi.ondblclick = (event) => {
         event.stopPropagation();
         const next = prompt("Додати до " + key, "");
         if (next == null || !next.trim()) return;
         setFrontmatterProperty(file, key, [...items, next.trim()]);
       };
-      multi.appendChild(addPill);
       valueEl.appendChild(multi);
     } else {
       const text = el("div", "metadata-input-longtext", value);
