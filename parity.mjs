@@ -91,6 +91,19 @@ function parityFeatures(root) {
       href: a.getAttribute("href") || "",
       tag: a.tagName.toLowerCase(),
     })),
+    blocks: [...root.children].map((el) => el.tagName.toLowerCase() + "." + String(el.className || "").trim().split(/\s+/).filter(Boolean).sort().join(".")),
+    metadata: {
+      container: !!root.querySelector(".metadata-container"),
+      count: root.querySelector(".metadata-container")?.getAttribute("data-property-count") || "",
+      keys: [...root.querySelectorAll(".metadata-property")].map((p) => p.getAttribute("data-property-key") || p.querySelector(".metadata-property-key-input")?.value || ""),
+      valueClasses: [...root.querySelectorAll(".metadata-property-value")].map((v) => {
+        const first = v.firstElementChild;
+        return first ? String(first.className).split(/\s+/).sort().join(" ") : "";
+      }),
+      heading: !!root.querySelector(".metadata-properties-heading"),
+      title: !!root.querySelector(".metadata-properties-title"),
+      inlineTitle: root.querySelector(".inline-title")?.textContent.trim() || "",
+    },
     props,
     markHtml: root.querySelector("mark")?.outerHTML || "",
   };
@@ -191,7 +204,7 @@ function main() {
   return (async () => {
     const obsidian = await extractObsidian();
     const web = await extractWeb();
-    const fields = ["headings", "strong", "em", "mark", "del", "tables", "callouts", "tasks", "links", "tags", "settings"];
+    const fields = ["headings", "strong", "em", "mark", "del", "tables", "callouts", "tasks", "links", "tags", "settings", "blocks", "metadata"];
     const rows = [];
     const diffs = [];
     for (const field of fields) {

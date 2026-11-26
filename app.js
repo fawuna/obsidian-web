@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=44";
-import { initCanvas } from "./canvas.js?v=44";
-import { initCollab } from "./collab.js?v=44";
-import { initPlugins } from "./plugins.js?v=44";
-import { exportPdfFile } from "./pdf.js?v=44";
-import { initLive } from "./live.js?v=44";
-import { initDaily } from "./daily.js?v=44";
+import { initGraph } from "./graph.js?v=45";
+import { initCanvas } from "./canvas.js?v=45";
+import { initCollab } from "./collab.js?v=45";
+import { initPlugins } from "./plugins.js?v=45";
+import { exportPdfFile } from "./pdf.js?v=45";
+import { initLive } from "./live.js?v=45";
+import { initDaily } from "./daily.js?v=45";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v44";
+const BUILD = "v45";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1198,6 +1198,81 @@ function parseProps(text) {
   return { raw: m[0], body: text.slice(m[0].length), props };
 }
 
+const READING_TRIANGLE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon right-triangle"><path d="M3 8L12 17L21 8"></path></svg>';
+
+function buildReadingHeader(file, parsed) {
+  const header = el("div", "mod-header mod-ui");
+  const title = el("div", "inline-title", file.path.split("/").pop().replace(/\.md$/, ""));
+  title.contentEditable = "false";
+  title.spellcheck = true;
+  title.tabIndex = -1;
+  header.appendChild(title);
+  if (!parsed || !parsed.props.length) return header;
+  const container = el("div", "metadata-container");
+  container.tabIndex = -1;
+  container.dataset.propertyCount = String(parsed.props.length);
+  const error = el("div", "metadata-error-container");
+  error.style.display = "none";
+  container.appendChild(error);
+  const heading = el("div", "metadata-properties-heading");
+  heading.tabIndex = 0;
+  const collapse = el("div", "collapse-indicator collapse-icon");
+  collapse.innerHTML = READING_TRIANGLE_SVG;
+  const headingTitle = el("div", "metadata-properties-title", "Властивості");
+  heading.append(collapse, headingTitle);
+  const content = el("div", "metadata-content");
+  const properties = el("div", "metadata-properties");
+  for (const [key, value] of parsed.props) {
+    const prop = el("div", "metadata-property");
+    prop.tabIndex = 0;
+    prop.dataset.propertyKey = key;
+    const keyEl = el("div", "metadata-property-key");
+    const icon = el("span", "metadata-property-icon");
+    icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-text"><path d="M17 6.1H3"></path><path d="M21 12.1H3"></path><path d="M15.1 18H3"></path></svg>';
+    const input = document.createElement("input");
+    input.className = "metadata-property-key-input";
+    input.value = key;
+    input.readOnly = true;
+    input.spellcheck = false;
+    keyEl.append(icon, input);
+    const valueEl = el("div", "metadata-property-value");
+    if (key === "tags" || key === "aliases") {
+      const multi = el("div", "multi-select-container");
+      for (const item of String(value).split(",").map((part) => part.trim()).filter(Boolean)) {
+        const pill = el("div", "multi-select-pill");
+        const pillContent = el("div", "multi-select-pill-content");
+        pillContent.appendChild(el("span", null, item));
+        pill.appendChild(pillContent);
+        multi.appendChild(pill);
+      }
+      valueEl.appendChild(multi);
+    } else {
+      valueEl.appendChild(el("div", "metadata-input-longtext", value));
+    }
+    prop.append(keyEl, valueEl);
+    properties.appendChild(prop);
+  }
+  content.appendChild(properties);
+  container.append(heading, content);
+  header.appendChild(container);
+  return header;
+}
+
+function blockWrapClass(node) {
+  if (node.matches("div.callout")) return "el-div";
+  if (node.classList.contains("embed-note")) return "el-div";
+  const tag = node.tagName.toLowerCase();
+  if (/^h[1-6]$/.test(tag)) return "el-" + tag;
+  if (tag === "p") return "el-p";
+  if (tag === "table") return "el-table";
+  if (tag === "ul") return "el-ul";
+  if (tag === "ol") return "el-ol";
+  if (tag === "pre") return "el-pre";
+  if (tag === "blockquote") return "el-blockquote";
+  if (tag === "hr") return "el-hr";
+  return "el-p";
+}
+
 function renderPreview() {
   const file = currentFile();
   const host = $("preview");
@@ -1205,12 +1280,44 @@ function renderPreview() {
   const parsed = parseProps(file.text);
   const body = parsed ? parsed.body : file.text;
 
-  let head = "";
-  if (parsed && parsed.props.length) {
-    head = '<div class="props">' + parsed.props.map(([k, v]) => '<div class="row"><span class="k">' + escapeHtml(k) + '</span><span class="v">' + escapeHtml(v) + "</span></div>").join("") + "</div>";
+  host.innerHTML = "";
+  const pusher = el("div", "markdown-preview-pusher");
+  pusher.style.width = "1px";
+  pusher.style.height = "0.1px";
+  pusher.style.marginBottom = "0px";
+  host.appendChild(pusher);
+  host.appendChild(buildReadingHeader(file, parsed));
+  if (parsed) {
+    const frontmatter = el("div", "el-pre mod-frontmatter mod-ui");
+    const pre = document.createElement("pre");
+    pre.className = "frontmatter language-yaml";
+    pre.style.display = "none";
+    const code = document.createElement("code");
+    code.className = "language-yaml is-loaded";
+    code.textContent = parsed.raw;
+    pre.appendChild(code);
+    frontmatter.appendChild(pre);
+    host.appendChild(frontmatter);
   }
-  host.innerHTML = head + markdownToHtml(body);
-  styleCallouts(host);
+
+  const tmp = document.createElement("div");
+  tmp.innerHTML = markdownToHtml(body);
+  styleCallouts(tmp);
+  for (const child of [...tmp.children]) {
+    const wrap = el("div", blockWrapClass(child));
+    if (wrap.className === "el-table") {
+      wrap.dir = "ltr";
+      wrap.style.overflowX = "auto";
+    }
+    wrap.appendChild(child);
+    host.appendChild(wrap);
+  }
+
+  const footer = el("div", "mod-footer mod-ui");
+  const backlinks = el("div", "embedded-backlinks");
+  backlinks.style.display = "none";
+  footer.appendChild(backlinks);
+  host.appendChild(footer);
   wireRendered(host, file.text, 0);
   resolveEmbeds(host);
 }
