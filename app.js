@@ -1,13 +1,13 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=12";
-import { initCanvas } from "./canvas.js?v=12";
-import { initCollab } from "./collab.js?v=12";
-import { initPlugins } from "./plugins.js?v=12";
-import { exportPdfFile } from "./pdf.js?v=12";
+import { initGraph } from "./graph.js?v=16";
+import { initCanvas } from "./canvas.js?v=16";
+import { initCollab } from "./collab.js?v=16";
+import { initPlugins } from "./plugins.js?v=16";
+import { exportPdfFile } from "./pdf.js?v=16";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v12";
+const BUILD = "v16";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -482,6 +482,7 @@ function paint() {
   $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch + " · " + BUILD;
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
   renderPreview();
+  if (state.mode === "live") renderLive();
   renderContext();
   renderOutline();
   syncHighlight();
@@ -650,35 +651,82 @@ function renderPreview() {
   const host = $("preview");
   if (!file) { host.innerHTML = ""; return; }
   const parsed = parseProps(file.text);
-  let body = parsed ? parsed.body : file.text;
-
-  body = body.replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (m, t, l) =>
-    '<a class="wikilink" data-target="' + t.trim().replace(/"/g, "&quot;") + '">' + (l ? l.slice(1) : t).trim() + "</a>");
-  body = body.replace(/!\[\[([^\]]+\.(svg|png|jpe?g|gif|webp))\]\]/gi, (m, name) =>
-    "![" + name + "](https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.trim()) + ")");
-  body = body.replace(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF-]{2,})/g, (m, pre, tag) => pre + '<span class="tag">#' + tag + "</span>");
-
-  let html = "";
-  if (!window.marked) {
-    html = '<div style="background:#5a2323;color:#fff;padding:8px 12px;border-radius:8px;margin-bottom:12px">' +
-      'Markdown-рушій не завантажився. Онови сторінку з Ctrl+Shift+R.</div>' +
-      "<pre>" + body.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c])) + "</pre>";
-  } else {
-    html = marked.parse(body, { breaks: true, mangle: false, headerIds: false });
-  }
-
-  html = html.replace(/<blockquote>\s*<p>\[!(\w+)\]\s*([^<]*)/g, (m, kind, rest) => '<div class="callout"><b>' + kind.toUpperCase() + "</b> " + rest);
+  const body = parsed ? parsed.body : file.text;
 
   let head = "";
   if (parsed && parsed.props.length) {
-    head = '<div class="props">' + parsed.props.map(([k, v]) => '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + "</span></div>").join("") + "</div>";
+    head = '<div class="props">' + parsed.props.map(([k, v]) => '<div class="row"><span class="k">' + escapeHtml(k) + '</span><span class="v">' + escapeHtml(v) + "</span></div>").join("") + "</div>";
   }
-  host.innerHTML = head + html;
+  host.innerHTML = head + markdownToHtml(body);
+  styleCallouts(host);
+  wireRendered(host, file.text, 0);
+  resolveEmbeds(host);
+}
 
-  // clickable task checkboxes: map rendered checkboxes back to source lines
-  const tasks = taskItems(file.text);
+function markdownToHtml(body) {
+  const fences = [];
+  let src = body.replace(/(^|\n)(```|~~~)[\s\S]*?(?:\n\2\s*(?=\n|$)|$)/g, (m, pre) => {
+    fences.push(m.slice(pre.length));
+    return pre + "\u0000F" + (fences.length - 1) + "\u0000";
+  });
+
+  src = src.replace(/!\[\[([^\]]+)\]\]/g, (m, inner) => {
+    const name = inner.split("|")[0].trim();
+    if (/\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(name)) {
+      return "![" + name + "](" + encodeURI("https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + name.replace(/^\.?\//, "")) + ")";
+    }
+    return '<div class="embed-note" data-note="' + encodeURIComponent(name) + '">…</div>';
+  });
+  src = src.replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (m, t, l) =>
+    '<a class="wikilink" data-target="' + t.trim().replace(/"/g, "&quot;") + '">' + escapeHtml((l ? l.slice(1) : t).trim()) + "</a>");
+  src = src.replace(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]{1,})/g, (m, pre, tag) =>
+    pre + '<span class="tag" data-tag="' + escapeHtml(tag) + '">#' + escapeHtml(tag) + "</span>");
+  src = src.replace(/^>\s*\[!(\w+)\]([+-]?)\s*(.*)$/gm, (m, kind, fold, title) =>
+    "> <span class=\"callout-kind\" data-kind=\"" + kind.toLowerCase() + "\" data-fold=\"" + fold + "\">" + escapeHtml(title) + "</span>");
+  src = src.replace(/\u0000F(\d+)\u0000/g, (m, i) => fences[Number(i)]);
+
+  let html;
+  if (!window.marked) {
+    html = '<div style="background:#5a2323;color:#fff;padding:8px 12px;border-radius:8px;margin-bottom:12px">' +
+      'Markdown-рушій не завантажився. Онови сторінку з Ctrl+Shift+R.</div>' +
+      "<pre>" + escapeHtml(src) + "</pre>";
+  } else {
+    html = marked.parse(src, { breaks: true, mangle: false, headerIds: false });
+  }
+  return html;
+}
+
+const CALLOUT_TITLES = { note: "Нотатка", tip: "Порада", info: "Інфо", success: "Готово", warning: "Увага", danger: "Небезпека", bug: "Баг", example: "Приклад", quote: "Цитата", todo: "Зробити" };
+
+function styleCallouts(root) {
+  root.querySelectorAll("blockquote").forEach((bq) => {
+    const kindEl = bq.querySelector(".callout-kind");
+    if (!kindEl) return;
+    const kind = (kindEl.dataset.kind || "note").toLowerCase();
+    const fold = kindEl.dataset.fold || "";
+    const title = kindEl.textContent.trim();
+    kindEl.remove();
+    bq.classList.add("callout", "callout-" + kind);
+    const head = document.createElement("div");
+    head.className = "callout-title";
+    head.textContent = (title || CALLOUT_TITLES[kind] || kind);
+    if (fold) {
+      head.classList.add("foldable");
+      head.textContent = (fold === "-" ? "▸ " : "▾ ") + head.textContent;
+      if (fold === "-") bq.classList.add("collapsed");
+      head.onclick = () => {
+        bq.classList.toggle("collapsed");
+        head.textContent = (bq.classList.contains("collapsed") ? "▸ " : "▾ ") + (title || CALLOUT_TITLES[kind] || kind);
+      };
+    }
+    bq.prepend(head);
+  });
+}
+
+function wireRendered(root, sourceText, lineOffset = 0) {
+  const tasks = taskItems(sourceText);
   let boxIndex = 0;
-  host.querySelectorAll('li.task-list-item, li').forEach((li) => {
+  root.querySelectorAll("li").forEach((li) => {
     const box = li.querySelector('input[type="checkbox"]');
     if (!box) return;
     const info = tasks[boxIndex++];
@@ -690,22 +738,228 @@ function renderPreview() {
     box.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      toggleTaskLine(info.line, info.prefixLen);
+      toggleTaskLine(info.line + lineOffset, info.prefixLen);
     });
   });
 
-  host.querySelectorAll(".wikilink").forEach((a) => {
+  root.querySelectorAll(".wikilink").forEach((a) => {
     a.onclick = () => {
       const target = a.dataset.target.replace(/^#/, "");
       const hit = state.files.find((p) => p === target + ".md" || p === target || p.endsWith("/" + target + ".md"));
       if (hit) openNote(hit); else toast("Нема такої нотатки: " + target);
     };
   });
-  host.querySelectorAll("img").forEach((img) => {
+  root.querySelectorAll("img").forEach((img) => {
     const src = img.getAttribute("src") || "";
     if (!/^https?:/.test(src)) img.src = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + src.replace(/^\.?\//, "");
   });
-  host.querySelectorAll("a[href]").forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
+  root.querySelectorAll("a[href]").forEach((a) => { a.target = "_blank"; a.rel = "noopener"; });
+  root.querySelectorAll(".tag[data-tag]").forEach((t) => {
+    t.onclick = () => {
+      const input = $("searchInput");
+      if (input) { input.value = "#" + t.dataset.tag; showPane("search"); input.dispatchEvent(new Event("input")); }
+    };
+  });
+}
+
+function resolveEmbeds(root) {
+  root.querySelectorAll(".embed-note").forEach((box) => {
+    const name = decodeURIComponent(box.dataset.note || "").split("#")[0].trim();
+    const hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
+    if (!hit) { box.textContent = "немає нотатки: " + name; box.classList.add("missing"); return; }
+    const paintEmbed = (text) => {
+      const parsed = parseProps(text);
+      const body = parsed ? parsed.body : text;
+      box.innerHTML = '<div class="embed-title">' + escapeHtml(hit.split("/").pop().replace(/\.md$/, "")) + "</div>" + markdownToHtml(body);
+      styleCallouts(box);
+      wireRendered(box, body, 0);
+      box.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.disabled = true; });
+      box.classList.add("loaded");
+      box.onclick = (e) => { e.stopPropagation(); openNote(hit); };
+    };
+    const text = state.index.get(hit);
+    if (text === undefined) {
+      box.textContent = name + " (завантажую…)";
+      ghGet(hit)
+        .then(({ text: fetched }) => { state.index.set(hit, fetched); paintEmbed(fetched); })
+        .catch(() => { box.textContent = "не завантажилось: " + name; box.classList.add("missing"); });
+      return;
+    }
+    paintEmbed(text);
+  });
+}
+
+
+/* ---------------- live preview (block editor) ---------------- */
+let liveBlocks = [];
+
+function propsHtmlFromRaw(raw) {
+  const rows = raw.replace(/^---\r?\n?/, "").replace(/\r?\n?---\s*$/, "").split(/\r?\n/);
+  const props = [];
+  for (const line of rows) {
+    const kv = line.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):\s*(.*)$/);
+    if (kv) { props.push([kv[1], kv[2].replace(/^["']|["']$/g, "")]); continue; }
+    const item = line.match(/^\s*-\s*(.*)$/);
+    if (item && props.length) {
+      const last = props[props.length - 1];
+      last[1] = last[1] ? last[1] + ", " + item[1].trim() : item[1].trim();
+    }
+  }
+  if (!props.length) return '<pre class="props-raw">' + escapeHtml(raw) + "</pre>";
+  return '<div class="props">' + props.map(([k, v]) =>
+    '<div class="row"><span class="k">' + escapeHtml(k) + '</span><span class="v">' + escapeHtml(v) + "</span></div>").join("") + "</div>";
+}
+
+function blockKind(line) {
+  if (/^\s*$/.test(line)) return "blank";
+  if (/^\s*(```|~~~)/.test(line)) return "fence";
+  if (/^#{1,6}\s/.test(line)) return "heading";
+  if (/^\s*>/.test(line)) return "quote";
+  if (/^\s*([-*+]|\d+[.)])\s/.test(line)) return "list";
+  if (/^\s*\|/.test(line)) return "table";
+  return "para";
+}
+
+function parseBlocks(text) {
+  const lines = text.split("\n");
+  const starts = [];
+  let off = 0;
+  for (const line of lines) { starts.push(off); off += line.length + 1; }
+  const blocks = [];
+  let i = 0;
+
+  if (lines[0] === "---") {
+    let end = -1;
+    for (let k = 1; k < lines.length; k++) if (lines[k].trim() === "---") { end = k; break; }
+    if (end > 0) {
+      const endOff = starts[end] + lines[end].length;
+      blocks.push({ start: 0, end: endOff, raw: text.slice(0, endOff), kind: "frontmatter" });
+      i = end + 1;
+    }
+  }
+
+  while (i < lines.length) {
+    const kind = blockKind(lines[i]);
+    if (kind === "blank") { i++; continue; }
+    let j = i;
+    if (kind === "fence") {
+      j = i + 1;
+      while (j < lines.length && !/^\s*(```|~~~)/.test(lines[j])) j++;
+      if (j < lines.length) j++;
+      j -= 1;
+    } else if (kind === "heading") {
+      j = i;
+    } else {
+      j = i;
+      while (j + 1 < lines.length) {
+        const next = lines[j + 1];
+        const nk = blockKind(next);
+        if (nk === "blank") break;
+        if (nk === kind) { j++; continue; }
+        if ((kind === "list" || kind === "quote" || kind === "table") && /^\s{2,}\S/.test(next)) { j++; continue; }
+        break;
+      }
+    }
+    const start = starts[i];
+    const end = starts[j] + lines[j].length;
+    blocks.push({ start, end, raw: text.slice(start, end), kind });
+    i = j + 1;
+  }
+  return blocks;
+}
+
+function renderLive() {
+  const host = $("live");
+  const file = currentFile();
+  if (!host) return;
+  if (!file) { host.innerHTML = ""; return; }
+  if (host.querySelector(".live-src")) return;
+  const blocks = parseBlocks(file.text);
+  liveBlocks = blocks;
+  host.innerHTML = "";
+  blocks.forEach((b, i) => {
+    const div = document.createElement("div");
+    div.className = "live-block k-" + b.kind;
+    div.dataset.i = String(i);
+    div.innerHTML = b.kind === "frontmatter" ? propsHtmlFromRaw(b.raw) : markdownToHtml(b.raw);
+    host.appendChild(div);
+  });
+  styleCallouts(host);
+  host.querySelectorAll(".live-block").forEach((el) => {
+    const idx = Number(el.dataset.i);
+    const b = liveBlocks[idx];
+    if (!b) return;
+    const lineOffset = (file.text.slice(0, b.start).match(/\n/g) || []).length;
+    wireRendered(el, b.raw, lineOffset);
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("a, input, .tag, .embed-note")) return;
+      if (!el.isConnected || el.classList.contains("editing")) return;
+      openLiveEditor(el, idx);
+    });
+  });
+  resolveEmbeds(host);
+}
+
+function openLiveEditor(el, idx) {
+  const b = liveBlocks[idx];
+  const file = currentFile();
+  if (!b || !file) return;
+  const ta = document.createElement("textarea");
+  ta.className = "live-src";
+  ta.spellcheck = false;
+  ta.value = b.raw;
+  el.classList.add("editing");
+  el.innerHTML = "";
+  el.appendChild(ta);
+  const size = () => { ta.style.height = "auto"; ta.style.height = Math.max(30, ta.scrollHeight) + "px"; };
+  size();
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+
+  let done = false;
+  const apply = () => {
+    const value = ta.value;
+    if (value === b.raw) return;
+    const prev = file.text;
+    const oldEnd = b.end;
+    const delta = value.length - (oldEnd - b.start);
+    file.text = file.text.slice(0, b.start) + value + file.text.slice(oldEnd);
+    for (const other of liveBlocks) {
+      if (other !== b && other.start >= oldEnd) { other.start += delta; other.end += delta; }
+    }
+    b.raw = value;
+    b.end = b.start + value.length;
+    $("editor").value = file.text;
+    noteEdited(prev);
+  };
+  const commit = () => {
+    if (done) return;
+    done = true;
+    apply();
+    el.classList.remove("editing");
+    ta.remove();
+    renderLive();
+  };
+  ta.addEventListener("input", () => { size(); apply(); });
+  ta.addEventListener("blur", commit);
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" || ((e.ctrlKey || e.metaKey) && e.key === "Enter")) { e.preventDefault(); ta.blur(); }
+  });
+}
+
+function noteEdited(prev) {
+  const file = currentFile();
+  if (!file) return;
+  file.dirty = true;
+  state.index.set(file.path, file.text);
+  setState("не збережено", "warn");
+  const words = file.text.trim().split(/\s+/).filter(Boolean).length;
+  $("stMeta").textContent = words + " слів · " + file.text.length + " симв.";
+  emit("edit", { path: file.path, text: file.text, prev });
+  clearTimeout($("editor")._t);
+  $("editor")._t = setTimeout(() => saveNote(true), 3000);
+  clearTimeout($("editor")._o);
+  $("editor")._o = setTimeout(renderOutline, 350);
 }
 
 /* ---------------- context / tags / search ---------------- */
@@ -931,17 +1185,18 @@ function showPane(pane) {
   if (pane === "tags") renderTags();
   if (pane === "plugins") emit("plugins:pane");
 }
-const MODES = ["edit", "split", "read"];
+const MODES = ["edit", "live", "split", "read"];
 function setMode(mode) {
   if (!MODES.includes(mode)) mode = "edit";
   state.mode = mode;
-  document.body.classList.remove("mode-edit", "mode-split", "mode-read");
+  document.body.classList.remove("mode-edit", "mode-live", "mode-split", "mode-read");
   document.body.classList.add("mode-" + mode);
   store.set("mode", mode);
   for (const m of MODES) {
     const btn = $("mode" + m.charAt(0).toUpperCase() + m.slice(1));
     if (btn) btn.style.background = m === mode ? "var(--bg-4)" : "";
   }
+  if (mode === "live") renderLive();
 }
 const toggleMode = () => setMode(MODES[(MODES.indexOf(state.mode) + 1) % MODES.length]);
 const toggleLeft = () => { if (window.innerWidth <= 980) $("left").classList.toggle("open"); else document.body.classList.toggle("no-left"); };
@@ -1181,19 +1436,11 @@ $("editor").addEventListener("input", () => {
   if (!file) return;
   const prev = file.text;
   file.text = $("editor").value;
-  file.dirty = true;
-  state.index.set(file.path, file.text);
-  setState("не збережено", "warn");
-  const words = file.text.trim().split(/\s+/).filter(Boolean).length;
-  $("stMeta").textContent = words + " слів · " + file.text.length + " симв.";
+  noteEdited(prev);
   renderPreview();
+  if (state.mode === "live") renderLive();
   syncHighlight();
   updateCursorPos();
-  clearTimeout($("editor")._o);
-  $("editor")._o = setTimeout(renderOutline, 350);
-  emit("edit", { path: file.path, text: file.text, prev });
-  clearTimeout($("editor")._t);
-  $("editor")._t = setTimeout(() => saveNote(true), 3000);
 
   const ed = $("editor");
   const before = ed.value.slice(Math.max(0, ed.selectionStart - 2), ed.selectionStart);
@@ -1405,6 +1652,7 @@ $("switcherInput").addEventListener("keydown", (e) => {
 $("overlay").onclick = closeModals;
 $("saveBtn").onclick = () => saveNote();
 $("modeEdit").onclick = () => setMode("edit");
+$("modeLive").onclick = () => setMode("live");
 $("modeSplit").onclick = () => setMode("split");
 $("modeRead").onclick = () => setMode("read");
 $("toggleLeft").onclick = toggleLeft;
