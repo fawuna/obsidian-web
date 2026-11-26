@@ -332,6 +332,7 @@ function render() {
     dot.onclick = (e) => { e.stopPropagation(); cycleColor(n); };
     head.appendChild(dot);
     head.onmousedown = (e) => {
+      if (e.button !== 0) return;
       e.stopPropagation();
       selectedEdge = null;
       hideEdgeBar();
@@ -401,6 +402,7 @@ function render() {
     handle.className = "cv-resize";
     handle.title = "Потягни, щоб змінити розмір";
     handle.onmousedown = (e) => {
+      if (e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
       resizing = { node: n, startX: e.clientX, startY: e.clientY, w: n.width || 320, h: n.height || 200 };
@@ -443,6 +445,7 @@ function render() {
       selected = n.id;
       render();
     };
+    node.oncontextmenu = (event) => nodeContext(event, n);
     world.appendChild(node);
   }
   applyTransform();
@@ -624,6 +627,97 @@ function canvasImageDataUrl() {
   return canvas.toDataURL("image/png");
 }
 
+function deleteSelection() {
+  if (!selectedNodes.size) return;
+  const ids = new Set(selectedNodes);
+  model.nodes = model.nodes.filter((n) => !ids.has(n.id));
+  model.edges = model.edges.filter((edge) => !ids.has(edge.fromNode) && !ids.has(edge.toNode));
+  selectedNodes.clear();
+  selected = null;
+  dirty = true;
+  render();
+}
+
+function duplicateSelection() {
+  const list = model.nodes.filter((n) => selectedNodes.has(n.id));
+  if (!list.length) return;
+  const map = new Map();
+  for (const node of list) {
+    const copy = { ...node, id: uid(), x: node.x + 40, y: node.y + 40 };
+    map.set(node.id, copy.id);
+    model.nodes.push(copy);
+  }
+  for (const edge of [...model.edges]) {
+    if (map.has(edge.fromNode) && map.has(edge.toNode)) {
+      model.edges.push({ ...edge, id: uid(), fromNode: map.get(edge.fromNode), toNode: map.get(edge.toNode) });
+    }
+  }
+  selectedNodes = new Set(map.values());
+  selected = selectedNodes.values().next().value || null;
+  dirty = true;
+  render();
+}
+
+function bringSelectionToFront() {
+  if (!selectedNodes.size) return;
+  const chosen = model.nodes.filter((n) => selectedNodes.has(n.id));
+  model.nodes = model.nodes.filter((n) => !selectedNodes.has(n.id)).concat(chosen);
+  dirty = true;
+  render();
+}
+
+function sendSelectionToBack() {
+  if (!selectedNodes.size) return;
+  const chosen = model.nodes.filter((n) => selectedNodes.has(n.id));
+  model.nodes = chosen.concat(model.nodes.filter((n) => !selectedNodes.has(n.id)));
+  dirty = true;
+  render();
+}
+
+function cycleSelectionColor() {
+  const keys = Object.keys(CANVAS_COLORS);
+  for (const node of model.nodes.filter((n) => selectedNodes.has(n.id))) {
+    const at = node.color ? keys.indexOf(node.color) : -1;
+    const next = at + 1;
+    if (next >= keys.length) delete node.color;
+    else node.color = keys[next];
+  }
+  dirty = true;
+  render();
+}
+
+function nodeContext(event, node) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!selectedNodes.has(node.id)) {
+    selectedNodes = new Set([node.id]);
+    selected = node.id;
+    render();
+  }
+  const items = [];
+  if (node.type === "file") items.push({ label: "Відкрити нотатку", run: () => Vault.openNote(node.file) });
+  else if (node.type === "link") items.push({ label: "Відкрити посилання", run: () => window.open(node.url, "_blank", "noopener") });
+  else if (node.type === "group") {
+    items.push({ label: "Перейменувати групу", run: () => {
+      const label = prompt("Назва групи:", node.label || "Група");
+      if (label !== null) { node.label = label.trim() || "Група"; dirty = true; render(); }
+    } });
+  } else {
+    items.push({ label: "Редагувати текст", run: () => {
+      const ta = document.querySelector('.cv-node[data-id="' + node.id + '"] textarea');
+      if (ta) ta.focus();
+    } });
+  }
+  items.push({ sep: true });
+  items.push({ label: "Дублювати", run: duplicateSelection });
+  items.push({ label: "На передній план", run: bringSelectionToFront });
+  items.push({ label: "Назад", run: sendSelectionToBack });
+  items.push({ label: "Наступний колір", run: cycleSelectionColor });
+  items.push({ sep: true });
+  items.push({ label: "Видалити", danger: true, run: deleteSelection });
+  Vault.showCtx(event.clientX, event.clientY, items);
+}
+
 export function initCanvas(vault) {
   Vault = vault;
   board = document.getElementById("canvasBoard");
@@ -798,13 +892,7 @@ export function initCanvas(vault) {
       return;
     }
     if (e.key === "Delete" && selectedNodes.size) {
-      const ids = new Set(selectedNodes);
-      model.nodes = model.nodes.filter((n) => !ids.has(n.id));
-      model.edges = model.edges.filter((ed) => !ids.has(ed.fromNode) && !ids.has(ed.toNode));
-      selectedNodes.clear();
-      selected = null;
-      dirty = true;
-      render();
+      deleteSelection();
       return;
     }
     if (e.key === "Delete" && selectedEdge) {
@@ -842,6 +930,10 @@ export function initCanvas(vault) {
       return [...selectedNodes];
     },
     align(mode) { return alignSelection(mode); },
+    duplicate: duplicateSelection,
+    deleteSelection,
+    bringToFront: bringSelectionToFront,
+    sendToBack: sendSelectionToBack,
     exportDataUrl: canvasImageDataUrl,
     addGroup(label, x = 40, y = 40, width = 480, height = 340) {
       const node = { id: uid(), type: "group", label: label || "Група", x, y, width, height };

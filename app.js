@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=93";
-import { initCanvas } from "./canvas.js?v=93";
-import { initCollab } from "./collab.js?v=93";
-import { initPlugins } from "./plugins.js?v=93";
-import { exportPdfFile } from "./pdf.js?v=93";
-import { initLive } from "./live.js?v=93";
-import { initDaily } from "./daily.js?v=93";
-import { initRecorder } from "./recorder.js?v=93";
-import { initPdfViewer } from "./pdfviewer.js?v=93";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=93";
+import { initGraph } from "./graph.js?v=94";
+import { initCanvas } from "./canvas.js?v=94";
+import { initCollab } from "./collab.js?v=94";
+import { initPlugins } from "./plugins.js?v=94";
+import { exportPdfFile } from "./pdf.js?v=94";
+import { initLive } from "./live.js?v=94";
+import { initDaily } from "./daily.js?v=94";
+import { initRecorder } from "./recorder.js?v=94";
+import { initPdfViewer } from "./pdfviewer.js?v=94";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=94";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v93";
+const BUILD = "v94";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -5052,7 +5052,7 @@ function renderBasePreview(config, docs, viewIndex = 0) {
 /* ---------------- API for modules ---------------- */
 export const Vault = {
   state, api, ghGet, ghPut, ghPutRaw, ghDelete, b64encode, b64decode,
-  contentsPath, loadAttachment, openNote, openCanvas, openGraph, toast, setState, currentFile,
+  contentsPath, loadAttachment, showCtx, hideCtx, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
   renderTree, renderTabs, paint, renderPreview, renderRightPanels, renderTags, showPane, showSwitcher,
   moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote, openInSecond, closeSecond,
