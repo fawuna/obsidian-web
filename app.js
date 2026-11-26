@@ -7,6 +7,7 @@ import { exportPdfFile } from "./pdf.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+const BUILD = "v7";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -329,7 +330,7 @@ function paint() {
   $("editor").value = file ? file.text : "";
   $("editor").readOnly = !file;
   $("stPath").textContent = state.view === "graph" ? "Graph view" : state.view === "canvas" ? ($("canvasName").textContent || "Canvas") : (file ? file.path : "—");
-  $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch;
+  $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch + " · " + BUILD;
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
   renderPreview();
   renderContext();
@@ -505,9 +506,14 @@ function renderPreview() {
     "![" + name + "](https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.trim()) + ")");
   body = body.replace(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF-]{2,})/g, (m, pre, tag) => pre + '<span class="tag">#' + tag + "</span>");
 
-  let html = window.marked
-    ? marked.parse(body, { breaks: true, mangle: false, headerIds: false })
-    : "<pre>" + body.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c])) + "</pre>";
+  let html = "";
+  if (!window.marked) {
+    html = '<div style="background:#5a2323;color:#fff;padding:8px 12px;border-radius:8px;margin-bottom:12px">' +
+      'Markdown-рушій не завантажився. Онови сторінку з Ctrl+Shift+R.</div>' +
+      "<pre>" + body.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c])) + "</pre>";
+  } else {
+    html = marked.parse(body, { breaks: true, mangle: false, headerIds: false });
+  }
 
   html = html.replace(/<blockquote>\s*<p>\[!(\w+)\]\s*([^<]*)/g, (m, kind, rest) => '<div class="callout"><b>' + kind.toUpperCase() + "</b> " + rest);
 
