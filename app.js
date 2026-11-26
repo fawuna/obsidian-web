@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=70";
-import { initCanvas } from "./canvas.js?v=70";
-import { initCollab } from "./collab.js?v=70";
-import { initPlugins } from "./plugins.js?v=70";
-import { exportPdfFile } from "./pdf.js?v=70";
-import { initLive } from "./live.js?v=70";
-import { initDaily } from "./daily.js?v=70";
+import { initGraph } from "./graph.js?v=71";
+import { initCanvas } from "./canvas.js?v=71";
+import { initCollab } from "./collab.js?v=71";
+import { initPlugins } from "./plugins.js?v=71";
+import { exportPdfFile } from "./pdf.js?v=71";
+import { initLive } from "./live.js?v=71";
+import { initDaily } from "./daily.js?v=71";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v70";
+const BUILD = "v71";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -395,10 +395,18 @@ let workspaceTimer = null;
 function saveWorkspace() {
   const pane2 = $("pane2");
   const match = pane2 ? String(pane2.style.flex || "").match(/(\d+)px/) : null;
+  const widths = state.groups.map((_, index) => {
+    if (index === 0) return null;
+    if (index === 1) return state.groups[1] && match ? Number(match[1]) : null;
+    const pane = getPane(index);
+    const width = pane && pane.wrapper ? pane.wrapper.getBoundingClientRect().width : 0;
+    return width > 0 ? Math.round(width) : null;
+  });
   const data = {
     v: 1,
     groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active })),
-    pane2Width: state.groups[1] && match ? Number(match[1]) : null,
+    pane2Width: widths[1],
+    widths,
   };
   store.set("workspace", JSON.stringify(data));
 }
@@ -440,12 +448,13 @@ async function restoreWorkspace() {
   syncSecond();
   destroyExtraPanes();
   for (let at = 2; at < groups.length; at++) getPane(at);
+  const savedWidths = Array.isArray(data.widths) ? data.widths : [];
+  const savedPane2 = Number(data.pane2Width || savedWidths[1]);
   if (groups[1]) {
     document.body.classList.add("split");
-    const saved = Number(data.pane2Width);
-    if (Number.isFinite(saved) && saved > 120) {
+    if (Number.isFinite(savedPane2) && savedPane2 > 120) {
       const mainWidth = document.querySelector("main").getBoundingClientRect().width || window.innerWidth;
-      const width = Math.min(Math.round(saved), Math.max(120, Math.round(mainWidth * 0.85)));
+      const width = Math.min(Math.round(savedPane2), Math.max(120, Math.round(mainWidth * 0.85)));
       $("pane2").style.flex = "0 0 " + width + "px";
     } else {
       $("pane2").style.flex = "";
@@ -453,6 +462,14 @@ async function restoreWorkspace() {
   } else {
     document.body.classList.remove("split");
     $("pane2").style.flex = "";
+  }
+  const mainWidth = document.querySelector("main").getBoundingClientRect().width || window.innerWidth;
+  for (let at = 2; at < groups.length; at++) {
+    const pane = getPane(at);
+    const width = Number(savedWidths[at]);
+    if (pane && pane.wrapper && Number.isFinite(width) && width > 120) {
+      pane.wrapper.style.flex = "0 0 " + Math.min(Math.round(width), Math.max(160, Math.round(mainWidth * 0.7))) + "px";
+    }
   }
   setView("note");
   renderTabs();
@@ -1083,6 +1100,7 @@ function destroyExtraPanes() {
     const index = Number(key);
     if (index < 2) continue;
     const pane = paneRefs[index];
+    if (pane && pane.splitter) pane.splitter.remove();
     if (pane && pane.wrapper) pane.wrapper.remove();
     delete paneRefs[index];
     delete liveApis[index];
@@ -1302,6 +1320,28 @@ function createPane(index) {
   liveHost.appendChild(live);
   wrapper.append(tabs, editorHost, liveHost);
   document.querySelector("main").insertBefore(wrapper, $("findBar"));
+  const splitter = document.createElement("div");
+  splitter.className = "pane-splitter";
+  splitter.title = "Потягни, щоб змінити ширину";
+  document.querySelector("main").insertBefore(splitter, wrapper);
+  splitter.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    const main = document.querySelector("main");
+    const startX = event.clientX;
+    const startWidth = wrapper.getBoundingClientRect().width;
+    const maxWidth = Math.max(200, main.getBoundingClientRect().width * 0.75);
+    const move = (ev) => {
+      const width = Math.max(160, Math.min(maxWidth, startWidth + (startX - ev.clientX)));
+      wrapper.style.flex = "0 0 " + Math.round(width) + "px";
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      scheduleWorkspaceSave();
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  });
 
   textarea.addEventListener("input", () => handleExtraInput(index));
   textarea.addEventListener("scroll", () => syncHighlightPane(index));
@@ -1345,7 +1385,7 @@ function createPane(index) {
     },
     onFocus: () => { activePane = index + 1; },
   });
-  const pane = { wrapper, tabs, editorHost, editor: textarea, hl: pre, liveHost, live, api };
+  const pane = { wrapper, splitter, tabs, editorHost, editor: textarea, hl: pre, liveHost, live, api };
   paneRefs[index] = pane;
   liveApis[index] = api;
   livePaths[index] = null;

@@ -665,3 +665,6 @@ body.split #previewHost { display: none; }
 @media (max-width: 760px) { #vaultBtn { display: none; } }
 .snippet-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .snippet-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+.pane-splitter { flex: 0 0 4px; cursor: col-resize; background: transparent; }
+.pane-splitter:hover, .pane-splitter:active { background: var(--accent); }
+@media (max-width: 760px) { .pane-splitter { display: none !important; } }
