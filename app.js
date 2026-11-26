@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=79";
-import { initCanvas } from "./canvas.js?v=79";
-import { initCollab } from "./collab.js?v=79";
-import { initPlugins } from "./plugins.js?v=79";
-import { exportPdfFile } from "./pdf.js?v=79";
-import { initLive } from "./live.js?v=79";
-import { initDaily } from "./daily.js?v=79";
+import { initGraph } from "./graph.js?v=80";
+import { initCanvas } from "./canvas.js?v=80";
+import { initCollab } from "./collab.js?v=80";
+import { initPlugins } from "./plugins.js?v=80";
+import { exportPdfFile } from "./pdf.js?v=80";
+import { initLive } from "./live.js?v=80";
+import { initDaily } from "./daily.js?v=80";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v79";
+const BUILD = "v80";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -57,6 +57,7 @@ const CORE_PLUGINS = [
   { id: "daily-notes", label: "Daily notes", desc: "Щоденна нотатка", def: true },
   { id: "templates", label: "Templates", desc: "Вставка шаблонів", def: true },
   { id: "slides", label: "Slides", desc: "Презентація з нотатки", def: true },
+  { id: "unique-note", label: "Unique note creator", desc: "Нотатки з унікальною часовою назвою", def: true },
   { id: "note-composer", label: "Note composer", desc: "Витяг і обʼєднання нотаток", def: true },
   { id: "command-palette", label: "Command palette", desc: "Палітра команд", def: true },
   { id: "editor-status", label: "Editor status", desc: "Позиція курсора", def: true },
@@ -5147,6 +5148,9 @@ const SETTINGS_TABS = [
   { id: "about", label: "About" },
   { id: "appearance", label: "Appearance" },
   { id: "editor", label: "Editor" },
+  { id: "daily", label: "Daily notes" },
+  { id: "templates", label: "Templates" },
+  { id: "unique", label: "Unique note creator" },
   { id: "hotkeys", label: "Hotkeys" },
   { id: "core", label: "Core plugins" },
   { id: "plugins", label: "Community plugins" },
@@ -5300,6 +5304,18 @@ function openSettings() {
   $("setPagePreview").checked = previewEnabled();
   $("setDefaultMode").value = store.get("defaultMode", "live");
   $("setSpellcheck").checked = store.get("spellcheck", "1") !== "0";
+  const noteCfg = dailyApi && dailyApi.config ? dailyApi.config : null;
+  if (noteCfg) {
+    $("setDailyFolder").value = noteCfg.daily.folder || "";
+    $("setDailyFormat").value = noteCfg.daily.format || "YYYY-MM-DD";
+    $("setDailyTemplate").value = noteCfg.daily.template || "";
+    $("setTplFolder").value = noteCfg.templates.folder || "";
+    $("setTplDateFormat").value = noteCfg.templates.dateFormat || "YYYY-MM-DD";
+    $("setTplTimeFormat").value = noteCfg.templates.timeFormat || "HH:mm";
+    $("setUniqueFolder").value = noteCfg.unique.folder || "";
+    $("setUniqueFormat").value = noteCfg.unique.format || "YYYYMMDDHHmm";
+    $("setUniqueTemplate").value = noteCfg.unique.template || "";
+  }
   const computed = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
   $("setAccent").value = /^#[0-9a-f]{6}$/i.test(computed) ? computed : "#a882ff";
   renderAccentPresets();
@@ -5328,7 +5344,16 @@ $("setFont").addEventListener("change", () => {
   store.set("font", $("setFont").value);
   applyPrefs();
 });
-$("saveSettings").onclick = () => {
+async function writeVaultJson(path, data) {
+  let sha = null;
+  try {
+    const got = await ghGet(path);
+    sha = got.sha || null;
+  } catch { sha = null; }
+  await ghPut(path, JSON.stringify(data, null, 2) + "\n", sha, "settings: " + path);
+}
+
+$("saveSettings").onclick = async () => {
   store.set("repo", $("setRepo").value.trim());
   store.set("branch", $("setBranch").value.trim());
   store.set("token", $("setToken").value.trim());
@@ -5341,6 +5366,25 @@ $("saveSettings").onclick = () => {
   store.set("defaultMode", $("setDefaultMode").value);
   store.set("spellcheck", $("setSpellcheck").checked ? "1" : "0");
   store.set("hotkeys", JSON.stringify(hotkeys));
+  try {
+    await writeVaultJson(".obsidian/daily-notes.json", {
+      folder: $("setDailyFolder").value.trim(),
+      format: $("setDailyFormat").value.trim() || "YYYY-MM-DD",
+      template: $("setDailyTemplate").value.trim(),
+    });
+    await writeVaultJson(".obsidian/templates.json", {
+      folder: $("setTplFolder").value.trim() || "templates",
+      dateFormat: $("setTplDateFormat").value.trim() || "YYYY-MM-DD",
+      timeFormat: $("setTplTimeFormat").value.trim() || "HH:mm",
+    });
+    await writeVaultJson(".obsidian/zk-prefixer.json", {
+      folder: $("setUniqueFolder").value.trim(),
+      format: $("setUniqueFormat").value.trim() || "YYYYMMDDHHmm",
+      template: $("setUniqueTemplate").value.trim(),
+    });
+  } catch (error) {
+    toast("Налаштування нотаток: " + error.message);
+  }
   theme(); applyPrefs();
   saveVault();
   closeModals();

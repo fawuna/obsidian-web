@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=79">
+<link rel="stylesheet" href="styles.css?v=80">
 </head>
 <body>
 
@@ -324,6 +324,36 @@
           <label style="margin-top:18px;display:block">Graph view: сила відштовхування</label>
           <input id="setGraphForce" type="range" min="40" max="220" step="10">
         </section>
+        <section class="settings-section" data-settings="daily">
+          <h3>Daily notes</h3>
+          <div class="row">
+            <div><label>Тека</label><input id="setDailyFolder" placeholder="Daily"></div>
+            <div><label>Формат дати</label><input id="setDailyFormat" placeholder="YYYY-MM-DD"></div>
+          </div>
+          <label style="margin-top:12px;display:block">Шаблон</label>
+          <input id="setDailyTemplate" placeholder="templates/daily">
+          <div class="hint">Формат — moment.js: YYYY, MM, DD, HH, mm, dddd. Шаблон — шлях або назва нотатки.</div>
+        </section>
+        <section class="settings-section" data-settings="templates">
+          <h3>Templates</h3>
+          <label style="display:block">Тека шаблонів</label>
+          <input id="setTplFolder" placeholder="templates">
+          <div class="row" style="margin-top:12px">
+            <div><label>Формат дати</label><input id="setTplDateFormat" placeholder="YYYY-MM-DD"></div>
+            <div><label>Формат часу</label><input id="setTplTimeFormat" placeholder="HH:mm"></div>
+          </div>
+          <div class="hint">У шаблонах: {{title}}, {{date}}, {{time}}, {{date:DD.MM.YYYY}}, {{time:HH:mm}}.</div>
+        </section>
+        <section class="settings-section" data-settings="unique">
+          <h3>Unique note creator</h3>
+          <div class="row">
+            <div><label>Тека</label><input id="setUniqueFolder" placeholder="(корінь)"></div>
+            <div><label>Формат назви</label><input id="setUniqueFormat" placeholder="YYYYMMDDHHmm"></div>
+          </div>
+          <label style="margin-top:12px;display:block">Шаблон</label>
+          <input id="setUniqueTemplate" placeholder="templates/unique">
+          <div class="hint">Назва файлу береться з формату moment.js. Існуюча нотатка з такою назвою просто відкривається.</div>
+        </section>
         <section class="settings-section" data-settings="hotkeys">
           <h3>Hotkeys</h3>
           <div id="hotkeyList" class="hotkey-list"></div>
@@ -393,7 +423,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=79"></script>
-<script type="module" src="app.js?v=79"></script>
+<script src="vendor/marked.min.js?v=80"></script>
+<script type="module" src="app.js?v=80"></script>
 </body>
 </html>

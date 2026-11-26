@@ -3,6 +3,7 @@ let Vault = null;
 
 let dailyCfg = { folder: "", format: "YYYY-MM-DD", template: "" };
 let tplCfg = { folder: "templates", dateFormat: "YYYY-MM-DD", timeFormat: "HH:mm" };
+let uniqueCfg = { folder: "", format: "YYYYMMDDHHmm", template: "" };
 
 const MONTHS = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"];
 const MONTHS_SHORT = ["січ", "лют", "бер", "кві", "тра", "чер", "лип", "сер", "вер", "жов", "лис", "гру"];
@@ -54,6 +55,12 @@ function dailyPath(now) {
   return (folder ? folder + "/" : "") + name + ".md";
 }
 
+function uniquePath(now) {
+  const folder = cleanFolder(uniqueCfg.folder);
+  const name = formatDate(now, uniqueCfg.format || "YYYYMMDDHHmm").replace(/\.md$/i, "").replace(/^\/+/, "");
+  return (folder ? folder + "/" : "") + name + ".md";
+}
+
 function resolveTemplate(name) {
   const clean = String(name || "").trim().replace(/\.md$/i, "");
   if (!clean) return "";
@@ -78,6 +85,15 @@ async function loadConfigs() {
     const raw = JSON.parse((await Vault.ghGet(".obsidian/templates.json")).text);
     if (raw && typeof raw === "object") tplCfg = { ...tplCfg, ...raw };
   } catch { /* use defaults */ }
+  for (const file of [".obsidian/zk-prefixer.json", ".obsidian/unique-note.json"]) {
+    try {
+      const raw = JSON.parse((await Vault.ghGet(file)).text);
+      if (raw && typeof raw === "object") {
+        uniqueCfg = { ...uniqueCfg, ...raw };
+        break;
+      }
+    } catch { /* try next */ }
+  }
 }
 
 async function openDailyNote() {
@@ -108,6 +124,34 @@ async function openDailyNote() {
   }
 }
 
+async function openUniqueNote() {
+  const now = new Date();
+  const path = uniquePath(now);
+  const title = path.split("/").pop().replace(/\.md$/i, "");
+  try {
+    let exists = Vault.files.includes(path);
+    if (!exists) {
+      try { await Vault.ghGet(path); exists = true; } catch { exists = false; }
+    }
+    if (!exists) {
+      let content = "";
+      const templatePath = resolveTemplate(uniqueCfg.template);
+      if (templatePath) {
+        try { content = applyVars((await Vault.ghGet(templatePath)).text, title, now); } catch { /* empty note */ }
+      }
+      await Vault.ghPut(path, content, null, "unique: " + path);
+      Vault.state.pending.add(path);
+      await Vault.loadTree();
+      Vault.toast("унікальна нотатка створена: " + path);
+    }
+    await Vault.openNote(path);
+    return path;
+  } catch (error) {
+    Vault.toast("Unique note: " + error.message);
+    return "";
+  }
+}
+
 async function insertTemplate(path) {
   if (!path) return;
   const file = Vault.currentFile();
@@ -125,15 +169,17 @@ async function insertTemplate(path) {
 export async function initDaily(vault) {
   Vault = vault;
   await loadConfigs();
-  Vault.registerCommand({ id: "daily", label: "Щоденна нотатка: сьогодні", hint: "daily", run: openDailyNote });
-  Vault.registerCommand({ id: "template", label: "Вставити шаблон", hint: "template", run: () => Vault.showSwitcher("template") });
+  Vault.registerCommand({ id: "daily", label: "Щоденна нотатка: сьогодні", hint: "daily", plugin: "daily-notes", run: openDailyNote });
+  Vault.registerCommand({ id: "template", label: "Вставити шаблон", hint: "template", plugin: "templates", run: () => Vault.showSwitcher("template") });
+  Vault.registerCommand({ id: "unique-note", label: "Створити унікальну нотатку", hint: "unique", plugin: "unique-note", run: openUniqueNote });
   Vault.addRibbonButton({ id: "daily", icon: "📅", title: "Щоденна нотатка (сьогодні)", run: openDailyNote });
   Vault.addRibbonButton({ id: "template", icon: "🧾", title: "Вставити шаблон", run: () => Vault.showSwitcher("template") });
   return {
     openDailyNote,
+    openUniqueNote,
     insertTemplate,
     templateFiles,
     loadConfigs,
-    get config() { return { daily: { ...dailyCfg }, templates: { ...tplCfg } }; },
+    get config() { return { daily: { ...dailyCfg }, templates: { ...tplCfg }, unique: { ...uniqueCfg } }; },
   };
 }
