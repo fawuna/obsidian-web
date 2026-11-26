@@ -78,6 +78,10 @@ aside { background: var(--bg-2); display: flex; flex-direction: column; min-heig
 .left-toolbar .spacer { flex: 1; }
 .left-add { flex: 0 0 auto; margin-left: auto; }
 .left-panel { padding: 6px; }
+.search-options { display: flex; align-items: center; gap: 2px; margin-top: 6px; color: var(--muted); }
+.search-options .clickable-icon { width: 24px; height: 24px; font-size: 12px; }
+.search-options .clickable-icon.active { background: var(--bg-4); color: var(--text); }
+#searchSummary { margin-left: auto; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 #right { width: 300px; flex: 0 0 300px; border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
 body.no-left #left { display: none; }
 body.no-right #right { display: none; }

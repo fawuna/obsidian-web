@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=53";
-import { initCanvas } from "./canvas.js?v=53";
-import { initCollab } from "./collab.js?v=53";
-import { initPlugins } from "./plugins.js?v=53";
-import { exportPdfFile } from "./pdf.js?v=53";
-import { initLive } from "./live.js?v=53";
-import { initDaily } from "./daily.js?v=53";
+import { initGraph } from "./graph.js?v=54";
+import { initCanvas } from "./canvas.js?v=54";
+import { initCollab } from "./collab.js?v=54";
+import { initPlugins } from "./plugins.js?v=54";
+import { exportPdfFile } from "./pdf.js?v=54";
+import { initLive } from "./live.js?v=54";
+import { initDaily } from "./daily.js?v=54";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v53";
+const BUILD = "v54";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2882,15 +2882,20 @@ async function runSearch() {
   const raw = $("searchInput").value.trim();
   const host = $("searchResults");
   host.innerHTML = "";
-  if (raw.length < 2) { host.appendChild(el("div", "empty", "мінімум 2 символи")); return; }
+  syncSearchOptions();
+  if (raw.length < 2) { host.appendChild(el("div", "empty", "мінімум 2 символи")); if ($("searchSummary")) $("searchSummary").textContent = ""; return; }
   host.appendChild(el("div", "empty", "шукаю…"));
   await ensureIndex();
 
   const parsed = parseSearchQuery(raw);
+  const caseSensitive = store.get("searchCase", "0") === "1";
+  const sortMode = store.get("searchSort", "name");
+  const collapseAll = store.get("searchCollapse", "0") === "1";
+  const needles = [...parsed.phrases, ...parsed.terms];
   const results = [];
   for (const [path, text] of state.index) {
     if (!text) continue;
-    const lower = text.toLowerCase();
+    const hay = caseSensitive ? text : text.toLowerCase();
     const pathLower = path.toLowerCase();
     if (parsed.path.some((p) => !pathLower.includes(p))) continue;
     if (parsed.tags.some((t) => {
@@ -2909,37 +2914,87 @@ async function runSearch() {
       if (!found) return true;
       return wanted != null && !String(found[1]).toLowerCase().includes(wanted);
     })) continue;
-    if (parsed.not.some((t) => lower.includes(t))) continue;
-    if (parsed.terms.some((t) => !lower.includes(t))) continue;
-    if (parsed.phrases.some((t) => !lower.includes(t))) continue;
+    if (parsed.not.some((t) => hay.includes(t))) continue;
+    const searchNeedles = needles.map((needle) => caseSensitive ? needle : needle.toLowerCase());
+    if (searchNeedles.some((needle) => !hay.includes(needle))) continue;
 
-    const needle = parsed.phrases[0] || parsed.terms[0] || "";
-    const at = needle ? lower.indexOf(needle) : 0;
-    let hits = 0;
-    if (needle) {
-      let i = lower.indexOf(needle);
-      while (i !== -1 && hits < 100) { hits++; i = lower.indexOf(needle, i + needle.length); }
+    const hits = [];
+    for (const needle of searchNeedles) {
+      let at = hay.indexOf(needle);
+      while (at !== -1 && hits.length < 200) {
+        const info = lineAt(text, at);
+        const from = at - info.start;
+        hits.push({ line: info.line, pieces: snippetPieces(info.text, from, from + needle.length, true) });
+        at = hay.indexOf(needle, at + Math.max(1, needle.length));
+      }
     }
-    results.push({
-      path,
-      hits: Math.max(1, hits),
-      snippet: needle ? text.slice(Math.max(0, at - 40), at + 90).replace(/\n/g, " ") : text.slice(0, 80).replace(/\n/g, " "),
-    });
+    if (!hits.length && !searchNeedles.length) {
+      const info = lineAt(text, 0);
+      hits.push({ line: 0, pieces: [{ text: info.text.slice(0, 160) }] });
+    }
+    if (!hits.length) continue;
+    results.push({ path, hits: hits.slice(0, 100), count: hits.length });
   }
   host.innerHTML = "";
-  if (!results.length) { host.appendChild(el("div", "empty", "нічого не знайдено")); return; }
-  results.sort((a, b) => b.hits - a.hits).forEach((r) => {
-    const card = el("div", "backlink");
-    card.style.display = "block";
-    const t = el("div", null, r.path.replace(/\.md$/, "") + "  ·  " + r.hits);
-    t.style.color = "var(--accent)";
-    const s = el("div", null, "…" + r.snippet + "…");
-    s.style.color = "var(--muted)";
-    s.style.fontSize = "12px";
-    card.append(t, s);
-    card.onclick = () => openNote(r.path);
-    host.appendChild(card);
-  });
+  if (!results.length) {
+    host.appendChild(el("div", "empty", "нічого не знайдено"));
+    if ($("searchSummary")) $("searchSummary").textContent = "0 файлів · 0 збігів";
+    return;
+  }
+  if (sortMode === "hits") results.sort((a, b) => b.count - a.count || noteName(a.path).localeCompare(noteName(b.path)));
+  else results.sort((a, b) => noteName(a.path).localeCompare(noteName(b.path)));
+  const total = results.reduce((sum, result) => sum + result.count, 0);
+  if ($("searchSummary")) $("searchSummary").textContent = results.length + " файлів · " + total + " збігів";
+
+  for (const result of results) {
+    const item = el("div", "tree-item search-result");
+    const title = el("div", "tree-item-self search-result-file-title is-clickable");
+    title.title = result.path;
+    const tri = el("div", "tree-item-icon collapse-icon");
+    tri.innerHTML = READING_TRIANGLE_SVG;
+    const name = el("div", "tree-item-inner", noteName(result.path));
+    const flair = el("div", "tree-item-flair-outer");
+    flair.appendChild(el("span", "tree-item-flair", String(result.count)));
+    title.append(tri, name, flair);
+    const matches = el("div", "search-result-file-matches");
+    const collapsed = collapseAll;
+    title.classList.toggle("is-collapsed", collapsed);
+    matches.style.display = collapsed ? "none" : "";
+    title.onclick = () => {
+      const next = !title.classList.contains("is-collapsed");
+      title.classList.toggle("is-collapsed", next);
+      matches.style.display = next ? "none" : "";
+    };
+    title.ondblclick = () => openNote(result.path);
+    for (const hit of result.hits) {
+      const row = el("div", "search-result-file-match tappable");
+      for (const piece of hit.pieces) {
+        if (!piece.text) continue;
+        row.appendChild(el("span", piece.match ? "search-result-file-matched-text" : null, piece.text));
+      }
+      row.title = "Відкрити " + result.path + " · рядок " + (hit.line + 1);
+      row.onclick = async () => {
+        await openNote(result.path);
+        jumpToLine(hit.line);
+      };
+      matches.appendChild(row);
+    }
+    item.append(title, matches);
+    host.appendChild(item);
+  }
+}
+
+function syncSearchOptions() {
+  const caseBtn = $("searchCase");
+  if (caseBtn) caseBtn.classList.toggle("active", store.get("searchCase", "0") === "1");
+  const sortBtn = $("searchSort");
+  if (sortBtn) {
+    const mode = store.get("searchSort", "name");
+    sortBtn.classList.toggle("active", mode === "hits");
+    sortBtn.title = mode === "hits" ? "Сортування: за кількістю збігів" : "Сортування: за назвою";
+  }
+  const collapseBtn = $("searchCollapse");
+  if (collapseBtn) collapseBtn.classList.toggle("active", store.get("searchCollapse", "0") === "1");
 }
 
 function parseSearchQuery(raw) {
@@ -3668,6 +3723,10 @@ else if (mobileMedia.addListener) mobileMedia.addListener(onMobileMediaChange);
 $("reloadTree").onclick = () => loadTree().catch((e) => toast(e.message));
 $("filter").oninput = renderTree;
 $("searchInput").oninput = () => { clearTimeout($("searchInput")._t); $("searchInput")._t = setTimeout(runSearch, 300); };
+$("searchCase").onclick = () => { store.set("searchCase", store.get("searchCase", "0") === "1" ? "0" : "1"); runSearch(); };
+$("searchSort").onclick = () => { store.set("searchSort", store.get("searchSort", "name") === "hits" ? "name" : "hits"); runSearch(); };
+$("searchCollapse").onclick = () => { store.set("searchCollapse", store.get("searchCollapse", "0") === "1" ? "0" : "1"); runSearch(); };
+syncSearchOptions();
 $("rebuildIndex").onclick = async () => { state.index.clear(); await ensureIndex(); renderRightPanels(); renderTags(); toast("індекс оновлено"); };
 $("blCollapse").onclick = () => {
   const keys = ["backlink:Linked mentions", "backlink:Unlinked mentions", "outgoing:Links", "outgoing:Unlinked mentions"];

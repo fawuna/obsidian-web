@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=53">
+<link rel="stylesheet" href="styles.css?v=54">
 </head>
 <body>
 
@@ -82,6 +82,12 @@
       </div>
       <div class="pane-body left-panel" id="searchPane" style="display:none">
         <input class="filter" id="searchInput" placeholder="Шукати по всьому волту…" autocomplete="off">
+        <div class="search-options">
+          <button class="clickable-icon" id="searchCase" title="Враховувати регістр">Aa</button>
+          <button class="clickable-icon" id="searchSort" title="Сортування">⇅</button>
+          <button class="clickable-icon" id="searchCollapse" title="Згорнути результати">⊟</button>
+          <span id="searchSummary"></span>
+        </div>
         <div id="searchResults" style="margin-top:8px"></div>
       </div>
       <div class="pane-body left-panel" id="bookmarksPane" style="display:none">
@@ -290,7 +296,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=53"></script>
-<script type="module" src="app.js?v=53"></script>
+<script src="vendor/marked.min.js?v=54"></script>
+<script type="module" src="app.js?v=54"></script>
 </body>
 </html>
