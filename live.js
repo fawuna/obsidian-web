@@ -167,31 +167,92 @@ function mdInline(text) {
   return html;
 }
 
+function splitYamlComment(text) {
+  let quote = null;
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote && text[i - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; continue; }
+    if (ch === "[" || ch === "{") { depth++; continue; }
+    if (ch === "]" || ch === "}") { depth = Math.max(0, depth - 1); continue; }
+    if (ch === "#" && depth === 0 && (i === 0 || /\s/.test(text[i - 1]))) {
+      return { value: text.slice(0, i).replace(/\s+$/, ""), comment: text.slice(i) };
+    }
+  }
+  return { value: text.replace(/\s+$/, ""), comment: "" };
+}
+
+function unquote(text) {
+  const value = String(text).trim();
+  if (value.length >= 2 && ((value[0] === '"' && value[value.length - 1] === '"') || (value[0] === "'" && value[value.length - 1] === "'"))) {
+    return value.slice(1, -1).replace(/\\(["'\\])/g, "$1");
+  }
+  return value;
+}
+
 function parseFrontmatter(doc) {
   if (doc.lines < 2 || doc.line(1).text.trim() !== "---") return null;
   let end = -1;
   for (let n = 2; n <= doc.lines; n++) if (doc.line(n).text.trim() === "---") { end = n; break; }
   if (end < 0) return null;
   const props = [];
-  for (let n = 2; n < end; n++) {
-    const raw = doc.line(n).text;
-    const kv = raw.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):\s*(.*)$/);
-    if (kv) {
-      const value = kv[2].replace(/^["']|["']$/g, "");
-      const flow = value.match(/^\[(.*)\]$/);
-      if (flow) props.push({ key: kv[1], value: flow[1].split(",").map((v) => v.trim()).filter(Boolean).join(", "), list: true, style: "flow" });
-      else props.push({ key: kv[1], value, list: false });
+  let n = 2;
+  while (n < end) {
+    const line = doc.line(n);
+    const raw = line.text;
+    if (!raw.trim() || raw.trim().startsWith("#")) { n++; continue; }
+    const kv = raw.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):(\s*)(.*)$/);
+    if (!kv) { n++; continue; }
+    const key = kv[1];
+    const gap = kv[2];
+    const split = splitYamlComment(kv[3]);
+    const valueFrom = line.from + key.length + 1 + gap.length;
+    const valueTo = valueFrom + split.value.length;
+    const trimmed = split.value.trim();
+    const flow = trimmed.match(/^\[(.*)\]$/);
+    if (flow) {
+      const items = flow[1].split(",").map((v) => unquote(v.trim())).filter(Boolean);
+      props.push({
+        key, value: items.join(", "), items, list: true, style: "flow",
+        keyLine: n, keyFrom: line.from, keyTo: line.to, valueFrom, valueTo, gap, comment: split.comment,
+        flowFrom: valueFrom + split.value.indexOf("[") + 1,
+        flowTo: valueFrom + split.value.lastIndexOf("]"),
+      });
+      n++;
       continue;
     }
-    const item = raw.match(/^\s*-\s*(.*)$/);
-    if (item && props.length) {
-      const p = props[props.length - 1];
-      p.list = true;
-      p.style = p.style || "block";
-      p.items = p.items || (p.value ? [p.value] : []);
-      p.items.push(item[1].trim());
-      p.value = p.items.join(", ");
+    const itemLines = [];
+    let j = n + 1;
+    while (j < end) {
+      const itemLine = doc.line(j);
+      const im = itemLine.text.match(/^(\s*)-(\s*)(.*)$/);
+      if (!im) break;
+      const itemSplit = splitYamlComment(im[3]);
+      const itemValue = itemSplit.value.trim();
+      const itemFrom = itemLine.from + im[1].length + 1 + im[2].length;
+      const itemTo = itemFrom + itemSplit.value.length;
+      itemLines.push({ line: j, from: itemFrom, to: itemTo, value: unquote(itemValue), rawValue: itemValue, raw: itemLine.text });
+      j++;
     }
+    if (itemLines.length) {
+      props.push({
+        key, value: itemLines.map((it) => it.value).join(", "), items: itemLines.map((it) => it.value),
+        list: true, style: "block", keyLine: n, keyFrom: line.from, keyTo: line.to,
+        valueFrom, valueTo, gap, comment: split.comment,
+        blockFrom: line.from, blockTo: doc.line(j - 1).to, itemLines,
+      });
+      n = j;
+      continue;
+    }
+    props.push({
+      key, value: unquote(trimmed), rawValue: trimmed, list: false,
+      keyLine: n, keyFrom: line.from, keyTo: line.to, valueFrom, valueTo, gap, comment: split.comment,
+    });
+    n++;
   }
   return { from: doc.line(1).from, to: doc.line(end).to, props };
 }
@@ -203,25 +264,6 @@ function yamlScalar(value) {
   return JSON.stringify(text);
 }
 
-function serializeProps(props) {
-  const lines = [];
-  for (const p of props) {
-    if (p.list) {
-      const items = String(p.value).split(",").map((v) => v.trim()).filter(Boolean);
-      if (!items.length) { lines.push(p.key + ":"); continue; }
-      if (p.style === "block") {
-        lines.push(p.key + ":");
-        for (const item of items) lines.push("  - " + yamlScalar(item));
-      } else {
-        lines.push(p.key + ": [" + items.map(yamlScalar).join(", ") + "]");
-      }
-    } else {
-      lines.push(p.key + ":" + (p.value ? " " + yamlScalar(p.value) : ""));
-    }
-  }
-  return "---\n" + lines.join("\n") + "\n---";
-}
-
 class PropsWidget extends WidgetType {
   constructor(from, to, props) {
     super();
@@ -230,6 +272,35 @@ class PropsWidget extends WidgetType {
     this.props = props;
   }
   eq(other) { return other.from === this.from && other.to === this.to && JSON.stringify(other.props) === JSON.stringify(this.props); }
+  commit(view, prop, rawInput) {
+    const changes = [];
+    if (prop.list) {
+      const items = String(rawInput).split(",").map((v) => v.trim()).filter(Boolean);
+      if (prop.style === "flow") {
+        if (JSON.stringify(items) === JSON.stringify(prop.items)) return;
+        changes.push({ from: prop.flowFrom, to: prop.flowTo, insert: items.map(yamlScalar).join(", ") });
+      } else if (items.length === prop.itemLines.length) {
+        prop.itemLines.forEach((item, index) => {
+          if (items[index] === item.value) return;
+          changes.push({ from: item.from, to: item.to, insert: yamlScalar(items[index]) });
+        });
+      } else {
+        const lines = [prop.key + ":" + (prop.comment ? " " + prop.comment : "")];
+        for (const item of items) lines.push("  - " + yamlScalar(item));
+        changes.push({ from: prop.blockFrom, to: prop.blockTo, insert: lines.join("\n") });
+      }
+    } else {
+      if (rawInput === prop.value) return;
+      let insert = yamlScalar(rawInput);
+      if (prop.valueFrom === prop.valueTo) {
+        insert = (prop.gap ? "" : " ") + insert + (prop.comment ? " " : "");
+      }
+      changes.push({ from: prop.valueFrom, to: prop.valueTo, insert });
+    }
+    if (!changes.length) return;
+    changes.sort((a, b) => a.from - b.from);
+    view.dispatch({ changes });
+  }
   toDOM(view) {
     const box = document.createElement("div");
     box.className = "cm-props";
@@ -237,7 +308,7 @@ class PropsWidget extends WidgetType {
     title.className = "cm-props-title";
     title.textContent = "Властивості";
     box.appendChild(title);
-    this.props.forEach((prop, index) => {
+    this.props.forEach((prop) => {
       const row = document.createElement("div");
       row.className = "cm-props-row";
       const key = document.createElement("span");
@@ -247,12 +318,7 @@ class PropsWidget extends WidgetType {
       input.className = "cm-props-value";
       input.spellcheck = false;
       input.value = prop.value;
-      const commit = () => {
-        const updated = this.props.map((q, i) => (i === index ? { ...q, value: input.value } : q));
-        if (JSON.stringify(updated) === JSON.stringify(this.props)) return;
-        view.dispatch({ changes: { from: this.from, to: this.to, insert: serializeProps(updated) } });
-      };
-      input.addEventListener("change", commit);
+      input.addEventListener("change", () => this.commit(view, prop, input.value));
       input.addEventListener("keydown", (event) => {
         if (event.key === "Enter") { event.preventDefault(); input.blur(); }
         if (event.key === "Escape") { input.value = prop.value; input.blur(); }
