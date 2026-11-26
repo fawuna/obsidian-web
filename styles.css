@@ -353,6 +353,15 @@ body.view-graph #liveHost, body.view-canvas #liveHost { display: none; }
 #preview .metadata-property-key-input { min-width: 0; width: auto; flex: 1; background: transparent; border: 0; color: var(--muted); font: inherit; padding: 0; outline: 0; }
 #preview .metadata-property-value { flex: 1; min-width: 0; color: var(--text); }
 #preview .metadata-input-longtext { white-space: pre-wrap; }
+#preview .metadata-input-longtext:focus { outline: none; background: var(--bg-3); box-shadow: 0 0 0 1px var(--accent); border-radius: 4px; }
+#preview .metadata-property-key-input:focus { outline: none; background: var(--bg-3); border-radius: 4px; }
+#preview .metadata-add-button { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; padding: 6px 4px; cursor: pointer; border-radius: 4px; }
+#preview .metadata-add-button:hover { color: var(--text); background: var(--bg-3); }
+#preview .multi-select-pill-remove-button { cursor: pointer; }
+#preview .multi-select-pill-add { cursor: pointer; opacity: .65; }
+#preview .multi-select-pill-add:hover { opacity: 1; }
+#preview .heading-collapse-indicator { cursor: pointer; }
+#preview .heading-collapse-indicator.is-collapsed svg { transform: rotate(-90deg); }
 #preview .multi-select-container { display: flex; gap: 4px; flex-wrap: wrap; }
 #preview .multi-select-pill { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); border-radius: 999px; padding: 0 8px; font-size: 12px; }
 #preview .metadata-property-icon { display: inline-flex; }

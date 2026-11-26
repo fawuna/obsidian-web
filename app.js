@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=51";
-import { initCanvas } from "./canvas.js?v=51";
-import { initCollab } from "./collab.js?v=51";
-import { initPlugins } from "./plugins.js?v=51";
-import { exportPdfFile } from "./pdf.js?v=51";
-import { initLive } from "./live.js?v=51";
-import { initDaily } from "./daily.js?v=51";
+import { initGraph } from "./graph.js?v=52";
+import { initCanvas } from "./canvas.js?v=52";
+import { initCollab } from "./collab.js?v=52";
+import { initPlugins } from "./plugins.js?v=52";
+import { exportPdfFile } from "./pdf.js?v=52";
+import { initLive } from "./live.js?v=52";
+import { initDaily } from "./daily.js?v=52";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v51";
+const BUILD = "v52";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1594,6 +1594,97 @@ function parseProps(text) {
   return { raw: m[0], body: text.slice(m[0].length), props };
 }
 
+function frontmatterBlock(text) {
+  const match = String(text).match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/);
+  if (!match) return null;
+  return {
+    eol: match[0].includes("\r\n") ? "\r\n" : "\n",
+    lines: match[1].split(/\r?\n/),
+    body: text.slice(match[0].length),
+    raw: match[0],
+  };
+}
+
+function propertyIsList(raw, key) {
+  const block = frontmatterBlock(raw);
+  if (!block) return false;
+  for (let i = 0; i < block.lines.length; i++) {
+    const match = block.lines[i].match(/^([A-Za-z0-9_\u0400-\u04FF-]+):/);
+    if (!match || match[1] !== key) continue;
+    return /^\s+-\s/.test(block.lines[i + 1] || "");
+  }
+  return false;
+}
+
+function yamlScalar(value) {
+  const text = String(value);
+  if (!text) return "";
+  if (/[:#\[\]{},&*!|>'"%@`]/.test(text) || /^\s|\s$/.test(text) || /^[-?]/.test(text)) {
+    return JSON.stringify(text);
+  }
+  return text;
+}
+
+function applyFrontmatterEdit(file, nextText, prevText) {
+  file.text = nextText;
+  file.dirty = true;
+  state.index.set(file.path, nextText);
+  $("editor").value = nextText;
+  if (liveApi && livePath === file.path) liveApi.setDoc(nextText);
+  syncLiveCopies(0, file);
+  renderPreview();
+  setState("не збережено", "warn");
+  clearTimeout($("editor")._t);
+  $("editor")._t = setTimeout(() => saveNote(true, file), 1500);
+  emit("modify", { path: file.path, text: nextText, prev: prevText });
+}
+
+function setFrontmatterProperty(file, key, value, nextKey) {
+  const text = file.text;
+  const block = frontmatterBlock(text);
+  const eol = block ? block.eol : (text.includes("\r\n") ? "\r\n" : "\n");
+  const lines = block ? block.lines.slice() : [];
+  const target = String(nextKey || key).trim();
+  if (!target) return false;
+  const isList = Array.isArray(value);
+  const items = isList ? value.map((item) => String(item).trim()).filter(Boolean) : [];
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^([A-Za-z0-9_\u0400-\u04FF-]+):/);
+    if (match && match[1] === key) { start = i; break; }
+  }
+  const replacement = isList
+    ? [target + ":"].concat(items.map((item) => "  - " + yamlScalar(item)))
+    : [target + ": " + yamlScalar(value)];
+  if (start >= 0) {
+    let end = start + 1;
+    while (end < lines.length && /^\s+-\s/.test(lines[end])) end++;
+    lines.splice(start, end - start, ...replacement);
+  } else {
+    lines.push(...replacement);
+  }
+  const raw = "---" + eol + lines.join(eol) + eol + "---" + eol;
+  applyFrontmatterEdit(file, raw + (block ? block.body : text), text);
+  return true;
+}
+
+function removeFrontmatterProperty(file, key) {
+  const block = frontmatterBlock(file.text);
+  if (!block) return false;
+  const lines = block.lines.slice();
+  const start = lines.findIndex((line) => {
+    const match = line.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):/);
+    return match && match[1] === key;
+  });
+  if (start < 0) return false;
+  let end = start + 1;
+  while (end < lines.length && /^\s+-\s/.test(lines[end])) end++;
+  lines.splice(start, end - start);
+  const raw = "---" + block.eol + lines.join(block.eol) + block.eol + "---" + block.eol;
+  applyFrontmatterEdit(file, raw + block.body, file.text);
+  return true;
+}
+
 const READING_TRIANGLE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon right-triangle"><path d="M3 8L12 17L21 8"></path></svg>';
 
 function highlightYaml(raw) {
@@ -1622,7 +1713,7 @@ function buildReadingHeader(file, parsed) {
   title.spellcheck = true;
   title.tabIndex = -1;
   header.appendChild(title);
-  if (!parsed || !parsed.props.length) return header;
+  if (!parsed) return header;
   const container = el("div", "metadata-container");
   container.tabIndex = -1;
   container.dataset.propertyCount = String(parsed.props.length);
@@ -1644,35 +1735,105 @@ function buildReadingHeader(file, parsed) {
     const keyEl = el("div", "metadata-property-key");
     const icon = el("span", "metadata-property-icon");
     icon.setAttribute("aria-disabled", "false");
-    const isList = key === "tags" || key === "aliases";
+    const isList = key === "tags" || key === "aliases" || propertyIsList(parsed.raw, key);
     icon.innerHTML = isList
       ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-tags"><path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 5 9.172V4a2 2 0 0 1 2-2z"></path><path d="M7 7h.01"></path></svg>'
       : '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-text"><path d="M21 5H3"></path><path d="M15 12H3"></path><path d="M17 19H3"></path></svg>';
     const input = document.createElement("input");
     input.className = "metadata-property-key-input";
     input.value = key;
-    input.readOnly = true;
+    input.readOnly = false;
     input.spellcheck = false;
+    input.setAttribute("aria-label", key);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+      if (event.key === "Escape") { input.value = key; input.blur(); }
+    });
+    input.addEventListener("change", () => {
+      const nextKey = input.value.trim();
+      if (!nextKey || nextKey === key) { input.value = key; return; }
+      const current = isList ? String(value).split(",").map((part) => part.trim()).filter(Boolean) : value;
+      setFrontmatterProperty(file, key, current, nextKey);
+    });
     keyEl.append(icon, input);
     const valueEl = el("div", "metadata-property-value");
+    valueEl.dataset.propertyType = isList ? "tags" : "text";
     if (isList) {
       const multi = el("div", "multi-select-container");
-      for (const item of String(value).split(",").map((part) => part.trim()).filter(Boolean)) {
+      const items = String(value).split(",").map((part) => part.trim()).filter(Boolean);
+      for (const item of items) {
         const pill = el("div", "multi-select-pill");
         const pillContent = el("div", "multi-select-pill-content");
         pillContent.appendChild(el("span", null, item));
+        pillContent.spellcheck = false;
+        pillContent.ondblclick = (event) => {
+          event.stopPropagation();
+          const next = prompt("Значення " + key, item);
+          if (next == null || !next.trim()) return;
+          setFrontmatterProperty(file, key, items.map((part) => part === item ? next.trim() : part));
+        };
         const remove = el("div", "multi-select-pill-remove-button");
         remove.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-x"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>';
+        remove.title = "Прибрати";
+        remove.onclick = (event) => {
+          event.stopPropagation();
+          setFrontmatterProperty(file, key, items.filter((part) => part !== item));
+        };
         pill.append(pillContent, remove);
         multi.appendChild(pill);
       }
+      const addPill = el("div", "multi-select-pill multi-select-pill-add", "＋");
+      addPill.title = "Додати";
+      addPill.onclick = (event) => {
+        event.stopPropagation();
+        const next = prompt("Додати до " + key, "");
+        if (next == null || !next.trim()) return;
+        setFrontmatterProperty(file, key, [...items, next.trim()]);
+      };
+      multi.appendChild(addPill);
       valueEl.appendChild(multi);
     } else {
-      valueEl.appendChild(el("div", "metadata-input-longtext", value));
+      const text = el("div", "metadata-input-longtext", value);
+      text.contentEditable = "true";
+      text.spellcheck = true;
+      text.tabIndex = 0;
+      text.setAttribute("placeholder", "Empty");
+      text.addEventListener("blur", () => {
+        const next = text.textContent.replace(/\s+$/, "");
+        if (next === String(value).trim()) return;
+        setFrontmatterProperty(file, key, next);
+      });
+      text.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); text.blur(); }
+        if (event.key === "Escape") { text.textContent = value; text.blur(); }
+      });
+      valueEl.appendChild(text);
     }
-    prop.append(keyEl, valueEl);
+    const warning = el("div", "clickable-icon metadata-property-warning-icon");
+    warning.style.display = "none";
+    warning.setAttribute("aria-label", "Type mismatch");
+    warning.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-alert-triangle"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>';
+    prop.append(keyEl, valueEl, warning);
+    prop.oncontextmenu = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showCtx(event.clientX, event.clientY, [
+        { label: "Видалити властивість", danger: true, run: () => removeFrontmatterProperty(file, key) },
+      ]);
+    };
     properties.appendChild(prop);
   }
+  const addProperty = el("div", "metadata-add-button");
+  addProperty.tabIndex = 0;
+  addProperty.append(el("span", "metadata-add-button-icon", "＋"), el("span", null, "Додати властивість"));
+  addProperty.onclick = () => {
+    const key = prompt("Назва властивості:", "");
+    if (!key || !key.trim()) return;
+    const value = prompt("Значення для " + key.trim() + ":", "");
+    if (value == null) return;
+    setFrontmatterProperty(file, key.trim(), value.trim());
+  };
+  properties.appendChild(addProperty);
   content.appendChild(properties);
   container.append(heading, content);
   header.appendChild(container);
@@ -1746,11 +1907,33 @@ function renderPreview() {
       const indicator = document.createElement("span");
       indicator.className = "heading-collapse-indicator collapse-indicator collapse-icon";
       indicator.innerHTML = READING_TRIANGLE_SVG;
+      indicator.title = "Згорнути / розгорнути";
+      indicator.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleHeadingFold(heading);
+      });
       heading.prepend(indicator);
     }
   });
   wireRendered(host, file.text, 0);
   resolveEmbeds(host);
+}
+
+function toggleHeadingFold(heading) {
+  const level = Number(heading.tagName[1]);
+  const parent = heading.parentElement;
+  const wrapper = parent && /(^|\s)el-h[1-6](\s|$)/.test(parent.className) ? parent : heading;
+  const collapsed = heading.classList.toggle("is-collapsed");
+  const indicator = heading.querySelector(".heading-collapse-indicator");
+  if (indicator) indicator.classList.toggle("is-collapsed", collapsed);
+  let node = wrapper.nextElementSibling;
+  while (node) {
+    const match = [...node.classList].find((cls) => /^el-h[1-6]$/.test(cls));
+    if (match && Number(match.slice(4)) <= level) break;
+    node.style.display = collapsed ? "none" : "";
+    node = node.nextElementSibling;
+  }
 }
 
 function markdownToHtml(body) {
