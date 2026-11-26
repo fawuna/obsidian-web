@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=60";
-import { initCanvas } from "./canvas.js?v=60";
-import { initCollab } from "./collab.js?v=60";
-import { initPlugins } from "./plugins.js?v=60";
-import { exportPdfFile } from "./pdf.js?v=60";
-import { initLive } from "./live.js?v=60";
-import { initDaily } from "./daily.js?v=60";
+import { initGraph } from "./graph.js?v=61";
+import { initCanvas } from "./canvas.js?v=61";
+import { initCollab } from "./collab.js?v=61";
+import { initPlugins } from "./plugins.js?v=61";
+import { exportPdfFile } from "./pdf.js?v=61";
+import { initLive } from "./live.js?v=61";
+import { initDaily } from "./daily.js?v=61";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v60";
+const BUILD = "v61";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -3247,37 +3247,17 @@ async function runSearch() {
   host.appendChild(el("div", "empty", "шукаю…"));
   await ensureIndex();
 
-  const parsed = parseSearchQuery(raw);
+  const alternatives = raw.split(/\s+OR\s+/).map(parseSearchQuery);
   const caseSensitive = store.get("searchCase", "0") === "1";
   const sortMode = store.get("searchSort", "name");
   const collapseAll = store.get("searchCollapse", "0") === "1";
-  const needles = [...parsed.phrases, ...parsed.terms];
   const results = [];
   for (const [path, text] of state.index) {
     if (!text) continue;
+    const parsed = alternatives.find((query) => searchQueryMatches(query, path, text, caseSensitive));
+    if (!parsed) continue;
     const hay = caseSensitive ? text : text.toLowerCase();
-    const pathLower = path.toLowerCase();
-    if (parsed.path.some((p) => !pathLower.includes(p))) continue;
-    if (parsed.tags.some((t) => {
-      for (const tag of noteTags(text)) {
-        if (tag === t || tag.startsWith(t + "/")) return false;
-      }
-      return true;
-    })) continue;
-    if (parsed.props.some((spec) => {
-      const parsedProps = parseProps(text);
-      if (!parsedProps) return true;
-      const splitAt = spec.indexOf(":");
-      const key = splitAt >= 0 ? spec.slice(0, splitAt) : spec;
-      const wanted = splitAt >= 0 ? spec.slice(splitAt + 1) : null;
-      const found = parsedProps.props.find(([name]) => name.toLowerCase() === key);
-      if (!found) return true;
-      return wanted != null && !String(found[1]).toLowerCase().includes(wanted);
-    })) continue;
-    if (parsed.not.some((t) => hay.includes(t))) continue;
-    const searchNeedles = needles.map((needle) => caseSensitive ? needle : needle.toLowerCase());
-    if (searchNeedles.some((needle) => !hay.includes(needle))) continue;
-
+    const searchNeedles = [...parsed.phrases, ...parsed.terms].map((needle) => caseSensitive ? needle : needle.toLowerCase());
     const hits = [];
     for (const needle of searchNeedles) {
       let at = hay.indexOf(needle);
@@ -3358,7 +3338,7 @@ function syncSearchOptions() {
 }
 
 function parseSearchQuery(raw) {
-  const out = { terms: [], phrases: [], path: [], tags: [], props: [], not: [] };
+  const out = { terms: [], phrases: [], path: [], file: [], tags: [], props: [], not: [] };
   const re = /(-?)("([^"]+)"|(\[[^\]]+\])|(\S+))/g;
   let m;
   while ((m = re.exec(raw)) !== null) {
@@ -3367,6 +3347,7 @@ function parseSearchQuery(raw) {
     if (!token) continue;
     if (neg) { out.not.push(token.toLowerCase()); continue; }
     if (/^path:/i.test(token)) { out.path.push(token.slice(5).toLowerCase()); continue; }
+    if (/^file:/i.test(token)) { out.file.push(token.slice(5).toLowerCase()); continue; }
     if (/^tag:/i.test(token)) { out.tags.push(token.slice(4).replace(/^#/, "").toLowerCase()); continue; }
     if (/^\[[^\]]+\]$/.test(token)) {
       let inner = token.slice(1, -1).trim();
@@ -3378,6 +3359,34 @@ function parseSearchQuery(raw) {
     else out.terms.push(token.toLowerCase());
   }
   return out;
+}
+
+function searchQueryMatches(parsed, path, text, caseSensitive) {
+  const hay = caseSensitive ? text : text.toLowerCase();
+  const pathLower = path.toLowerCase();
+  const nameLower = path.split("/").pop().toLowerCase();
+  if (parsed.path.some((p) => !pathLower.includes(p))) return false;
+  if (parsed.file.some((p) => !nameLower.includes(p))) return false;
+  if (parsed.tags.some((t) => {
+    for (const tag of noteTags(text)) {
+      if (tag === t || tag.startsWith(t + "/")) return false;
+    }
+    return true;
+  })) return false;
+  if (parsed.props.some((spec) => {
+    const parsedProps = parseProps(text);
+    if (!parsedProps) return true;
+    const splitAt = spec.indexOf(":");
+    const key = splitAt >= 0 ? spec.slice(0, splitAt) : spec;
+    const wanted = splitAt >= 0 ? spec.slice(splitAt + 1) : null;
+    const found = parsedProps.props.find(([name]) => name.toLowerCase() === key);
+    if (!found) return true;
+    return wanted != null && !String(found[1]).toLowerCase().includes(wanted);
+  })) return false;
+  if (parsed.not.some((t) => hay.includes(t))) return false;
+  const needles = [...parsed.phrases, ...parsed.terms].map((needle) => caseSensitive ? needle : needle.toLowerCase());
+  if (needles.some((needle) => !hay.includes(needle))) return false;
+  return true;
 }
 
 /* ---------------- palette / switcher ---------------- */
