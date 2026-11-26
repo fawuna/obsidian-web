@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=105";
-import { initCanvas } from "./canvas.js?v=105";
-import { initCollab } from "./collab.js?v=105";
-import { initPlugins } from "./plugins.js?v=105";
-import { exportPdfFile } from "./pdf.js?v=105";
-import { initLive } from "./live.js?v=105";
-import { initDaily } from "./daily.js?v=105";
-import { initRecorder } from "./recorder.js?v=105";
-import { initPdfViewer } from "./pdfviewer.js?v=105";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=105";
+import { initGraph } from "./graph.js?v=106";
+import { initCanvas } from "./canvas.js?v=106";
+import { initCollab } from "./collab.js?v=106";
+import { initPlugins } from "./plugins.js?v=106";
+import { exportPdfFile } from "./pdf.js?v=106";
+import { initLive } from "./live.js?v=106";
+import { initDaily } from "./daily.js?v=106";
+import { initRecorder } from "./recorder.js?v=106";
+import { initPdfViewer } from "./pdfviewer.js?v=106";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=106";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v105";
+const BUILD = "v106";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -5128,6 +5128,15 @@ async function renderBase() {
   }
   const data = baseBuild(baseConfig, docs);
   renderBaseControls(data);
+  const filterInput = $("baseFilter");
+  if (filterInput && document.activeElement !== filterInput) {
+    const filters = baseConfig.filters;
+    filterInput.value = typeof filters === "string"
+      ? filters
+      : Array.isArray(filters) && filters.every((item) => typeof item === "string")
+        ? filters.join(" ")
+        : "";
+  }
   const name = $("baseName");
   if (name) name.textContent = (basePath ? noteName(basePath) : "Base") + " · " + (data.view.name || "Table");
   renderBaseView(data);
@@ -5796,6 +5805,16 @@ $("baseSave").onclick = async () => {
   } catch (error) { toast("Не збереглось: " + error.message); }
 };
 $("baseSearch").oninput = () => { clearTimeout($("baseSearch")._t); $("baseSearch")._t = setTimeout(renderBase, 150); };
+$("baseFilter").oninput = () => {
+  clearTimeout($("baseFilter")._t);
+  $("baseFilter")._t = setTimeout(() => {
+    if (!baseConfig) return;
+    const value = $("baseFilter").value.trim();
+    if (value) baseConfig.filters = [value];
+    else delete baseConfig.filters;
+    renderBase();
+  }, 250);
+};
 $("baseRefresh").onclick = () => renderBase();
 $("baseSource").onclick = () => { if (basePath) window.open(imageUrlFor(basePath), "_blank", "noopener"); };
 $("newFolderBtn").onclick = () => newFolder();
