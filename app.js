@@ -349,7 +349,7 @@ async function saveNote(silent = false) {
     file.dirty = false;
     state.index.set(file.path, file.text);
     renderTabs(); paint();
-    setState("збережено " + new Date().toLocaleTimeString().slice(0, 5), "ok");
+    setState("збережено " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), "ok");
     emit("saved", file.path);
   } catch (error) {
     if (error.status === 409 || error.status === 422) {
@@ -444,8 +444,44 @@ async function handleImageFiles(files) {
 }
 
 /* ---------------- preview ---------------- */
-function parseProps(text) {
-  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/);
+/* ---------------- task list checkboxes ---------------- */
+function taskItems(text) {
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    const m = line.match(/^(\s*(?:[-*+]|\d+\.)\s+\[)( |x|X)(\])/);
+    if (m) out.push({ line: i, checked: m[2].toLowerCase() === "x", prefixLen: m[1].length });
+  }
+  return out;
+}
+
+function toggleTaskLine(lineIndex, prefixLen) {
+  const file = currentFile();
+  if (!file) return;
+  const eol = file.text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = file.text.split(/\r?\n/);
+  const line = lines[lineIndex];
+  if (!line) return;
+  const ch = line.charAt(prefixLen);
+  if (ch !== " " && ch.toLowerCase() !== "x") return;
+  lines[lineIndex] = line.slice(0, prefixLen) + (ch.toLowerCase() === "x" ? " " : "x") + line.slice(prefixLen + 1);
+  file.text = lines.join(eol);
+  file.dirty = true;
+  state.index.set(file.path, file.text);
+  $("editor").value = file.text;
+  renderPreview();
+  setState("не збережено", "warn");
+  emit("edit", { path: file.path, text: file.text, prev: file.text });
+  clearTimeout($("editor")._t);
+  $("editor")._t = setTimeout(() => saveNote(true), 1200);
+  toast("позначено");
+}
+
+function parseProps(text) {  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/);
   if (!m) return null;
   const rows = m[1].split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
   const props = [];
@@ -480,6 +516,25 @@ function renderPreview() {
     head = '<div class="props">' + parsed.props.map(([k, v]) => '<div class="row"><span class="k">' + k + '</span><span class="v">' + v + "</span></div>").join("") + "</div>";
   }
   host.innerHTML = head + html;
+
+  // clickable task checkboxes: map rendered checkboxes back to source lines
+  const tasks = taskItems(file.text);
+  let boxIndex = 0;
+  host.querySelectorAll('li.task-list-item, li').forEach((li) => {
+    const box = li.querySelector('input[type="checkbox"]');
+    if (!box) return;
+    const info = tasks[boxIndex++];
+    if (!info) return;
+    box.disabled = false;
+    box.checked = info.checked;
+    box.title = info.checked ? "Зняти позначку" : "Позначити виконаним";
+    if (info.checked) li.classList.add("done");
+    box.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleTaskLine(info.line, info.prefixLen);
+    });
+  });
 
   host.querySelectorAll(".wikilink").forEach((a) => {
     a.onclick = () => {
@@ -880,6 +935,7 @@ registerCommand({ id: "pdf", label: "Експорт PDF (файл)", hint: "PDF"
 registerCommand({ id: "print", label: "Друк / зберегти як PDF (вікно друку)", hint: "Ctrl+P", run: printNote });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
+registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
 registerCommand({ id: "theme", label: "Перемкнути тему", run: toggleTheme });
 registerCommand({ id: "left", label: "Показати/сховати ліву панель", hint: "Ctrl+B", run: toggleLeft });
 registerCommand({ id: "right", label: "Показати/сховати праву панель", run: toggleRight });
