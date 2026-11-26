@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=96";
-import { initCanvas } from "./canvas.js?v=96";
-import { initCollab } from "./collab.js?v=96";
-import { initPlugins } from "./plugins.js?v=96";
-import { exportPdfFile } from "./pdf.js?v=96";
-import { initLive } from "./live.js?v=96";
-import { initDaily } from "./daily.js?v=96";
-import { initRecorder } from "./recorder.js?v=96";
-import { initPdfViewer } from "./pdfviewer.js?v=96";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=96";
+import { initGraph } from "./graph.js?v=97";
+import { initCanvas } from "./canvas.js?v=97";
+import { initCollab } from "./collab.js?v=97";
+import { initPlugins } from "./plugins.js?v=97";
+import { exportPdfFile } from "./pdf.js?v=97";
+import { initLive } from "./live.js?v=97";
+import { initDaily } from "./daily.js?v=97";
+import { initRecorder } from "./recorder.js?v=97";
+import { initPdfViewer } from "./pdfviewer.js?v=97";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=97";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v96";
+const BUILD = "v97";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -620,7 +620,10 @@ function setMobileGroup(index) {
 function theme() {
   const pref = store.get("theme", "dark");
   const systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.dataset.theme = pref === "system" ? (systemDark ? "dark" : "light") : pref;
+  const actual = pref === "system" ? (systemDark ? "dark" : "light") : pref;
+  document.documentElement.dataset.theme = actual;
+  document.body.classList.toggle("theme-dark", actual === "dark");
+  document.body.classList.toggle("theme-light", actual === "light");
 }
 
 const themeMedia = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -628,6 +631,77 @@ const onThemeMediaChange = () => { if (store.get("theme", "dark") === "system") 
 if (themeMedia) {
   if (themeMedia.addEventListener) themeMedia.addEventListener("change", onThemeMediaChange);
   else if (themeMedia.addListener) themeMedia.addListener(onThemeMediaChange);
+}
+
+let themeStyleEl = null;
+let installedThemes = [];
+let activeThemeName = "";
+
+async function listThemes() {
+  try {
+    const data = await api("/repos/" + state.repo + "/contents/.obsidian/themes?ref=" + encodeURIComponent(state.branch));
+    const dirs = Array.isArray(data) ? data.filter((item) => item && item.type === "dir") : [];
+    const themes = [];
+    for (const dir of dirs) {
+      try {
+        const css = await ghGet(".obsidian/themes/" + dir.name + "/theme.css");
+        themes.push({ name: dir.name, css: css.text });
+      } catch { /* skip theme without css */ }
+    }
+    installedThemes = themes;
+  } catch { installedThemes = []; }
+  return installedThemes;
+}
+
+function clearThemeCss() {
+  if (themeStyleEl) { themeStyleEl.remove(); themeStyleEl = null; }
+}
+
+function applyThemeCss(name, css) {
+  clearThemeCss();
+  activeThemeName = name || "";
+  if (!name || !css) return;
+  themeStyleEl = document.createElement("style");
+  themeStyleEl.id = "vault-community-theme";
+  themeStyleEl.textContent = css;
+  document.head.appendChild(themeStyleEl);
+}
+
+async function applyThemeByName(name) {
+  if (!name) { applyThemeCss("", ""); return; }
+  const hit = installedThemes.find((item) => item.name === name);
+  if (hit) { applyThemeCss(hit.name, hit.css); return; }
+  try {
+    const css = await ghGet(".obsidian/themes/" + name + "/theme.css");
+    applyThemeCss(name, css.text);
+  } catch { applyThemeCss("", ""); }
+}
+
+async function loadAppearanceConfig() {
+  try {
+    const raw = JSON.parse((await ghGet(".obsidian/appearance.json")).text);
+    if (raw && typeof raw === "object" && raw.cssTheme) {
+      await listThemes();
+      await applyThemeByName(raw.cssTheme);
+    }
+  } catch { /* no custom theme */ }
+}
+
+function renderThemeOptions(selected) {
+  const select = $("setThemeName");
+  if (!select) return;
+  select.innerHTML = "";
+  const def = document.createElement("option");
+  def.value = "";
+  def.textContent = "Стандартна";
+  select.appendChild(def);
+  for (const theme of installedThemes) {
+    const option = document.createElement("option");
+    option.value = theme.name;
+    option.textContent = theme.name;
+    select.appendChild(option);
+  }
+  select.value = selected != null ? selected : activeThemeName;
 }
 
 const ACCENT_PRESETS = ["#a882ff", "#5d9cff", "#52c98a", "#e0b458", "#e5686c", "#ff7ac6", "#7ad7d7", "#9a9a9a"];
@@ -5911,6 +5985,8 @@ function openSettings() {
   $("setBranch").value = state.branch;
   $("setToken").value = state.token;
   $("setTheme").value = store.get("theme", "dark");
+  renderThemeOptions(activeThemeName);
+  listThemes().then(() => renderThemeOptions(activeThemeName)).catch(() => {});
   $("setFont").value = store.get("font", "15");
   $("setWidth").value = store.get("width", "46rem");
   $("setGraphForce").value = store.get("graphForce", "120");
@@ -5962,6 +6038,14 @@ $("setFont").addEventListener("change", () => {
   store.set("font", $("setFont").value);
   applyPrefs();
 });
+$("setThemeName").addEventListener("change", () => {
+  applyThemeByName($("setThemeName").value);
+});
+$("reloadThemes").onclick = async () => {
+  const themes = await listThemes();
+  renderThemeOptions(activeThemeName);
+  toast("знайдено тем: " + themes.length);
+};
 async function writeVaultJson(path, data) {
   let sha = null;
   try {
@@ -6014,6 +6098,14 @@ $("saveSettings").onclick = async () => {
     appRaw.newFileFolderPath = $("setNewFileFolder").value.trim();
     appRaw.attachmentFolderPath = $("setAttachmentFolder").value.trim();
     await writeVaultJson(".obsidian/app.json", appRaw);
+    let appearanceRaw = {};
+    try {
+      const got = await ghGet(".obsidian/appearance.json");
+      appearanceRaw = JSON.parse(got.text) || {};
+      if (!appearanceRaw || typeof appearanceRaw !== "object" || Array.isArray(appearanceRaw)) appearanceRaw = {};
+    } catch { appearanceRaw = {}; }
+    appearanceRaw.cssTheme = $("setThemeName").value;
+    await writeVaultJson(".obsidian/appearance.json", appearanceRaw);
   } catch (error) {
     toast("Налаштування нотаток: " + error.message);
   }
@@ -6076,6 +6168,7 @@ async function connect(repo, branch, token, remember) {
     else dailyApi = await initDaily(Vault);
     window.__daily = dailyApi;
     await loadAppConfig();
+    await loadAppearanceConfig();
     recorderApi = await initRecorder(Vault);
     window.__recorder = recorderApi;
     pdfApi = initPdfViewer(Vault);
@@ -6228,4 +6321,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName };
