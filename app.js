@@ -3,6 +3,7 @@ import { initGraph } from "./graph.js";
 import { initCanvas } from "./canvas.js";
 import { initCollab } from "./collab.js";
 import { initPlugins } from "./plugins.js";
+import { exportPdfFile } from "./pdf.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
@@ -681,7 +682,17 @@ function exportPdf() {
   state.preview = true;
   document.body.classList.add("mode-preview");
   renderPreview();
-  setTimeout(() => { window.print(); }, 200);
+  exportPdfFile($("preview"), currentFile().path.split("/").pop().replace(/\.md$/, ""), { download: true })
+    .then((res) => { toast("PDF готовий: " + res.pages + " стор., " + Math.round(res.bytes / 1024) + " КБ"); setState("PDF: " + res.pages + " стор.", "ok"); })
+    .catch((error) => { toast("PDF не вийшов (" + error.message + ") — відкриваю друк"); setTimeout(() => window.print(), 300); });
+}
+
+function printNote() {
+  if (!currentFile()) { toast("Спочатку відкрий нотатку"); return; }
+  state.preview = true;
+  document.body.classList.add("mode-preview");
+  renderPreview();
+  setTimeout(() => window.print(), 200);
 }
 
 /* ---------------- canvas view hook ---------------- */
@@ -695,7 +706,8 @@ export const Vault = {
   contentsPath, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree,
   renderTree, renderTabs, paint, renderPreview, renderContext, renderTags, showPane,
-  moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView,
+  moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote,
+  exportPdfFile: (opts = {}) => exportPdfFile($("preview"), (currentFile()?.path || "note").split("/").pop().replace(/\.md$/, ""), opts),
   get files() { return state.files; },
   get index() { return state.index; },
   get repo() { return state.repo; },
@@ -864,7 +876,8 @@ async function connect(repo, branch, token, remember) {
 registerCommand({ id: "new", label: "Нова нотатка", hint: "＋", run: newNote });
 registerCommand({ id: "save", label: "Зберегти нотатку", hint: "Ctrl+S", run: () => saveNote() });
 registerCommand({ id: "mode", label: "Режим читання / редактор", hint: "Ctrl+E", run: toggleMode });
-registerCommand({ id: "pdf", label: "Експорт PDF (друк)", hint: "PDF", run: exportPdf });
+registerCommand({ id: "pdf", label: "Експорт PDF (файл)", hint: "PDF", run: exportPdf });
+registerCommand({ id: "print", label: "Друк / зберегти як PDF (вікно друку)", hint: "Ctrl+P", run: printNote });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
 registerCommand({ id: "theme", label: "Перемкнути тему", run: toggleTheme });
