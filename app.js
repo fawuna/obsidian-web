@@ -1,13 +1,14 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=18";
-import { initCanvas } from "./canvas.js?v=18";
-import { initCollab } from "./collab.js?v=18";
-import { initPlugins } from "./plugins.js?v=18";
-import { exportPdfFile } from "./pdf.js?v=18";
+import { initGraph } from "./graph.js?v=21";
+import { initCanvas } from "./canvas.js?v=21";
+import { initCollab } from "./collab.js?v=21";
+import { initPlugins } from "./plugins.js?v=21";
+import { exportPdfFile } from "./pdf.js?v=21";
+import { initLive } from "./live.js?v=21";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v18";
+const BUILD = "v21";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -38,6 +39,8 @@ const state = {
   folders: new Set(),
   second: null,
 };
+
+let liveApi = null;
 
 /* ---------------- events ---------------- */
 function on(event, fn) {
@@ -494,7 +497,7 @@ function paint() {
   $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch + " · " + BUILD;
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
   renderPreview();
-  if (state.mode === "live") renderLive();
+  liveApi?.setDoc(file ? file.text : "");
   renderContext();
   renderOutline();
   syncHighlight();
@@ -583,6 +586,7 @@ async function deleteNote(path) {
 
 /* ---------------- images ---------------- */
 function insertAtCursor(text) {
+  if (state.mode === "live" && liveApi) { liveApi.insertAtCaret(text); return; }
   const ed = $("editor");
   const start = ed.selectionStart ?? ed.value.length;
   ed.value = ed.value.slice(0, start) + text + ed.value.slice(ed.selectionEnd ?? start);
@@ -807,163 +811,6 @@ function resolveEmbeds(root) {
   });
 }
 
-
-/* ---------------- live preview (block editor) ---------------- */
-let liveBlocks = [];
-
-function propsHtmlFromRaw(raw) {
-  const rows = raw.replace(/^---\r?\n?/, "").replace(/\r?\n?---\s*$/, "").split(/\r?\n/);
-  const props = [];
-  for (const line of rows) {
-    const kv = line.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):\s*(.*)$/);
-    if (kv) { props.push([kv[1], kv[2].replace(/^["']|["']$/g, "")]); continue; }
-    const item = line.match(/^\s*-\s*(.*)$/);
-    if (item && props.length) {
-      const last = props[props.length - 1];
-      last[1] = last[1] ? last[1] + ", " + item[1].trim() : item[1].trim();
-    }
-  }
-  if (!props.length) return '<pre class="props-raw">' + escapeHtml(raw) + "</pre>";
-  return '<div class="props">' + props.map(([k, v]) =>
-    '<div class="row"><span class="k">' + escapeHtml(k) + '</span><span class="v">' + escapeHtml(v) + "</span></div>").join("") + "</div>";
-}
-
-function blockKind(line) {
-  if (/^\s*$/.test(line)) return "blank";
-  if (/^\s*(```|~~~)/.test(line)) return "fence";
-  if (/^#{1,6}\s/.test(line)) return "heading";
-  if (/^\s*>/.test(line)) return "quote";
-  if (/^\s*([-*+]|\d+[.)])\s/.test(line)) return "list";
-  if (/^\s*\|/.test(line)) return "table";
-  return "para";
-}
-
-function parseBlocks(text) {
-  const lines = text.split("\n");
-  const starts = [];
-  let off = 0;
-  for (const line of lines) { starts.push(off); off += line.length + 1; }
-  const blocks = [];
-  let i = 0;
-
-  if (lines[0] === "---") {
-    let end = -1;
-    for (let k = 1; k < lines.length; k++) if (lines[k].trim() === "---") { end = k; break; }
-    if (end > 0) {
-      const endOff = starts[end] + lines[end].length;
-      blocks.push({ start: 0, end: endOff, raw: text.slice(0, endOff), kind: "frontmatter" });
-      i = end + 1;
-    }
-  }
-
-  while (i < lines.length) {
-    const kind = blockKind(lines[i]);
-    if (kind === "blank") { i++; continue; }
-    let j = i;
-    if (kind === "fence") {
-      j = i + 1;
-      while (j < lines.length && !/^\s*(```|~~~)/.test(lines[j])) j++;
-      if (j < lines.length) j++;
-      j -= 1;
-    } else if (kind === "heading") {
-      j = i;
-    } else {
-      j = i;
-      while (j + 1 < lines.length) {
-        const next = lines[j + 1];
-        const nk = blockKind(next);
-        if (nk === "blank") break;
-        if (nk === kind) { j++; continue; }
-        if ((kind === "list" || kind === "quote" || kind === "table") && /^\s{2,}\S/.test(next)) { j++; continue; }
-        break;
-      }
-    }
-    const start = starts[i];
-    const end = starts[j] + lines[j].length;
-    blocks.push({ start, end, raw: text.slice(start, end), kind });
-    i = j + 1;
-  }
-  return blocks;
-}
-
-function renderLive() {
-  const host = $("live");
-  const file = currentFile();
-  if (!host) return;
-  if (!file) { host.innerHTML = ""; return; }
-  if (host.querySelector(".live-src")) return;
-  const blocks = parseBlocks(file.text);
-  liveBlocks = blocks;
-  host.innerHTML = "";
-  blocks.forEach((b, i) => {
-    const div = document.createElement("div");
-    div.className = "live-block k-" + b.kind;
-    div.dataset.i = String(i);
-    div.innerHTML = b.kind === "frontmatter" ? propsHtmlFromRaw(b.raw) : markdownToHtml(b.raw);
-    host.appendChild(div);
-  });
-  styleCallouts(host);
-  host.querySelectorAll(".live-block").forEach((el) => {
-    const idx = Number(el.dataset.i);
-    const b = liveBlocks[idx];
-    if (!b) return;
-    const lineOffset = (file.text.slice(0, b.start).match(/\n/g) || []).length;
-    wireRendered(el, b.raw, lineOffset);
-    el.addEventListener("click", (e) => {
-      if (e.target.closest("a, input, .tag, .embed-note")) return;
-      if (!el.isConnected || el.classList.contains("editing")) return;
-      openLiveEditor(el, idx);
-    });
-  });
-  resolveEmbeds(host);
-}
-
-function openLiveEditor(el, idx) {
-  const b = liveBlocks[idx];
-  const file = currentFile();
-  if (!b || !file) return;
-  const ta = document.createElement("textarea");
-  ta.className = "live-src";
-  ta.spellcheck = false;
-  ta.value = b.raw;
-  el.classList.add("editing");
-  el.innerHTML = "";
-  el.appendChild(ta);
-  const size = () => { ta.style.height = "auto"; ta.style.height = Math.max(30, ta.scrollHeight) + "px"; };
-  size();
-  ta.focus();
-  ta.setSelectionRange(ta.value.length, ta.value.length);
-
-  let done = false;
-  const apply = () => {
-    const value = ta.value;
-    if (value === b.raw) return;
-    const prev = file.text;
-    const oldEnd = b.end;
-    const delta = value.length - (oldEnd - b.start);
-    file.text = file.text.slice(0, b.start) + value + file.text.slice(oldEnd);
-    for (const other of liveBlocks) {
-      if (other !== b && other.start >= oldEnd) { other.start += delta; other.end += delta; }
-    }
-    b.raw = value;
-    b.end = b.start + value.length;
-    $("editor").value = file.text;
-    noteEdited(prev);
-  };
-  const commit = () => {
-    if (done) return;
-    done = true;
-    apply();
-    el.classList.remove("editing");
-    ta.remove();
-    renderLive();
-  };
-  ta.addEventListener("input", () => { size(); apply(); });
-  ta.addEventListener("blur", commit);
-  ta.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" || ((e.ctrlKey || e.metaKey) && e.key === "Enter")) { e.preventDefault(); ta.blur(); }
-  });
-}
 
 function noteEdited(prev) {
   const file = currentFile();
@@ -1214,7 +1061,10 @@ function setMode(mode) {
     const btn = $("mode" + m.charAt(0).toUpperCase() + m.slice(1));
     if (btn) btn.style.background = m === mode ? "var(--bg-4)" : "";
   }
-  if (mode === "live") renderLive();
+  if (mode === "live") {
+    liveApi?.setDoc(currentFile() ? currentFile().text : "");
+    liveApi?.focus();
+  }
 }
 const toggleMode = () => setMode(MODES[(MODES.indexOf(state.mode) + 1) % MODES.length]);
 const toggleLeft = () => { if (window.innerWidth <= 980) $("left").classList.toggle("open"); else document.body.classList.toggle("no-left"); };
@@ -1256,6 +1106,7 @@ export const Vault = {
   get branch() { return state.branch; },
   get token() { return state.token; },
   get openFiles() { return state.open; },
+  get live() { return liveApi; },
 };
 window.Vault = Vault;
 
@@ -1358,6 +1209,7 @@ function renderOutline() {
 }
 
 function jumpToLine(line) {
+  if (state.mode === "live" && liveApi) { liveApi.goToLine(line + 1); return; }
   const ed = $("editor");
   const lines = ed.value.split("\n");
   let pos = 0;
@@ -1380,7 +1232,8 @@ function openFind() {
 }
 function closeFind() {
   $("findBar").classList.remove("show");
-  $("editor").focus();
+  if (state.mode === "live" && liveApi) liveApi.focus();
+  else $("editor").focus();
 }
 function runFind() {
   const ed = $("editor");
@@ -1388,7 +1241,8 @@ function runFind() {
   findMatches = [];
   findIndex = -1;
   if (q) {
-    const hay = ed.value.toLowerCase();
+    const hayText = state.mode === "live" && liveApi ? liveApi.getText() : ed.value;
+    const hay = hayText.toLowerCase();
     const needle = q.toLowerCase();
     let at = hay.indexOf(needle);
     while (at !== -1) {
@@ -1404,6 +1258,11 @@ function selectMatch() {
   const q = $("findInput").value;
   if (!findMatches.length) return;
   const start = findMatches[findIndex];
+  if (state.mode === "live" && liveApi) {
+    liveApi.select(start, start + q.length);
+    $("findCount").textContent = (findIndex + 1) + "/" + findMatches.length;
+    return;
+  }
   ed.focus();
   ed.selectionStart = start;
   ed.selectionEnd = start + q.length;
@@ -1427,6 +1286,12 @@ function replaceOne() {
   const ed = $("editor");
   const q = $("findInput").value;
   if (!q) return;
+  if (state.mode === "live" && liveApi) {
+    const sel = liveApi.selection();
+    if (sel && sel.text.toLowerCase() === q.toLowerCase()) liveApi.replaceSelection($("replaceInput").value);
+    runFind();
+    return;
+  }
   const sel = ed.value.slice(ed.selectionStart, ed.selectionEnd);
   if (sel.toLowerCase() === q.toLowerCase()) {
     ed.setRangeText($("replaceInput").value, ed.selectionStart, ed.selectionEnd, "end");
@@ -1440,6 +1305,12 @@ function replaceAllInNote() {
   const ed = $("editor");
   const q = $("findInput").value;
   if (!q) return;
+  if (state.mode === "live" && liveApi) {
+    const count = liveApi.replaceAll(q, $("replaceInput").value);
+    runFind();
+    toast("замінено входжень: " + count);
+    return;
+  }
   const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
   const count = (ed.value.match(re) || []).length;
   ed.value = ed.value.replace(re, $("replaceInput").value);
@@ -1456,7 +1327,7 @@ $("editor").addEventListener("input", () => {
   file.text = $("editor").value;
   noteEdited(prev);
   renderPreview();
-  if (state.mode === "live") renderLive();
+  liveApi?.setDoc(file.text);
   syncHighlight();
   updateCursorPos();
 
@@ -1554,6 +1425,7 @@ $("editor").addEventListener("keydown", (e) => {
 });
 
 function wrapSelection(marker) {
+  if (state.mode === "live" && liveApi) { liveApi.wrap(marker); return; }
   const ed = $("editor");
   const s = ed.selectionStart;
   const t = ed.selectionEnd;
@@ -1642,6 +1514,8 @@ $("editor").addEventListener("paste", async (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
+  const inLive = e.target && e.target.closest && e.target.closest("#live .cm-editor");
+  if (inLive && (e.ctrlKey || e.metaKey) && ["b", "i", "k"].includes(e.key.toLowerCase())) return;
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); saveNote(); }
   else if (mod && e.key.toLowerCase() === "e") { e.preventDefault(); toggleMode(); }
@@ -1803,6 +1677,30 @@ registerCommand({ id: "reload", label: "Оновити список файлів
 registerCommand({ id: "index", label: "Перебудувати індекс звʼязків", run: async () => { state.index.clear(); await ensureIndex(); renderContext(); renderTags(); toast("індекс оновлено"); } });
 registerCommand({ id: "collab", label: "Спільна робота (real-time)", hint: "👥", run: () => emit("collab:open") });
 registerCommand({ id: "logout", label: "Забути токен і вийти", run: () => { store.del("token"); location.reload(); } });
+
+liveApi = initLive({
+  getText: () => (currentFile() ? currentFile().text : ""),
+  onChange: (text, prev) => {
+    const file = currentFile();
+    if (!file) return;
+    file.text = text;
+    $("editor").value = text;
+    noteEdited(prev);
+    renderPreview();
+    syncHighlight();
+    updateCursorPos();
+  },
+  onCursor: (line, ch) => {
+    const node = $("stCursor");
+    if (node) node.textContent = line + ":" + ch;
+  },
+  onOpenNote: (target) => {
+    const name = String(target || "").replace(/^#/, "");
+    const hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
+    if (hit) openNote(hit); else toast("Немає такої нотатки: " + name);
+  },
+  imageUrl: (name) => "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.replace(/^\.?\//, "")),
+});
 
 theme();
 applyPrefs();
