@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=57";
-import { initCanvas } from "./canvas.js?v=57";
-import { initCollab } from "./collab.js?v=57";
-import { initPlugins } from "./plugins.js?v=57";
-import { exportPdfFile } from "./pdf.js?v=57";
-import { initLive } from "./live.js?v=57";
-import { initDaily } from "./daily.js?v=57";
+import { initGraph } from "./graph.js?v=58";
+import { initCanvas } from "./canvas.js?v=58";
+import { initCollab } from "./collab.js?v=58";
+import { initPlugins } from "./plugins.js?v=58";
+import { exportPdfFile } from "./pdf.js?v=58";
+import { initLive } from "./live.js?v=58";
+import { initDaily } from "./daily.js?v=58";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v57";
+const BUILD = "v58";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1442,6 +1442,8 @@ function paint() {
   $("stPath").textContent = state.view === "graph" ? "Graph view" : state.view === "canvas" ? ($("canvasName").textContent || "Canvas") : (file ? file.path : "—");
   $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch + " · " + BUILD;
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
+  const mobTitle = $("mobSwitcher");
+  if (mobTitle) mobTitle.textContent = file ? noteName(file.path) : "Vault";
   renderPreview();
   if (liveApi) {
     if (!file) { liveApi.setDoc(""); livePath = null; }
@@ -2175,9 +2177,15 @@ function markdownToHtml(body) {
   });
 
   src = src.replace(/!\[\[([^\]]+)\]\]/g, (m, inner) => {
-    const name = inner.split("|")[0].trim();
+    const parts = inner.split("|").map((part) => part.trim());
+    const name = parts[0];
+    const size = parts[1] && /^\d+$/.test(parts[1]) ? parts[1] : "";
+    const fileUrl = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + name.split("#")[0].replace(/^\.?\//, "");
     if (/\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(name)) {
-      return "![" + name + "](" + encodeURI("https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + name.replace(/^\.?\//, "")) + ")";
+      return '<img src="' + encodeURI(fileUrl) + '" alt="' + escapeAttr(name) + '"' + (size ? ' width="' + size + '"' : "") + ">";
+    }
+    if (/\.pdf$/i.test(name)) {
+      return '<iframe class="pdf-embed" src="' + encodeURI(fileUrl) + '"' + (size ? ' width="' + size + '"' : "") + ' title="' + escapeAttr(name) + '"></iframe>';
     }
     return '<div class="embed-note" data-note="' + encodeURIComponent(name) + '">…</div>';
   });
@@ -2209,6 +2217,11 @@ function markdownToHtml(body) {
   html = html.replace(/\u0000M(\d+)\u0000/g, (m, index) => {
     const tex = maths[Number(index)] ? maths[Number(index)].tex : "";
     return '<span class="math math-inline" data-tex="' + escapeAttr(tex) + '"></span>';
+  });
+  html = html.replace(/<img([^>]*)>/g, (m, attrs) => {
+    const alt = attrs.match(/alt="([^"]*)\|(\d+)"/);
+    if (!alt) return m;
+    return "<img" + attrs.replace(alt[0], 'alt="' + alt[1] + '" width="' + alt[2] + '"') + ">";
   });
   return html;
 }
@@ -2443,6 +2456,11 @@ function wireRendered(root, sourceText, lineOffset = 0) {
     a.onclick = (event) => {
       event.preventDefault();
       const target = a.dataset.target.replace(/^#/, "");
+      const fileTarget = target.split("#")[0];
+      if (/\.(pdf|svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(fileTarget)) {
+        window.open(imageUrlFor(fileTarget), "_blank", "noopener");
+        return;
+      }
       const hit = state.files.find((p) => p === target + ".md" || p === target || p.endsWith("/" + target + ".md"));
       if (hit) openNote(hit); else toast("Нема такої нотатки: " + target);
     };
@@ -4229,6 +4247,12 @@ $("saveSettings").onclick = () => {
   location.reload();
 };
 $("openPluginsPane").onclick = () => { closeModals(); showPane("plugins"); };
+$("mobLeft").onclick = toggleLeft;
+$("mobBack").onclick = goBack;
+$("mobFwd").onclick = goFwd;
+$("mobSwitcher").onclick = () => showSwitcher();
+$("mobNew").onclick = newNote;
+$("mobMenu").onclick = showPalette;
 
 window.addEventListener("beforeunload", (e) => { if (state.open.some((f) => f.dirty)) { e.preventDefault(); e.returnValue = ""; } });
 window.addEventListener("beforeunload", saveWorkspace);
