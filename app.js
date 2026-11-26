@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=67";
-import { initCanvas } from "./canvas.js?v=67";
-import { initCollab } from "./collab.js?v=67";
-import { initPlugins } from "./plugins.js?v=67";
-import { exportPdfFile } from "./pdf.js?v=67";
-import { initLive } from "./live.js?v=67";
-import { initDaily } from "./daily.js?v=67";
+import { initGraph } from "./graph.js?v=68";
+import { initCanvas } from "./canvas.js?v=68";
+import { initCollab } from "./collab.js?v=68";
+import { initPlugins } from "./plugins.js?v=68";
+import { exportPdfFile } from "./pdf.js?v=68";
+import { initLive } from "./live.js?v=68";
+import { initDaily } from "./daily.js?v=68";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v67";
+const BUILD = "v68";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -3257,7 +3257,11 @@ async function runSearch() {
     const parsed = alternatives.find((query) => searchQueryMatches(query, path, text, caseSensitive));
     if (!parsed) continue;
     const hay = caseSensitive ? text : text.toLowerCase();
-    const searchNeedles = [...parsed.phrases, ...parsed.terms].map((needle) => caseSensitive ? needle : needle.toLowerCase());
+    const groupWords = [...parsed.line, ...parsed.section]
+      .flatMap((group) => group.split(/\s+/))
+      .filter(Boolean);
+    const searchNeedles = [...parsed.phrases, ...parsed.terms, ...groupWords]
+      .map((needle) => caseSensitive ? needle : needle.toLowerCase());
     const hits = [];
     for (const needle of searchNeedles) {
       let at = hay.indexOf(needle);
@@ -3268,7 +3272,22 @@ async function runSearch() {
         at = hay.indexOf(needle, at + Math.max(1, needle.length));
       }
     }
-    if (!hits.length && !searchNeedles.length) {
+    for (const spec of parsed.regex) {
+      let re;
+      try {
+        const flags = (spec.flags.includes("g") ? spec.flags : spec.flags + "g") + (caseSensitive || spec.flags.includes("i") ? "" : "i");
+        re = new RegExp(spec.source, flags);
+      } catch { continue; }
+      re.lastIndex = 0;
+      let match;
+      while ((match = re.exec(text)) !== null && hits.length < 200) {
+        const info = lineAt(text, match.index);
+        const from = match.index - info.start;
+        hits.push({ line: info.line, pieces: snippetPieces(info.text, from, from + match[0].length, true) });
+        if (match.index === re.lastIndex) re.lastIndex++;
+      }
+    }
+    if (!hits.length && !searchNeedles.length && !parsed.regex.length) {
       const info = lineAt(text, 0);
       hits.push({ line: 0, pieces: [{ text: info.text.slice(0, 160) }] });
     }
@@ -3338,14 +3357,29 @@ function syncSearchOptions() {
 }
 
 function parseSearchQuery(raw) {
-  const out = { terms: [], phrases: [], path: [], file: [], tags: [], props: [], not: [] };
+  const out = { terms: [], phrases: [], path: [], file: [], tags: [], props: [], not: [], regex: [], line: [], section: [] };
+  let rest = String(raw || "");
+  rest = rest.replace(/\b(line|section):\(([^)]*)\)/gi, (match, kind, inner) => {
+    const group = inner.trim().replace(/^["']|["']$/g, "");
+    if (group) out[kind.toLowerCase()].push(group);
+    return " ";
+  });
   const re = /(-?)("([^"]+)"|(\[[^\]]+\])|(\S+))/g;
   let m;
-  while ((m = re.exec(raw)) !== null) {
+  while ((m = re.exec(rest)) !== null) {
     const neg = m[1] === "-";
     const token = (m[3] || m[4] || m[5] || "").trim();
     if (!token) continue;
     if (neg) { out.not.push(token.toLowerCase()); continue; }
+    if (token.startsWith("/") && token.length > 2) {
+      const end = token.lastIndexOf("/");
+      if (end > 0) {
+        const source = token.slice(1, end);
+        const flags = token.slice(end + 1).replace(/[^gimsuy]/g, "");
+        if (source) out.regex.push({ source, flags });
+        continue;
+      }
+    }
     if (/^path:/i.test(token)) { out.path.push(token.slice(5).toLowerCase()); continue; }
     if (/^file:/i.test(token)) { out.file.push(token.slice(5).toLowerCase()); continue; }
     if (/^tag:/i.test(token)) { out.tags.push(token.slice(4).replace(/^#/, "").toLowerCase()); continue; }
@@ -3359,6 +3393,28 @@ function parseSearchQuery(raw) {
     else out.terms.push(token.toLowerCase());
   }
   return out;
+}
+
+function sectionContains(text, words, caseSensitive) {
+  const lines = String(text || "").split(/\r?\n/);
+  const sections = [];
+  let current = null;
+  for (const line of lines) {
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      if (current) sections.push(current);
+      current = { level: heading[1].length, text: heading[2] + "\n" };
+      continue;
+    }
+    if (current) current.text += line + "\n";
+  }
+  if (current) sections.push(current);
+  if (!sections.length) sections.push({ level: 0, text: String(text || "") });
+  for (const section of sections) {
+    const hay = caseSensitive ? section.text : section.text.toLowerCase();
+    if (words.every((word) => hay.includes(word))) return true;
+  }
+  return false;
 }
 
 function searchQueryMatches(parsed, path, text, caseSensitive) {
@@ -3384,6 +3440,30 @@ function searchQueryMatches(parsed, path, text, caseSensitive) {
     return wanted != null && !String(found[1]).toLowerCase().includes(wanted);
   })) return false;
   if (parsed.not.some((t) => hay.includes(t))) return false;
+  for (const spec of parsed.regex) {
+    let re;
+    try {
+      const flags = spec.flags.replace(/g/g, "") + (caseSensitive || spec.flags.includes("i") ? "" : "i");
+      re = new RegExp(spec.source, flags);
+    } catch { return false; }
+    if (!re.test(text)) return false;
+  }
+  for (const group of parsed.line) {
+    if (!group) continue;
+    const words = group.split(/\s+/).filter(Boolean).map((word) => caseSensitive ? word : word.toLowerCase());
+    if (!words.length) continue;
+    let found = false;
+    for (const line of text.split(/\r?\n/)) {
+      const hayLine = caseSensitive ? line : line.toLowerCase();
+      if (words.every((word) => hayLine.includes(word))) { found = true; break; }
+    }
+    if (!found) return false;
+  }
+  for (const group of parsed.section) {
+    if (!group) continue;
+    const words = group.split(/\s+/).filter(Boolean).map((word) => caseSensitive ? word : word.toLowerCase());
+    if (words.length && !sectionContains(text, words, caseSensitive)) return false;
+  }
   const needles = [...parsed.phrases, ...parsed.terms].map((needle) => caseSensitive ? needle : needle.toLowerCase());
   if (needles.some((needle) => !hay.includes(needle))) return false;
   return true;
