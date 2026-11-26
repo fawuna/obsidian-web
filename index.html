@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=52">
+<link rel="stylesheet" href="styles.css?v=53">
 </head>
 <body>
 
@@ -279,12 +279,18 @@
   <div class="foot"><button class="ghost-border" id="collabClose">Закрити</button><button class="primary" id="collabToggle">Увімкнути</button></div>
 </div>
 
+<div class="modal" id="recoveryModal">
+  <div class="pane-head"><span class="title" id="recoveryTitle">File recovery</span></div>
+  <div class="body" id="recoveryList" style="max-height:440px;overflow:auto;padding:10px"></div>
+  <div class="foot"><button class="ghost-border" id="recoveryClose">Закрити</button></div>
+</div>
+
 <div id="pagePreview" class="popover hover-popover" aria-hidden="true"></div>
 <div id="dropHint">Відпусти, щоб вставити картинку</div>
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=52"></script>
-<script type="module" src="app.js?v=52"></script>
+<script src="vendor/marked.min.js?v=53"></script>
+<script type="module" src="app.js?v=53"></script>
 </body>
 </html>

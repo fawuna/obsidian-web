@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=52";
-import { initCanvas } from "./canvas.js?v=52";
-import { initCollab } from "./collab.js?v=52";
-import { initPlugins } from "./plugins.js?v=52";
-import { exportPdfFile } from "./pdf.js?v=52";
-import { initLive } from "./live.js?v=52";
-import { initDaily } from "./daily.js?v=52";
+import { initGraph } from "./graph.js?v=53";
+import { initCanvas } from "./canvas.js?v=53";
+import { initCollab } from "./collab.js?v=53";
+import { initPlugins } from "./plugins.js?v=53";
+import { exportPdfFile } from "./pdf.js?v=53";
+import { initLive } from "./live.js?v=53";
+import { initDaily } from "./daily.js?v=53";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v52";
+const BUILD = "v53";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1403,6 +1403,7 @@ async function saveNote(silent = false, target = null) {
     file.sha = data.content.sha;
     file.dirty = false;
     state.index.set(file.path, file.text);
+    snapshotNote(file);
     renderTabs(); paint();
     setState("збережено " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), "ok");
     emit("saved", file.path);
@@ -1413,6 +1414,7 @@ async function saveNote(silent = false, target = null) {
         file.sha = fresh.sha;
         await ghPut(file.path, file.text, file.sha, "merge: " + file.path);
         file.dirty = false;
+        snapshotNote(file);
         renderTabs(); paint();
         setState("злито і збережено", "ok");
         toast("Файл змінили ззовні — зберіг поверх, перевір diff у git");
@@ -1438,6 +1440,157 @@ async function newNote() {
     emit("create", path);
     toast("створено " + path);
   } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+/* ---------------- note composer ---------------- */
+function activeSelectionRange() {
+  if (state.mode === "live" && liveApi) return liveApi.selection();
+  const ed = $("editor");
+  const from = ed.selectionStart || 0;
+  const to = ed.selectionEnd || 0;
+  return { from, to, text: ed.value.slice(from, to) };
+}
+
+function replaceActiveSelection(text) {
+  if (state.mode === "live" && liveApi) { liveApi.replaceSelection(text); return; }
+  const ed = $("editor");
+  const from = ed.selectionStart || 0;
+  const to = ed.selectionEnd || 0;
+  ed.value = ed.value.slice(0, from) + text + ed.value.slice(to);
+  ed.selectionStart = ed.selectionEnd = from + text.length;
+  ed.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+async function extractSelection() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  const selection = activeSelectionRange();
+  if (!selection.text.trim()) { toast("Виділи текст для витягу"); return; }
+  const raw = prompt("Назва нової нотатки:", "Витяг");
+  if (!raw) return;
+  let target = raw.trim().replace(/^\/+/, "");
+  if (!target) return;
+  if (!target.endsWith(".md")) target += ".md";
+  try {
+    const content = selection.text.replace(/^\n+|\n+$/g, "") + "\n";
+    await ghPut(target, content, null, "extract " + target);
+    state.pending.add(target);
+    state.index.set(target, content);
+    replaceActiveSelection("[[" + target.replace(/\.md$/, "") + "]]");
+    await loadTree();
+    renderTabs(); paint();
+    emit("create", target);
+    toast("витягнуто у " + target);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+async function mergeIntoNote(targetPath) {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  if (!targetPath || targetPath === file.path) { toast("Обери іншу нотатку"); return; }
+  if (!confirm("Обʼєднати «" + noteName(file.path) + "» у «" + noteName(targetPath) + "»? Поточну нотатку буде видалено.")) return;
+  try {
+    setState("обʼєдную…");
+    const target = await ghGet(targetPath);
+    const merged = String(target.text || "").replace(/\s+$/, "") + "\n\n" + file.text.replace(/\s+$/, "") + "\n";
+    await ghPut(targetPath, merged, target.sha, "merge " + file.path + " into " + targetPath);
+    const source = await ghGet(file.path);
+    await ghDelete(file.path, source.sha);
+    state.pending.delete(file.path);
+    state.index.delete(file.path);
+    state.open = state.open.filter((item) => item.path !== file.path);
+    for (const group of state.groups) {
+      group.tabs = group.tabs.filter((path) => path !== file.path);
+      if (group.active === file.path) group.active = group.tabs[0] || null;
+    }
+    for (let index = state.groups.length - 1; index > 0; index--) {
+      if (!state.groups[index].tabs.length) state.groups.splice(index, 1);
+    }
+    destroyExtraPanes();
+    for (let index = 2; index < state.groups.length; index++) getPane(index);
+    if (state.groups.length === 1) {
+      document.body.classList.remove("split");
+      $("pane2").style.flex = "";
+    }
+    state.active = group1().active;
+    syncSecond();
+    await loadTree();
+    await openNote(targetPath);
+    renderTabs(); renderTree(); paint(); updateSplitButtons(); applyMobilePane();
+    emit("delete", file.path);
+    emit("modify", { path: targetPath, text: merged, prev: target.text });
+    toast("обʼєднано у " + targetPath);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+/* ---------------- file recovery ---------------- */
+function readRecovery() {
+  try {
+    const data = JSON.parse(store.get("recovery", "{}"));
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch { return {}; }
+}
+
+function snapshotNote(file) {
+  if (!file || !file.path) return;
+  const map = readRecovery();
+  const list = Array.isArray(map[file.path]) ? map[file.path] : [];
+  const last = list[list.length - 1];
+  if (last && last.text === file.text) return;
+  list.push({ t: Date.now(), text: file.text });
+  while (list.length > 20) list.shift();
+  map[file.path] = list;
+  let total = 0;
+  for (const key of Object.keys(map)) {
+    total += map[key].reduce((sum, item) => sum + (item.text ? item.text.length : 0), 0);
+  }
+  if (total > 1800000) {
+    for (const key of Object.keys(map)) map[key] = map[key].slice(-5);
+  }
+  store.set("recovery", JSON.stringify(map));
+}
+
+function openRecovery() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  const host = $("recoveryList");
+  const title = $("recoveryTitle");
+  if (title) title.textContent = "File recovery · " + file.path;
+  host.innerHTML = "";
+  const map = readRecovery();
+  const list = Array.isArray(map[file.path]) ? map[file.path].slice().reverse() : [];
+  if (!list.length) {
+    host.appendChild(el("div", "empty", "Ще немає збережених версій цієї нотатки."));
+  }
+  for (const item of list) {
+    const row = el("div", "recovery-row");
+    const time = new Date(item.t).toLocaleString();
+    const meta = el("div", "recovery-meta");
+    meta.append(el("span", "recovery-time", time), el("span", "recovery-len", (item.text || "").length + " симв."));
+    const preview = el("div", "recovery-preview", (item.text || "").replace(/\s+/g, " ").slice(0, 180));
+    const actions = el("div", "recovery-actions");
+    const restore = el("button", "ghost-border", "Відновити");
+    restore.onclick = () => {
+      if (!confirm("Відновити версію від " + time + "?")) return;
+      file.text = item.text || "";
+      file.dirty = true;
+      state.index.set(file.path, file.text);
+      $("editor").value = file.text;
+      if (liveApi && livePath === file.path) liveApi.setDoc(file.text);
+      syncLiveCopies(0, file);
+      syncHighlight();
+      renderPreview(); renderTabs(); paint();
+      setState("не збережено", "warn");
+      closeModals();
+      toast("версію відновлено — збережи нотатку");
+    };
+    const copy = el("button", "ghost-border", "Копіювати");
+    copy.onclick = () => copyText(item.text || "");
+    actions.append(restore, copy);
+    row.append(meta, preview, actions);
+    host.appendChild(row);
+  }
+  openModal("recoveryModal");
 }
 
 async function renameNote(path) {
@@ -2816,7 +2969,7 @@ function parseSearchQuery(raw) {
 let paletteItems = [], paletteActive = 0, switcherItems = [], switcherActive = 0;
 
 function openModal(id) { $("overlay").classList.add("show"); $(id).classList.add("show"); }
-function closeModals() { $("overlay").classList.remove("show"); ["palette", "switcher", "settings", "collabModal"].forEach((id) => $(id).classList.remove("show")); }
+function closeModals() { $("overlay").classList.remove("show"); ["palette", "switcher", "settings", "collabModal", "recoveryModal"].forEach((id) => $(id).classList.remove("show")); }
 
 function showPalette() {
   $("paletteInput").value = "";
@@ -2843,11 +2996,11 @@ function renderPalette() {
 let switcherMode = "open";
 let linkPos = null;
 function showSwitcher(mode) {
-  switcherMode = mode === "link" ? "link" : mode === "template" ? "template" : "open";
+  switcherMode = mode === "link" ? "link" : mode === "template" ? "template" : mode === "merge" ? "merge" : "open";
   linkPos = null;
   if (switcherMode === "link") linkPane = activePane;
   $("switcherInput").value = "";
-  $("switcherInput").placeholder = switcherMode === "link" ? "Вставити [[посилання]] на…" : switcherMode === "template" ? "Вставити шаблон…" : "Перейти до нотатки…";
+  $("switcherInput").placeholder = switcherMode === "link" ? "Вставити [[посилання]] на…" : switcherMode === "template" ? "Вставити шаблон…" : switcherMode === "merge" ? "Обʼєднати з нотаткою…" : "Перейти до нотатки…";
   switcherActive = 0;
   renderSwitcher();
   openModal("switcher");
@@ -2859,6 +3012,11 @@ function chooseSwitcherItem(path) {
   if (switcherMode === "template") {
     switcherMode = "open";
     if (dailyApi) dailyApi.insertTemplate(path);
+    return;
+  }
+  if (switcherMode === "merge") {
+    switcherMode = "open";
+    mergeIntoNote(path);
     return;
   }
   if (switcherMode === "link") {
@@ -3491,6 +3649,7 @@ $("openPalette").onclick = showPalette;
 $("openSwitcher").onclick = showSwitcher;
 $("openSettings").onclick = openSettings;
 $("closeSettings").onclick = closeModals;
+$("recoveryClose").onclick = closeModals;
 $("newNote").onclick = newNote;
 $("splitBtn").onclick = () => {
   if (state.active) addPane(state.active);
@@ -3772,6 +3931,9 @@ registerCommand({ id: "show-outgoing", label: "Outgoing links: показати 
 registerCommand({ id: "show-tags", label: "Tags: показати теги", run: () => openRightTab("tag") });
 registerCommand({ id: "show-properties", label: "Properties: усі властивості", run: () => openRightTab("all-properties") });
 registerCommand({ id: "show-outline", label: "Outline: показати структуру", run: () => openRightTab("outline") });
+registerCommand({ id: "extract", label: "Note composer: витягнути виділене", run: extractSelection });
+registerCommand({ id: "merge", label: "Note composer: обʼєднати з іншою нотаткою", run: () => showSwitcher("merge") });
+registerCommand({ id: "recovery", label: "File recovery: історія версій", run: openRecovery });
 registerCommand({ id: "collab", label: "Спільна робота (real-time)", hint: "👥", run: () => emit("collab:open") });
 registerCommand({ id: "logout", label: "Забути токен і вийти", run: () => { store.del("token"); location.reload(); } });
 
