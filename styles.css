@@ -607,6 +607,8 @@ body.split #previewHost { display: none; }
 #preview .mermaid, #pagePreview .mermaid { display: flex; justify-content: center; margin: 14px 0; overflow-x: auto; }
 #preview .mermaid svg, #pagePreview .mermaid svg { max-width: 100%; height: auto; }
 #preview .mermaid-error, #pagePreview .mermaid-error { color: #e5686c; font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; }
+#preview .is-flashing, #pagePreview .is-flashing { animation: vault-flash 1.2s ease; }
+@keyframes vault-flash { 0% { background: color-mix(in srgb, var(--accent) 26%, transparent); } 100% { background: transparent; } }
 #preview .pdf-embed { width: 100%; height: 520px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
 #preview img { max-width: 100%; height: auto; }
 

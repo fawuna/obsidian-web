@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=58";
-import { initCanvas } from "./canvas.js?v=58";
-import { initCollab } from "./collab.js?v=58";
-import { initPlugins } from "./plugins.js?v=58";
-import { exportPdfFile } from "./pdf.js?v=58";
-import { initLive } from "./live.js?v=58";
-import { initDaily } from "./daily.js?v=58";
+import { initGraph } from "./graph.js?v=59";
+import { initCanvas } from "./canvas.js?v=59";
+import { initCollab } from "./collab.js?v=59";
+import { initPlugins } from "./plugins.js?v=59";
+import { exportPdfFile } from "./pdf.js?v=59";
+import { initLive } from "./live.js?v=59";
+import { initDaily } from "./daily.js?v=59";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v58";
+const BUILD = "v59";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -235,9 +235,106 @@ function imageUrlFor(name) {
 }
 
 function openTargetNote(target) {
-  const name = String(target || "").replace(/^#/, "");
+  const raw = String(target || "");
+  const sameNote = raw.startsWith("#");
+  const clean = sameNote ? raw.slice(1) : raw;
+  const [name, anchor] = sameNote ? [null, clean] : clean.split("#");
+  if (sameNote) { jumpToAnchor(anchor); return; }
   const hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
-  if (hit) openNote(hit); else toast("Немає такої нотатки: " + name);
+  if (!hit) { toast("Немає такої нотатки: " + name); return; }
+  openNote(hit).then(() => { if (anchor) setTimeout(() => jumpToAnchor(anchor), 120); });
+}
+
+function extractSection(text, anchor) {
+  const clean = String(anchor || "").replace(/^#/, "").trim();
+  if (!clean) return text;
+  const lines = String(text || "").split(/\r?\n/);
+  if (clean.startsWith("^")) {
+    const id = clean.slice(1);
+    const at = lines.findIndex((line) => new RegExp("\\^" + escapeRegExp(id) + "\\s*$").test(line));
+    if (at < 0) return text;
+    let start = at;
+    let end = at;
+    while (start > 0 && lines[start - 1].trim() !== "") start--;
+    while (end < lines.length - 1 && lines[end + 1].trim() !== "") end++;
+    return lines.slice(start, end + 1).join("\n");
+  }
+  const headingText = (line) => {
+    const match = line.match(/^(#{1,6})\s+(.*)$/);
+    return match ? { level: match[1].length, text: match[2].replace(/[*_`]/g, "").trim() } : null;
+  };
+  const wanted = clean.toLowerCase();
+  const at = lines.findIndex((line) => {
+    const heading = headingText(line);
+    return heading && heading.text.toLowerCase() === wanted;
+  });
+  if (at < 0) return text;
+  const level = (lines[at].match(/^#+/) || [""])[0].length;
+  let end = lines.length;
+  for (let i = at + 1; i < lines.length; i++) {
+    const heading = headingText(lines[i]);
+    if (heading && heading.level <= level) { end = i; break; }
+  }
+  return lines.slice(at, end).join("\n");
+}
+
+function anchorLine(text, anchor) {
+  const clean = String(anchor || "").replace(/^#/, "").trim();
+  if (!clean) return -1;
+  const lines = String(text || "").split(/\r?\n/);
+  if (clean.startsWith("^")) {
+    const id = clean.slice(1);
+    return lines.findIndex((line) => new RegExp("\\^" + escapeRegExp(id) + "\\s*$").test(line));
+  }
+  const wanted = clean.toLowerCase();
+  return lines.findIndex((line) => {
+    const match = line.match(/^#{1,6}\s+(.*)$/);
+    return match && match[1].replace(/[*_`]/g, "").trim().toLowerCase() === wanted;
+  });
+}
+
+function scrollToAnchor(anchor) {
+  const clean = String(anchor || "").replace(/^#/, "").trim();
+  if (!clean) return;
+  const host = $("preview");
+  if (!host) return;
+  let target = null;
+  if (clean.startsWith("^")) {
+    const id = clean.slice(1);
+    target = host.querySelector('[data-block-id="' + CSS.escape(id) + '"]');
+  } else {
+    const wanted = clean.toLowerCase();
+    target = [...host.querySelectorAll("h1,h2,h3,h4,h5,h6")].find((heading) => (heading.dataset.heading || heading.textContent).replace(/[*_`]/g, "").trim().toLowerCase() === wanted);
+  }
+  if (!target) return;
+  target.scrollIntoView({ block: "start", behavior: "smooth" });
+  target.classList.add("is-flashing");
+  setTimeout(() => target.classList.remove("is-flashing"), 1200);
+}
+
+function jumpToAnchor(anchor) {
+  const current = currentFile();
+  if (!current) return;
+  if (state.mode === "live" && liveApi) {
+    const line = anchorLine(current.text, anchor);
+    if (line >= 0) liveApi.goToLine(line + 1);
+    return;
+  }
+  scrollToAnchor(anchor);
+}
+
+function stripBlockIds(root) {
+  root.querySelectorAll("p, li").forEach((node) => {
+    const match = (node.textContent || "").match(/\s\^([A-Za-z0-9-]+)\s*$/);
+    if (!match) return;
+    node.dataset.blockId = match[1];
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let last = null;
+    while (walker.nextNode()) last = walker.currentNode;
+    if (last && last.nodeValue && last.nodeValue.trimEnd().endsWith("^" + match[1])) {
+      last.nodeValue = last.nodeValue.replace(new RegExp("\\s*\\^" + escapeRegExp(match[1]) + "\\s*$"), "");
+    }
+  });
 }
 
 let workspaceTimer = null;
@@ -2136,6 +2233,7 @@ function renderPreview() {
       heading.prepend(indicator);
     }
   });
+  stripBlockIds(host);
   wireRendered(host, file.text, 0);
   resolveEmbeds(host);
   renderMathIn(host);
@@ -2453,16 +2551,21 @@ function wireRendered(root, sourceText, lineOffset = 0) {
   });
 
   root.querySelectorAll(".internal-link[data-target]").forEach((a) => {
-    a.onclick = (event) => {
+    a.onclick = async (event) => {
       event.preventDefault();
-      const target = a.dataset.target.replace(/^#/, "");
-      const fileTarget = target.split("#")[0];
-      if (/\.(pdf|svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(fileTarget)) {
+      const raw = String(a.dataset.target || "");
+      const sameNote = raw.startsWith("#");
+      const clean = sameNote ? raw.slice(1) : raw;
+      const [fileTarget, anchor] = sameNote ? [null, clean] : clean.split("#");
+      if (!sameNote && /\.(pdf|svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(fileTarget)) {
         window.open(imageUrlFor(fileTarget), "_blank", "noopener");
         return;
       }
-      const hit = state.files.find((p) => p === target + ".md" || p === target || p.endsWith("/" + target + ".md"));
-      if (hit) openNote(hit); else toast("Нема такої нотатки: " + target);
+      if (sameNote) { jumpToAnchor(anchor); return; }
+      const hit = state.files.find((p) => p === fileTarget + ".md" || p === fileTarget || p.endsWith("/" + fileTarget + ".md"));
+      if (!hit) { toast("Немає такої нотатки: " + fileTarget); return; }
+      await openNote(hit);
+      if (anchor) setTimeout(() => jumpToAnchor(anchor), 120);
     };
   });
   root.querySelectorAll("img").forEach((img) => {
@@ -2554,6 +2657,7 @@ function paintPagePreview(host, path, text) {
     a.target = "_blank";
     a.rel = "noopener";
   });
+  stripBlockIds(body);
   host.appendChild(body);
   renderMathIn(body);
   renderMermaidIn(body);
@@ -2632,14 +2736,17 @@ window.addEventListener("scroll", (event) => {
 
 function resolveEmbeds(root) {
   root.querySelectorAll(".embed-note").forEach((box) => {
-    const name = decodeURIComponent(box.dataset.note || "").split("#")[0].trim();
+    const raw = decodeURIComponent(box.dataset.note || "");
+    const [name, anchor] = raw.split("#");
     const hit = state.files.find((p) => p === name + ".md" || p === name || p.endsWith("/" + name + ".md"));
     if (!hit) { box.textContent = "немає нотатки: " + name; box.classList.add("missing"); return; }
     const paintEmbed = (text) => {
       const parsed = parseProps(text);
-      const body = parsed ? parsed.body : text;
-      box.innerHTML = '<div class="embed-title">' + escapeHtml(hit.split("/").pop().replace(/\.md$/, "")) + "</div>" + markdownToHtml(body);
+      let body = parsed ? parsed.body : text;
+      if (anchor) body = extractSection(body, anchor);
+      box.innerHTML = '<div class="embed-title">' + escapeHtml(hit.split("/").pop().replace(/\.md$/, "")) + (anchor ? " › " + escapeHtml(anchor.replace(/^\^/, "")) : "") + "</div>" + markdownToHtml(body);
       styleCallouts(box);
+      stripBlockIds(box);
       wireRendered(box, body, 0);
       renderMathIn(box);
       renderMermaidIn(box);
@@ -4404,4 +4511,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered };
