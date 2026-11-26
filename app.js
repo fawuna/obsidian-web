@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=102";
-import { initCanvas } from "./canvas.js?v=102";
-import { initCollab } from "./collab.js?v=102";
-import { initPlugins } from "./plugins.js?v=102";
-import { exportPdfFile } from "./pdf.js?v=102";
-import { initLive } from "./live.js?v=102";
-import { initDaily } from "./daily.js?v=102";
-import { initRecorder } from "./recorder.js?v=102";
-import { initPdfViewer } from "./pdfviewer.js?v=102";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=102";
+import { initGraph } from "./graph.js?v=103";
+import { initCanvas } from "./canvas.js?v=103";
+import { initCollab } from "./collab.js?v=103";
+import { initPlugins } from "./plugins.js?v=103";
+import { exportPdfFile } from "./pdf.js?v=103";
+import { initLive } from "./live.js?v=103";
+import { initDaily } from "./daily.js?v=103";
+import { initRecorder } from "./recorder.js?v=103";
+import { initPdfViewer } from "./pdfviewer.js?v=103";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=103";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v102";
+const BUILD = "v103";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1549,6 +1549,8 @@ function createPane(index) {
     },
     onOpenNote: openTargetNote,
     imageUrl: imageUrlFor,
+    autoPairs: store.get("autoPairs", "1") !== "0",
+    smartLists: store.get("smartLists", "1") !== "0",
     onLinkTrigger: (pos) => {
       activePane = index + 1;
       linkPane = index + 1;
@@ -6040,6 +6042,8 @@ function openSettings() {
   $("setDefaultMode").value = store.get("defaultMode", "live");
   $("setSpellcheck").checked = store.get("spellcheck", "1") !== "0";
   $("setWebLinks").checked = store.get("webLinks", "0") === "1";
+  $("setAutoPairs").checked = store.get("autoPairs", "1") !== "0";
+  $("setSmartLists").checked = store.get("smartLists", "1") !== "0";
   $("setRecorderFolder").value = recorderApi && recorderApi.config ? recorderApi.config.folder || "" : "";
   $("setNewFileLocation").value = appCfg.newFileLocation || "root";
   $("setNewFileFolder").value = appCfg.newFileFolderPath || "";
@@ -6114,6 +6118,8 @@ $("saveSettings").onclick = async () => {
   store.set("defaultMode", $("setDefaultMode").value);
   store.set("spellcheck", $("setSpellcheck").checked ? "1" : "0");
   store.set("webLinks", $("setWebLinks").checked ? "1" : "0");
+  store.set("autoPairs", $("setAutoPairs").checked ? "1" : "0");
+  store.set("smartLists", $("setSmartLists").checked ? "1" : "0");
   store.set("hotkeys", JSON.stringify(hotkeys));
   try {
     await writeVaultJson(".obsidian/daily-notes.json", {
@@ -6318,6 +6324,8 @@ liveApi = initLive({
     if (hit) openNote(hit); else toast("Немає такої нотатки: " + name);
   },
   imageUrl: (name) => "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.replace(/^\.?\//, "")),
+  autoPairs: store.get("autoPairs", "1") !== "0",
+  smartLists: store.get("smartLists", "1") !== "0",
   onLinkTrigger: (pos) => { linkPane = 1; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 1; },
 });
@@ -6349,6 +6357,8 @@ live2Api = initLive({
   },
   onOpenNote: openTargetNote,
   imageUrl: imageUrlFor,
+  autoPairs: store.get("autoPairs", "1") !== "0",
+  smartLists: store.get("smartLists", "1") !== "0",
   onLinkTrigger: (pos) => { linkPane = 2; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 2; },
 });

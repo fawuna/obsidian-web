@@ -1079,6 +1079,8 @@ function tagCancel(view) {
 }
 
 function makeExtensions(options, instance) {
+  const smartLists = options.smartLists !== false;
+  const autoPairs = options.autoPairs !== false;
   return [
     history(),
     drawSelection(),
@@ -1096,9 +1098,11 @@ function makeExtensions(options, instance) {
       { key: "Escape", run: slashCancel },
     ]),
     keymap.of([
-      { key: "Enter", run: continueList },
-      { key: "Tab", run: (v) => indentList(v, false) },
-      { key: "Shift-Tab", run: (v) => indentList(v, true) },
+      ...(smartLists ? [
+        { key: "Enter", run: continueList },
+        { key: "Tab", run: (v) => indentList(v, false) },
+        { key: "Shift-Tab", run: (v) => indentList(v, true) },
+      ] : []),
       { key: "Mod-b", run: (v) => wrapSelection(v, "**", "**") },
       { key: "Mod-i", run: (v) => wrapSelection(v, "*", "*") },
       { key: "Mod-k", run: (v) => wrapSelection(v, "[[", "]]") },
@@ -1106,7 +1110,7 @@ function makeExtensions(options, instance) {
       ...defaultKeymap,
       ...historyKeymap,
     ]),
-    EditorView.inputHandler.of((view, from, to, text) => autoPair(view, from, to, text)),
+    ...(autoPairs ? [EditorView.inputHandler.of((view, from, to, text) => autoPair(view, from, to, text))] : []),
     makeDecorations(options.imageUrl),
     EditorView.contentAttributes.of({ spellcheck: "false", autocapitalize: "off", autocorrect: "off" }),
     EditorView.domEventHandlers({
