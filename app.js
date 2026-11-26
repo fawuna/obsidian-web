@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=87";
-import { initCanvas } from "./canvas.js?v=87";
-import { initCollab } from "./collab.js?v=87";
-import { initPlugins } from "./plugins.js?v=87";
-import { exportPdfFile } from "./pdf.js?v=87";
-import { initLive } from "./live.js?v=87";
-import { initDaily } from "./daily.js?v=87";
-import { initRecorder } from "./recorder.js?v=87";
-import { initPdfViewer } from "./pdfviewer.js?v=87";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=87";
+import { initGraph } from "./graph.js?v=88";
+import { initCanvas } from "./canvas.js?v=88";
+import { initCollab } from "./collab.js?v=88";
+import { initPlugins } from "./plugins.js?v=88";
+import { exportPdfFile } from "./pdf.js?v=88";
+import { initLive } from "./live.js?v=88";
+import { initDaily } from "./daily.js?v=88";
+import { initRecorder } from "./recorder.js?v=88";
+import { initPdfViewer } from "./pdfviewer.js?v=88";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=88";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v87";
+const BUILD = "v88";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1814,7 +1814,12 @@ async function saveNote(silent = false, target = null) {
 async function newNote() {
   const raw = prompt("Назва нотатки (можна з папкою: папка/назва):", "Нова нотатка");
   if (!raw) return;
-  let path = raw.trim().replace(/^\/+/, "");
+  await createNoteNamed(raw);
+}
+
+async function createNoteNamed(raw) {
+  let path = String(raw || "").trim().replace(/^\/+/, "");
+  if (!path) return "";
   if (!path.endsWith(".md")) path += ".md";
   try {
     await ghPut(path, "# " + path.split("/").pop().replace(/\.md$/, "") + "\n\n", null, "add " + path);
@@ -1823,7 +1828,8 @@ async function newNote() {
     await openNote(path);
     emit("create", path);
     toast("створено " + path);
-  } catch (error) { toast("Не вийшло: " + error.message); }
+    return path;
+  } catch (error) { toast("Не вийшло: " + error.message); return ""; }
 }
 
 /* ---------------- note composer ---------------- */
@@ -4104,16 +4110,69 @@ function showPalette() {
   openModal("palette");
   $("paletteInput").focus();
 }
+function fuzzyScore(text, query) {
+  if (!query) return 1;
+  const hay = String(text || "").toLowerCase();
+  let score = 0;
+  let at = 0;
+  let streak = 0;
+  for (const ch of query) {
+    const idx = hay.indexOf(ch, at);
+    if (idx < 0) return 0;
+    score += 2;
+    if (idx === at) { streak += 1; score += streak; } else { streak = 0; }
+    if (idx === 0 || /[\s\-_/]/.test(hay[idx - 1])) score += 3;
+    at = idx + 1;
+  }
+  return score;
+}
+
+function readRecentCommands() {
+  try {
+    const list = JSON.parse(store.get("recentCommands", "[]"));
+    return Array.isArray(list) ? list.filter((id) => typeof id === "string") : [];
+  } catch { return []; }
+}
+
+function rememberCommand(id) {
+  if (!id) return;
+  const list = readRecentCommands().filter((item) => item !== id);
+  list.unshift(id);
+  store.set("recentCommands", JSON.stringify(list.slice(0, 12)));
+}
+
+function runPaletteCommand(cmd) {
+  if (!cmd) return;
+  rememberCommand(cmd.id);
+  closeModals();
+  cmd.run();
+}
+
 function renderPalette() {
   const q = $("paletteInput").value.trim().toLowerCase();
   const list = $("paletteList");
   list.innerHTML = "";
-  paletteItems = state.commands.filter((c) => (!c.plugin || isCoreEnabled(c.plugin)) && (!q || c.label.toLowerCase().includes(q)));
+  const recent = readRecentCommands();
+  const ranked = state.commands
+    .filter((c) => !c.plugin || isCoreEnabled(c.plugin))
+    .map((cmd) => ({ cmd, score: q ? fuzzyScore(cmd.label, q) : 1 }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => {
+      if (!q) {
+        const ai = recent.indexOf(a.cmd.id);
+        const bi = recent.indexOf(b.cmd.id);
+        if (ai >= 0 && bi < 0) return -1;
+        if (bi >= 0 && ai < 0) return 1;
+        if (ai >= 0 && bi >= 0) return ai - bi;
+      }
+      return b.score - a.score || a.cmd.label.localeCompare(b.cmd.label, "uk");
+    });
+  paletteItems = ranked.map((entry) => entry.cmd);
   paletteActive = Math.min(paletteActive, Math.max(0, paletteItems.length - 1));
   paletteItems.forEach((cmd, i) => {
     const item = el("div", "item" + (i === paletteActive ? " active" : ""), cmd.label);
     if (cmd.hint) item.appendChild(el("span", "hint", cmd.hint));
-    item.onclick = () => { closeModals(); cmd.run(); };
+    item.onclick = () => runPaletteCommand(cmd);
     list.appendChild(item);
   });
   if (!paletteItems.length) list.appendChild(el("div", "empty", "нічого не знайдено"));
@@ -4134,6 +4193,12 @@ function showSwitcher(mode) {
 }
 function chooseSwitcherItem(path) {
   if (!path) return;
+  if (path.startsWith("__new__:")) {
+    const name = path.slice(8);
+    closeModals();
+    createNoteNamed(name);
+    return;
+  }
   closeModals();
   if (switcherMode === "template") {
     switcherMode = "open";
@@ -4175,11 +4240,20 @@ function renderSwitcher() {
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
   switcherItems = scored.map((s) => s.path);
+  const createName = switcherMode === "open" ? q : "";
+  if (createName && !switcherItems.some((path) => path.split("/").pop().replace(/\.md$/i, "").toLowerCase() === createName)) {
+    switcherItems.push("__new__:" + createName);
+  }
   switcherActive = Math.min(switcherActive, Math.max(0, switcherItems.length - 1));
   switcherItems.slice(0, 80).forEach((path, i) => {
     const item = el("div", "item" + (i === switcherActive ? " active" : ""));
-    item.appendChild(el("span", null, switcherMode === "template" ? "🧾" : path.endsWith(".canvas") ? "🎨" : path.endsWith(".base") ? "🗃" : "📄"));
-    item.appendChild(el("span", null, switcherMode === "template" ? path.replace(/\.md$/, "") : path.replace(/\.(md|canvas)$/, "")));
+    if (path.startsWith("__new__:")) {
+      item.appendChild(el("span", null, "➕"));
+      item.appendChild(el("span", null, "Створити нотатку «" + path.slice(8) + "»"));
+    } else {
+      item.appendChild(el("span", null, switcherMode === "template" ? "🧾" : path.endsWith(".canvas") ? "🎨" : path.endsWith(".base") ? "🗃" : "📄"));
+      item.appendChild(el("span", null, switcherMode === "template" ? path.replace(/\.md$/, "") : path.replace(/\.(md|canvas)$/, "")));
+    }
     item.onclick = () => {
       chooseSwitcherItem(path);
     };
@@ -5121,7 +5195,7 @@ $("paletteInput").addEventListener("input", () => { paletteActive = 0; renderPal
 $("paletteInput").addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") { e.preventDefault(); paletteActive = Math.min(paletteActive + 1, paletteItems.length - 1); renderPalette(); }
   if (e.key === "ArrowUp") { e.preventDefault(); paletteActive = Math.max(paletteActive - 1, 0); renderPalette(); }
-  if (e.key === "Enter") { const cmd = paletteItems[paletteActive]; if (cmd) { closeModals(); cmd.run(); } }
+  if (e.key === "Enter") { const cmd = paletteItems[paletteActive]; if (cmd) runPaletteCommand(cmd); }
 });
 $("switcherInput").addEventListener("input", () => { switcherActive = 0; renderSwitcher(); });
 $("switcherInput").addEventListener("keydown", (e) => {
