@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=40">
+<link rel="stylesheet" href="styles.css?v=42">
 </head>
 <body>
 
@@ -88,6 +88,10 @@
     </aside>
 
     <main>
+      <div id="mobileSwitch" class="mobile-switch" style="display:none">
+        <button data-group="1" title="Група 1">1</button>
+        <button data-group="2" title="Група 2">2</button>
+      </div>
       <div class="editor-host" data-pane="1">
         <div class="hl-layer" aria-hidden="true"><pre id="hlCode"></pre></div>
         <textarea id="editor" spellcheck="false" placeholder="Обери нотатку або створи нову (＋)"></textarea>
@@ -231,7 +235,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=40"></script>
-<script type="module" src="app.js?v=40"></script>
+<script src="vendor/marked.min.js?v=42"></script>
+<script type="module" src="app.js?v=42"></script>
 </body>
 </html>

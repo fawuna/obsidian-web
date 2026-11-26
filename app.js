@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=40";
-import { initCanvas } from "./canvas.js?v=40";
-import { initCollab } from "./collab.js?v=40";
-import { initPlugins } from "./plugins.js?v=40";
-import { exportPdfFile } from "./pdf.js?v=40";
-import { initLive } from "./live.js?v=40";
-import { initDaily } from "./daily.js?v=40";
+import { initGraph } from "./graph.js?v=42";
+import { initCanvas } from "./canvas.js?v=42";
+import { initCollab } from "./collab.js?v=42";
+import { initPlugins } from "./plugins.js?v=42";
+import { exportPdfFile } from "./pdf.js?v=42";
+import { initLive } from "./live.js?v=42";
+import { initDaily } from "./daily.js?v=42";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v40";
+const BUILD = "v42";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -40,6 +40,7 @@ const state = {
   folders: new Set(),
   second: null,
   groups: [{ tabs: [], active: null }],
+  mobileGroup: Number(store.get("mobileGroup", "1")) === 2 ? 2 : 1,
 };
 
 let liveApi = null;
@@ -229,7 +230,54 @@ async function restoreWorkspace() {
   renderTree();
   paint();
   updateSplitButtons();
+  applyMobilePane();
   return true;
+}
+
+function isMobileLayout() { return window.matchMedia("(max-width: 760px)").matches; }
+
+function activeGroupIndex() {
+  return isMobileLayout() && state.mobileGroup === 2 && state.groups[1] ? 1 : 0;
+}
+
+function applyMobilePane() {
+  if (!isMobileLayout()) {
+    document.body.classList.remove("mobile-pane2");
+    const toggle = $("mobileSwitch");
+    if (toggle) toggle.style.display = "none";
+    renderTabs();
+    return;
+  }
+  if (!state.groups[1]) state.mobileGroup = 1;
+  if (state.mobileGroup === 1 && !group1().tabs.length && state.groups[1] && state.groups[1].tabs.length) state.mobileGroup = 2;
+  if (state.mobileGroup === 2 && !state.groups[1]) state.mobileGroup = 1;
+  store.set("mobileGroup", String(state.mobileGroup));
+  const showSecond = !!state.groups[1] && state.mobileGroup === 2;
+  document.body.classList.toggle("mobile-pane2", showSecond);
+  const toggle = $("mobileSwitch");
+  if (toggle) {
+    toggle.style.display = state.groups[1] ? "flex" : "none";
+    toggle.querySelectorAll("button").forEach((btn) => {
+      btn.classList.toggle("active", Number(btn.dataset.group) === (showSecond ? 2 : 1));
+    });
+  }
+  renderTabs();
+  if (showSecond) paintSecond();
+}
+
+function setMobileGroup(index) {
+  state.mobileGroup = index === 2 ? 2 : 1;
+  store.set("mobileGroup", String(state.mobileGroup));
+  applyMobilePane();
+  if (isMobileLayout()) {
+    if (state.mobileGroup === 2) {
+      if (state.mode === "live") live2Api?.focus(); else $("editor2").focus();
+    } else if (state.mode === "live") {
+      liveApi?.focus();
+    } else {
+      $("editor").focus();
+    }
+  }
 }
 
 function theme() { document.documentElement.dataset.theme = store.get("theme", "dark"); }
@@ -573,9 +621,11 @@ function openInSecond(path) {
     const group = ensureGroup2();
     addTab(group, path);
     document.body.classList.add("split");
+    if (isMobileLayout()) state.mobileGroup = 2;
     syncSecond();
     paint();
     updateSplitButtons();
+    applyMobilePane();
   };
   if (state.open.some((f) => f.path === path)) { apply(); return; }
   openNote(path).then(apply, apply);
@@ -599,9 +649,11 @@ function closeSecond() {
   }
   document.body.classList.remove("split");
   $("pane2").style.flex = "";
+  state.mobileGroup = 1;
   syncSecond();
   state.active = group1().active;
   renderTabs(); renderTree(); paint(); updateSplitButtons();
+  applyMobilePane();
 }
 
 function updateSplitButtons() {
@@ -790,7 +842,9 @@ function closeTab(path, groupIndex = 0) {
     syncSecond();
   }
   if (!group1().tabs.length) state.active = group1().active;
+  if (!state.groups[1]) state.mobileGroup = 1;
   renderTabs(); renderTree(); paint(); updateSplitButtons();
+  applyMobilePane();
 }
 
 function clearTabDropMarkers() {
@@ -841,24 +895,44 @@ function moveTabBetweenGroups(fromIndex, path, toIndex) {
     document.body.classList.remove("split");
     $("pane2").style.flex = "";
   }
+  if (isMobileLayout()) state.mobileGroup = toIndex === 1 && state.groups[1] ? 2 : 1;
   syncSecond();
   renderTabs(); renderTree(); paint(); updateSplitButtons();
+  applyMobilePane();
 }
 
 function renderTabs() {
   const host = $("tabs");
+  const groupIndex = activeGroupIndex();
+  const group = state.groups[groupIndex] || group1();
+  const activePath = groupIndex === 1 ? group.active : state.active;
   host.innerHTML = "";
-  for (const path of group1().tabs) {
+  for (const path of group.tabs) {
     const file = state.open.find((item) => item.path === path);
     if (!file) continue;
-    const tab = el("div", "tab" + (path === state.active && state.view === "note" ? " active" : ""));
+    const isActive = path === activePath && (groupIndex === 1 || state.view === "note");
+    const tab = el("div", "tab" + (isActive ? " active" : ""));
     tab.appendChild(el("span", "name", path.split("/").pop().replace(/\.md$/, "")));
     if (file.dirty) tab.appendChild(el("span", "dot", "•"));
     const x = el("span", "close", "✕");
-    x.onclick = (e) => { e.stopPropagation(); closeTab(path); };
+    x.onclick = (e) => { e.stopPropagation(); closeTab(path, groupIndex); };
     tab.appendChild(x);
-    tab.onclick = () => { activePane = 1; state.active = path; group1().active = path; setView("note"); pushHistoryState(path); renderTabs(); renderTree(); paint(); };
-    tab.onauxclick = (e) => { if (e.button === 1) closeTab(path); };
+    tab.onclick = () => {
+      if (groupIndex === 1) {
+        group.active = path;
+        syncSecond();
+        paintSecond();
+        renderTabs();
+        return;
+      }
+      activePane = 1;
+      state.active = path;
+      group1().active = path;
+      setView("note");
+      pushHistoryState(path);
+      renderTabs(); renderTree(); paint();
+    };
+    tab.onauxclick = (e) => { if (e.button === 1) closeTab(path, groupIndex); };
     makeTabDraggable(tab, path, "main");
     tab.addEventListener("dragover", (event) => {
       if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
@@ -877,10 +951,10 @@ function renderTabs() {
       event.preventDefault();
       event.stopPropagation();
       clearTabDropMarkers();
-      if (source === "pane2") { moveTabBetweenGroups(1, moved, 0); return; }
+      if (source === "pane2" && !isMobileLayout()) { moveTabBetweenGroups(1, moved, 0); return; }
       const rect = tab.getBoundingClientRect();
       const after = event.clientX > rect.left + rect.width / 2;
-      reorderGroupTabs(0, moved, path, after);
+      reorderGroupTabs(groupIndex, moved, path, after);
     });
     host.appendChild(tab);
   }
@@ -893,8 +967,8 @@ function renderTabs() {
     const source = event.dataTransfer.getData("text/vault-tab-source");
     if (!moved) return;
     event.preventDefault();
-    if (source === "pane2") moveTabBetweenGroups(1, moved, 0);
-    else reorderGroupTabs(0, moved, null, false);
+    if (source === "pane2" && !isMobileLayout()) moveTabBetweenGroups(1, moved, 0);
+    else reorderGroupTabs(groupIndex, moved, null, false);
   };
   renderPane2Tabs();
   scheduleWorkspaceSave();
@@ -1929,6 +2003,7 @@ $("splitter").addEventListener("mousedown", (e) => {
 });
 
 $("pane2").addEventListener("dragover", (event) => {
+  if (isMobileLayout()) return;
   if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = "move";
@@ -1938,9 +2013,10 @@ $("pane2").addEventListener("dragleave", (event) => {
   if (!$("pane2").contains(event.relatedTarget)) $("pane2").classList.remove("drop-target");
 });
 $("pane2").addEventListener("drop", (event) => {
+  $("pane2").classList.remove("drop-target");
+  if (isMobileLayout()) return;
   const path = event.dataTransfer.getData("text/vault-tab");
   const source = event.dataTransfer.getData("text/vault-tab-source");
-  $("pane2").classList.remove("drop-target");
   if (!path) return;
   event.preventDefault();
   if (source !== "pane2") moveTabToSecond(path);
@@ -2027,6 +2103,16 @@ $("splitBtn").onclick = () => {
   else if (state.active) openInSecond(state.active);
   else toast("відкрий нотатку");
 };
+document.querySelectorAll("#mobileSwitch button").forEach((btn) => {
+  btn.onclick = () => setMobileGroup(Number(btn.dataset.group));
+});
+const mobileMedia = window.matchMedia("(max-width: 760px)");
+const onMobileMediaChange = () => {
+  if (!mobileMedia.matches) state.mobileGroup = 1;
+  applyMobilePane();
+};
+if (mobileMedia.addEventListener) mobileMedia.addEventListener("change", onMobileMediaChange);
+else if (mobileMedia.addListener) mobileMedia.addListener(onMobileMediaChange);
 $("reloadTree").onclick = () => loadTree().catch((e) => toast(e.message));
 $("filter").oninput = renderTree;
 $("searchInput").oninput = () => { clearTimeout($("searchInput")._t); $("searchInput")._t = setTimeout(runSearch, 300); };
@@ -2197,6 +2283,7 @@ async function connect(repo, branch, token, remember) {
     if (!restored) {
       const first = state.files.find((p) => p.endsWith(".md"));
       if (first) await openNote(first);
+      applyMobilePane();
     }
     showPane("files");
     ensureIndex().then(() => { renderTags(); renderContext(); emit("index"); }).catch(() => {});
