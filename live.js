@@ -5,13 +5,13 @@ import {
   EditorView,
   Decoration,
   WidgetType,
-  ViewPlugin,
   keymap,
   drawSelection,
   history,
   historyKeymap,
   defaultKeymap,
   indentWithTab,
+  StateField,
 } from "./vendor/cm6.js";
 
 let cfg = null;
@@ -150,34 +150,281 @@ function decorateInline(decos, text, lineFrom) {
   }
 }
 
-function buildDecorations(editorView) {
-  const doc = editorView.state.doc;
-  const activeFrom = doc.lineAt(editorView.state.selection.main.head).from;
-  const decos = [];
-  let inCode = false;
-  let inFront = doc.lines > 0 && doc.line(1).text.trim() === "---";
+const CALLOUT_TITLES = { note: "Нотатка", tip: "Порада", info: "Інфо", success: "Готово", warning: "Увага", danger: "Небезпека", bug: "Баг", example: "Приклад", quote: "Цитата", todo: "Зробити" };
 
-  for (let n = 1; n <= doc.lines; n++) {
-    const line = doc.line(n);
-    const text = line.text;
-    const isActive = line.from === activeFrom;
+const escapeHtml = (value) => String(value).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-    if (inFront) {
-      decos.push(Decoration.line({ class: "cm-frontmatter-line" }).range(line.from));
-      if (n > 1 && text.trim() === "---") inFront = false;
+function mdBlock(text) {
+  if (window.marked) return window.marked.parse(text, { breaks: true, mangle: false, headerIds: false });
+  return escapeHtml(text).split("\n").join("<br>");
+}
+
+function mdInline(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, target, alias) => '<span class="cm-wikilink">' + escapeHtml((alias || target).trim()) + "</span>");
+  return html;
+}
+
+function parseFrontmatter(doc) {
+  if (doc.lines < 2 || doc.line(1).text.trim() !== "---") return null;
+  let end = -1;
+  for (let n = 2; n <= doc.lines; n++) if (doc.line(n).text.trim() === "---") { end = n; break; }
+  if (end < 0) return null;
+  const props = [];
+  for (let n = 2; n < end; n++) {
+    const raw = doc.line(n).text;
+    const kv = raw.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):\s*(.*)$/);
+    if (kv) {
+      const value = kv[2].replace(/^["']|["']$/g, "");
+      const flow = value.match(/^\[(.*)\]$/);
+      if (flow) props.push({ key: kv[1], value: flow[1].split(",").map((v) => v.trim()).filter(Boolean).join(", "), list: true, style: "flow" });
+      else props.push({ key: kv[1], value, list: false });
       continue;
     }
+    const item = raw.match(/^\s*-\s*(.*)$/);
+    if (item && props.length) {
+      const p = props[props.length - 1];
+      p.list = true;
+      p.style = p.style || "block";
+      p.items = p.items || (p.value ? [p.value] : []);
+      p.items.push(item[1].trim());
+      p.value = p.items.join(", ");
+    }
+  }
+  return { from: doc.line(1).from, to: doc.line(end).to, props };
+}
+
+function yamlScalar(value) {
+  const text = String(value).trim();
+  if (!text) return "";
+  if (/^[A-Za-z0-9_\u0400-\u04FF]/.test(text) && !/[:#\[\]{}&*!|>'"%@`]/.test(text)) return text;
+  return JSON.stringify(text);
+}
+
+function serializeProps(props) {
+  const lines = [];
+  for (const p of props) {
+    if (p.list) {
+      const items = String(p.value).split(",").map((v) => v.trim()).filter(Boolean);
+      if (!items.length) { lines.push(p.key + ":"); continue; }
+      if (p.style === "block") {
+        lines.push(p.key + ":");
+        for (const item of items) lines.push("  - " + yamlScalar(item));
+      } else {
+        lines.push(p.key + ": [" + items.map(yamlScalar).join(", ") + "]");
+      }
+    } else {
+      lines.push(p.key + ":" + (p.value ? " " + yamlScalar(p.value) : ""));
+    }
+  }
+  return "---\n" + lines.join("\n") + "\n---";
+}
+
+class PropsWidget extends WidgetType {
+  constructor(from, to, props) {
+    super();
+    this.from = from;
+    this.to = to;
+    this.props = props;
+  }
+  eq(other) { return other.from === this.from && other.to === this.to && JSON.stringify(other.props) === JSON.stringify(this.props); }
+  toDOM(view) {
+    const box = document.createElement("div");
+    box.className = "cm-props";
+    const title = document.createElement("div");
+    title.className = "cm-props-title";
+    title.textContent = "Властивості";
+    box.appendChild(title);
+    this.props.forEach((prop, index) => {
+      const row = document.createElement("div");
+      row.className = "cm-props-row";
+      const key = document.createElement("span");
+      key.className = "cm-props-key";
+      key.textContent = prop.key;
+      const input = document.createElement("input");
+      input.className = "cm-props-value";
+      input.spellcheck = false;
+      input.value = prop.value;
+      const commit = () => {
+        const updated = this.props.map((q, i) => (i === index ? { ...q, value: input.value } : q));
+        if (JSON.stringify(updated) === JSON.stringify(this.props)) return;
+        view.dispatch({ changes: { from: this.from, to: this.to, insert: serializeProps(updated) } });
+      };
+      input.addEventListener("change", commit);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+        if (event.key === "Escape") { input.value = prop.value; input.blur(); }
+      });
+      row.append(key, input);
+      box.appendChild(row);
+    });
+    return box;
+  }
+  ignoreEvent() { return true; }
+}
+
+class CalloutWidget extends WidgetType {
+  constructor(kind, title, body, from) {
+    super();
+    this.kind = kind;
+    this.title = title;
+    this.body = body;
+    this.from = from;
+  }
+  eq(other) { return other.kind === this.kind && other.title === this.title && other.body === this.body && other.from === this.from; }
+  toDOM(view) {
+    const box = document.createElement("div");
+    box.className = "cm-callout cm-callout-" + this.kind;
+    box.title = "Клік — редагувати";
+    const head = document.createElement("div");
+    head.className = "cm-callout-title";
+    head.textContent = this.title || CALLOUT_TITLES[this.kind] || this.kind;
+    box.appendChild(head);
+    const body = document.createElement("div");
+    body.className = "cm-callout-body";
+    body.innerHTML = mdBlock(this.body);
+    box.appendChild(body);
+    box.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: Math.min(this.from + 2, view.state.doc.length) }, scrollIntoView: true });
+      view.focus();
+    });
+    return box;
+  }
+  ignoreEvent() { return true; }
+}
+
+class TableWidget extends WidgetType {
+  constructor(source, from) {
+    super();
+    this.source = source;
+    this.from = from;
+  }
+  eq(other) { return other.source === this.source && other.from === this.from; }
+  toDOM(view) {
+    const rows = this.source.split("\n").map((line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim()));
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    (rows[0] || []).forEach((cell) => {
+      const th = document.createElement("th");
+      th.innerHTML = mdInline(cell);
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    rows.slice(2).forEach((row) => {
+      const tr = document.createElement("tr");
+      row.forEach((cell) => {
+        const td = document.createElement("td");
+        td.innerHTML = mdInline(cell);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    const box = document.createElement("div");
+    box.className = "cm-table-widget";
+    box.title = "Клік — редагувати";
+    box.appendChild(table);
+    box.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: this.from }, scrollIntoView: true });
+      view.focus();
+    });
+    return box;
+  }
+  ignoreEvent() { return true; }
+}
+
+
+function buildDecorations(state) {
+  const doc = state.doc;
+  const head = state.selection.main.head;
+  const activeFrom = doc.lineAt(head).from;
+  const decos = [];
+  const skip = [];
+  const inSkip = (pos) => skip.some(([from, to]) => pos >= from && pos <= to);
+  const active = (from, to) => head >= from && head <= to;
+
+  const front = parseFrontmatter(doc);
+  if (front) {
+    if (!active(front.from, front.to)) {
+      decos.push(Decoration.replace({ widget: new PropsWidget(front.from, front.to, front.props), block: true }).range(front.from, front.to));
+      skip.push([front.from, front.to]);
+    } else {
+      for (let n = 1; n <= doc.lines; n++) {
+        const line = doc.line(n);
+        if (line.from >= front.from && line.from <= front.to) decos.push(Decoration.line({ class: "cm-frontmatter-line" }).range(line.from));
+      }
+    }
+  }
+
+  let inCode = false;
+  let n = 1;
+  while (n <= doc.lines) {
+    const line = doc.line(n);
+    if (inSkip(line.from)) { n++; continue; }
+    if (front && line.from >= front.from && line.from <= front.to) { n++; continue; }
+
+    const callout = line.text.match(/^\s*>\s*\[!([A-Za-z0-9_-]+)\]([+-]?)\s*(.*)$/);
+    if (callout) {
+      let end = n;
+      while (end + 1 <= doc.lines && /^\s*>/.test(doc.line(end + 1).text)) end++;
+      const from = line.from;
+      const to = doc.line(end).to;
+      if (!active(from, to)) {
+        const body = [];
+        for (let k = n + 1; k <= end; k++) body.push(doc.line(k).text.replace(/^\s*>\s?/, ""));
+        decos.push(Decoration.replace({ widget: new CalloutWidget(callout[1].toLowerCase(), callout[3], body.join("\n"), from), block: true }).range(from, to));
+        skip.push([from, to]);
+      } else {
+        for (let k = n; k <= end; k++) decos.push(Decoration.line({ class: "cm-quote-line" }).range(doc.line(k).from));
+      }
+      n = end + 1;
+      continue;
+    }
+
+    if (line.text.includes("|") && n + 1 <= doc.lines) {
+      const next = doc.line(n + 1).text;
+      if (next.includes("|") && /^\s*\|?\s*:?-{3,}/.test(next)) {
+        let end = n + 1;
+        while (end + 1 <= doc.lines) {
+          const row = doc.line(end + 1).text;
+          if (!row.trim() || !row.includes("|")) break;
+          end++;
+        }
+        const from = line.from;
+        const to = doc.line(end).to;
+        if (!active(from, to)) {
+          const source = [];
+          for (let k = n; k <= end; k++) source.push(doc.line(k).text);
+          decos.push(Decoration.replace({ widget: new TableWidget(source.join("\n"), from), block: true }).range(from, to));
+          skip.push([from, to]);
+        }
+        n = end + 1;
+        continue;
+      }
+    }
+
+    const text = line.text;
+    const isActive = line.from === activeFrom;
 
     if (/^\s*(```|~~~)/.test(text)) {
       decos.push(Decoration.line({ class: "cm-code-fence" }).range(line.from));
       inCode = !inCode;
+      n++;
       continue;
     }
     if (inCode) {
       decos.push(Decoration.line({ class: "cm-code-line" }).range(line.from));
+      n++;
       continue;
     }
-    if (!text.trim()) continue;
+    if (!text.trim()) { n++; continue; }
 
     const heading = text.match(/^(#{1,6})\s+/);
     if (heading) {
@@ -203,18 +450,19 @@ function buildDecorations(editorView) {
       }
       decorateInline(decos, text, line.from);
     }
+    n++;
   }
   return Decoration.set(decos, true);
 }
 
-const liveDecorations = ViewPlugin.fromClass(class {
-  constructor(editorView) { this.decorations = buildDecorations(editorView); }
-  update(update) {
-    if (update.docChanged || update.selectionSet || update.viewportChanged) {
-      this.decorations = buildDecorations(update.view);
-    }
-  }
-}, { decorations: (value) => value.decorations });
+const liveDecorations = StateField.define({
+  create(state) { return buildDecorations(state); },
+  update(decorations, tr) {
+    if (tr.docChanged || tr.selection) return buildDecorations(tr.state);
+    return decorations;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 function wrapSelection(editorView, before, after) {
   const { from, to } = editorView.state.selection.main;

@@ -179,6 +179,25 @@ body.view-graph #editor, body.view-graph #previewHost, body.view-canvas #editor,
 #live .cm-bullet { color: var(--accent); padding-right: 6px; }
 #live .cm-task { accent-color: var(--accent); margin-right: 6px; transform: translateY(1px); cursor: pointer; }
 #live .cm-inline-img { max-width: 100%; border-radius: 6px; display: block; margin: 6px 0; }
+#live .cm-props { border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2); padding: 8px 12px; margin: 4px 0 10px; }
+#live .cm-props-title { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+#live .cm-props-row { display: flex; gap: 10px; align-items: center; padding: 2px 0; }
+#live .cm-props-key { min-width: 110px; color: var(--muted); font-size: 13px; }
+#live .cm-props-value { flex: 1; min-width: 0; background: var(--bg); border: 1px solid transparent; border-radius: 5px; color: var(--text); padding: 3px 7px; font: 13px var(--font-text); }
+#live .cm-props-value:hover { border-color: var(--line); }
+#live .cm-props-value:focus { outline: none; border-color: var(--accent); }
+#live .cm-callout { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: var(--bg-2); border-radius: 6px; padding: 8px 14px; margin: 8px 0; cursor: text; }
+#live .cm-callout-title { font-weight: 600; margin-bottom: 2px; }
+#live .cm-callout-body > :first-child { margin-top: 4px; }
+#live .cm-callout-body > :last-child { margin-bottom: 0; }
+#live .cm-callout-note { border-left-color: #5d9cff; }
+#live .cm-callout-warning { border-left-color: #e0b458; }
+#live .cm-callout-danger, #live .cm-callout-bug { border-left-color: #e5686c; }
+#live .cm-callout-success, #live .cm-callout-tip { border-left-color: #52c98a; }
+#live .cm-table-widget { overflow-x: auto; margin: 8px 0; cursor: text; }
+#live .cm-table-widget table { border-collapse: collapse; font-size: 14px; }
+#live .cm-table-widget th, #live .cm-table-widget td { border: 1px solid var(--line); padding: 5px 10px; vertical-align: top; }
+#live .cm-table-widget th { background: var(--bg-2); font-weight: 600; }
 body.mode-live .editor-host[data-pane="1"] { display: none; }
 body.mode-live #liveHost { display: flex; }
 body.mode-live #previewHost { display: none; }
