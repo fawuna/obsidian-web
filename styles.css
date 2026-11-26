@@ -506,6 +506,14 @@ body.view-base #editor, body.view-base #previewHost, body.view-base #liveHost, b
 .cv-node.cv-group .cv-head { color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
 .cv-node.cv-group .cv-body { display: none; }
 .cv-node:not(.cv-group) { z-index: 1; }
+.cv-handle { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg-2); transform: translate(-50%, -50%); opacity: 0; z-index: 5; cursor: crosshair; transition: opacity .12s; }
+.cv-node:hover .cv-handle, .cv-node.selected .cv-handle { opacity: 1; }
+.cv-handle-top { left: 50%; top: 0; }
+.cv-handle-right { left: 100%; top: 50%; }
+.cv-handle-bottom { left: 50%; top: 100%; }
+.cv-handle-left { left: 0; top: 50%; }
+.cv-edge-drag { stroke: var(--accent); stroke-dasharray: 5 4; pointer-events: none; }
+#canvasBoard.connecting { cursor: crosshair; }
 .cv-node.cv-link .cv-body { padding: 0; height: calc(100% - 26px); max-height: none; overflow: hidden; }
 .cv-node.cv-link .cv-iframe { width: 100%; height: 100%; border: 0; background: #fff; border-radius: 0 0 8px 8px; }
 .cv-node.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 6px 18px rgba(0,0,0,.4); }

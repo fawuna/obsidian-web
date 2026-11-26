@@ -16,6 +16,7 @@ let resizing = null;
 let connectMode = false;
 let connectFrom = null;
 let dragging = null;
+let edgeDrag = null;
 let panning = null;
 let historyStack = [];
 let historyIndex = -1;
@@ -107,6 +108,33 @@ function nearestSides(a, b) {
   const dx = bx - ax, dy = by - ay;
   if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? ["right", "left"] : ["left", "right"];
   return dy >= 0 ? ["bottom", "top"] : ["top", "bottom"];
+}
+
+function nodeAtWorld(x, y) {
+  for (const node of [...model.nodes].reverse()) {
+    const width = node.width || 320;
+    const height = node.height || 200;
+    if (x >= node.x && x <= node.x + width && y >= node.y && y <= node.y + height) return node;
+  }
+  return null;
+}
+
+function nearestSideTo(node, x, y) {
+  let best = "left";
+  let bestDistance = Infinity;
+  for (const side of ["top", "right", "bottom", "left"]) {
+    const point = sidePoint(node, side);
+    const distance = Math.hypot(point.x - x, point.y - y);
+    if (distance < bestDistance) { bestDistance = distance; best = side; }
+  }
+  return best;
+}
+
+function edgeDragPath(drag) {
+  const pull = Math.max(40, Math.min(180, Math.hypot(drag.x - drag.startX, drag.y - drag.startY) * 0.5));
+  const nx = drag.side === "right" ? pull : drag.side === "left" ? -pull : 0;
+  const ny = drag.side === "bottom" ? pull : drag.side === "top" ? -pull : 0;
+  return "M " + drag.startX + " " + drag.startY + " C " + (drag.startX + nx) + " " + (drag.startY + ny) + ", " + drag.x + " " + drag.y + ", " + drag.x + " " + drag.y;
 }
 
 function edgeGeometry(a, b, edge) {
@@ -463,6 +491,27 @@ function render() {
       resizing = { node: n, startX: e.clientX, startY: e.clientY, w: n.width || 320, h: n.height || 200 };
     };
     node.appendChild(handle);
+    for (const side of ["top", "right", "bottom", "left"]) {
+      const grip = document.createElement("span");
+      grip.className = "cv-handle cv-handle-" + side;
+      grip.title = "Звʼязати з іншою карткою";
+      grip.onmousedown = (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.preventDefault();
+        const point = sidePoint(n, side);
+        edgeDrag = { from: n.id, side, startX: point.x, startY: point.y, x: point.x, y: point.y, path: null };
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("class", "cv-edge cv-edge-drag");
+        path.setAttribute("d", edgeDragPath(edgeDrag));
+        svg.appendChild(path);
+        edgeDrag.path = path;
+        board.classList.add("connecting");
+        selected = n.id;
+        selectedNodes = new Set([n.id]);
+      };
+      node.appendChild(grip);
+    }
 
     node.onclick = (e) => {
       e.stopPropagation();
@@ -862,6 +911,13 @@ export function initCanvas(vault) {
 
   window.addEventListener("mousemove", (e) => {
     if (Vault.state.view !== "canvas") return;
+    if (edgeDrag) {
+      const world = toWorld(e.clientX, e.clientY);
+      edgeDrag.x = world.x;
+      edgeDrag.y = world.y;
+      if (edgeDrag.path) edgeDrag.path.setAttribute("d", edgeDragPath(edgeDrag));
+      return;
+    }
     if (resizing) {
       const dx = (e.clientX - resizing.startX) / view.k;
       const dy = (e.clientY - resizing.startY) / view.k;
@@ -906,7 +962,30 @@ export function initCanvas(vault) {
     }
   });
 
-  window.addEventListener("mouseup", () => {
+  window.addEventListener("mouseup", (e) => {
+    if (edgeDrag) {
+      const world = toWorld(e.clientX, e.clientY);
+      const target = nodeAtWorld(world.x, world.y);
+      if (target && target.id !== edgeDrag.from) {
+        const toSide = nearestSideTo(target, world.x, world.y);
+        model.edges.push({
+          id: uid(),
+          fromNode: edgeDrag.from,
+          toNode: target.id,
+          fromSide: edgeDrag.side,
+          toSide,
+          fromEnd: "none",
+          toEnd: "arrow",
+        });
+        pushHistory();
+        dirty = true;
+      }
+      edgeDrag.path?.remove();
+      edgeDrag = null;
+      board.classList.remove("connecting");
+      render();
+      return;
+    }
     if (resizing) { resizing = null; pushHistory(); render(); }
     if (dragging) { dragging = null; pushHistory(); }
     if (panning) { panning = null; board.classList.remove("dragging"); }
@@ -1103,6 +1182,11 @@ export function initCanvas(vault) {
     },
     snapEnabled: () => snapEnabled,
     dragging: () => (dragging ? { id: dragging.node.id, startX: dragging.startX, origX: dragging.origX } : null),
+    edgeDragActive: () => !!edgeDrag,
+    screenOf(x, y) {
+      const rect = board.getBoundingClientRect();
+      return { x: rect.left + view.x + x * view.k, y: rect.top + view.y + y * view.k };
+    },
     addGroup(label, x = 40, y = 40, width = 480, height = 340) {
       const node = { id: uid(), type: "group", label: label || "Група", x, y, width, height };
       model.nodes.push(node);
