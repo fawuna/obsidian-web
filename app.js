@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=92";
-import { initCanvas } from "./canvas.js?v=92";
-import { initCollab } from "./collab.js?v=92";
-import { initPlugins } from "./plugins.js?v=92";
-import { exportPdfFile } from "./pdf.js?v=92";
-import { initLive } from "./live.js?v=92";
-import { initDaily } from "./daily.js?v=92";
-import { initRecorder } from "./recorder.js?v=92";
-import { initPdfViewer } from "./pdfviewer.js?v=92";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=92";
+import { initGraph } from "./graph.js?v=93";
+import { initCanvas } from "./canvas.js?v=93";
+import { initCollab } from "./collab.js?v=93";
+import { initPlugins } from "./plugins.js?v=93";
+import { exportPdfFile } from "./pdf.js?v=93";
+import { initLive } from "./live.js?v=93";
+import { initDaily } from "./daily.js?v=93";
+import { initRecorder } from "./recorder.js?v=93";
+import { initPdfViewer } from "./pdfviewer.js?v=93";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=93";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v92";
+const BUILD = "v93";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -4396,6 +4396,7 @@ let basePath = null;
 let baseConfig = null;
 let baseViewIndex = 0;
 let baseSort = null;
+let baseCollapsedGroups = new Set();
 
 const BASE_DEFAULT_YAML = [
   "filters:",
@@ -4866,7 +4867,7 @@ function renderBaseTable(data) {
     headRow.appendChild(th);
   }
   thead.appendChild(headRow);
-  for (const row of data.rows.slice(0, 500)) {
+  const buildRow = (row) => {
     const tr = document.createElement("tr");
     for (const column of data.columns) {
       const td = document.createElement("td");
@@ -4890,7 +4891,43 @@ function renderBaseTable(data) {
       tr.appendChild(td);
     }
     tr.onclick = () => openNote(row.path);
-    tbody.appendChild(tr);
+    return tr;
+  };
+  const rows = data.rows.slice(0, 500);
+  const groupSpec = data.view && data.view.groupBy;
+  const groupKey = typeof groupSpec === "string" ? groupSpec : (groupSpec && groupSpec.property ? groupSpec.property : "");
+  const groupColumn = groupKey ? baseNormalizeKey(groupKey) : null;
+  if (groupColumn) {
+    const groups = new Map();
+    for (const row of rows) {
+      const value = String(baseCellValue(row, groupColumn)).trim() || "—";
+      if (!groups.has(value)) groups.set(value, []);
+      groups.get(value).push(row);
+    }
+    const entries = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0], "uk", { numeric: true }));
+    for (const [value, list] of entries) {
+      const collapsed = baseCollapsedGroups.has(value);
+      const head = document.createElement("tr");
+      head.className = "base-group-row" + (collapsed ? " is-collapsed" : "");
+      const cell = document.createElement("td");
+      cell.colSpan = Math.max(1, data.columns.length);
+      cell.append(
+        el("span", "base-group-toggle", collapsed ? "▸" : "▾"),
+        el("span", "base-group-name", value),
+        el("span", "base-group-count", String(list.length))
+      );
+      head.appendChild(cell);
+      head.onclick = (event) => {
+        event.stopPropagation();
+        if (baseCollapsedGroups.has(value)) baseCollapsedGroups.delete(value);
+        else baseCollapsedGroups.add(value);
+        renderBaseTable(data);
+      };
+      tbody.appendChild(head);
+      if (!collapsed) for (const row of list) tbody.appendChild(buildRow(row));
+    }
+  } else {
+    for (const row of rows) tbody.appendChild(buildRow(row));
   }
   let tfoot = table.querySelector("tfoot");
   if (!tfoot) { tfoot = document.createElement("tfoot"); table.appendChild(tfoot); }
