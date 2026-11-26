@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=59";
-import { initCanvas } from "./canvas.js?v=59";
-import { initCollab } from "./collab.js?v=59";
-import { initPlugins } from "./plugins.js?v=59";
-import { exportPdfFile } from "./pdf.js?v=59";
-import { initLive } from "./live.js?v=59";
-import { initDaily } from "./daily.js?v=59";
+import { initGraph } from "./graph.js?v=60";
+import { initCanvas } from "./canvas.js?v=60";
+import { initCollab } from "./collab.js?v=60";
+import { initPlugins } from "./plugins.js?v=60";
+import { exportPdfFile } from "./pdf.js?v=60";
+import { initLive } from "./live.js?v=60";
+import { initDaily } from "./daily.js?v=60";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v59";
+const BUILD = "v60";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -63,6 +63,7 @@ const CORE_PLUGINS = [
   { id: "outline", label: "Outline", desc: "Структура нотатки", def: true },
   { id: "word-count", label: "Word count", desc: "Слова й символи", def: true },
   { id: "canvas", label: "Canvas", desc: "Полотно", def: true },
+  { id: "bases", label: "Bases", desc: "Табличні бази з нотаток", def: true },
   { id: "file-recovery", label: "File recovery", desc: "Історія версій нотатки", def: true },
   { id: "sync", label: "Sync / collab", desc: "Спільна робота", def: true },
 ];
@@ -90,6 +91,8 @@ function applyCorePlugins() {
   if (graphBtn) graphBtn.style.display = isCoreEnabled("graph") ? "" : "none";
   const canvasBtn = $("openCanvas");
   if (canvasBtn) canvasBtn.style.display = isCoreEnabled("canvas") ? "" : "none";
+  const baseBtn = $("openBase");
+  if (baseBtn) baseBtn.style.display = isCoreEnabled("bases") ? "" : "none";
   const paletteBtn = $("openPalette");
   if (paletteBtn) paletteBtn.style.display = isCoreEnabled("command-palette") ? "" : "none";
   const switcherBtn = $("openSwitcher");
@@ -588,7 +591,7 @@ async function loadTree() {
     if (p.endsWith("/.gitkeep")) state.folders.add(p.slice(0, -"/.gitkeep".length));
   }
   const remote = all
-    .filter((p) => p.endsWith(".md") || p.endsWith(".canvas"))
+    .filter((p) => p.endsWith(".md") || p.endsWith(".canvas") || p.endsWith(".base"))
     .map((p) => p);
   const remoteSet = new Set(remote);
   for (const p of [...state.pending]) { if (remoteSet.has(p)) state.pending.delete(p); }
@@ -663,8 +666,8 @@ function renderTree() {
       const row = el("div", "file-row" + (full === state.active ? " active" : ""));
       row.style.paddingLeft = 12 + depth * 12 + "px";
       row.draggable = true;
-      row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : "📄"));
-      row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas)$/, "")));
+      row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : full.endsWith(".base") ? "🗃" : "📄"));
+      row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas|base)$/, "")));
       const starred = state.bookmarks.includes(full);
       const star = el("button", "star-btn" + (starred ? " on" : ""), "★");
       star.title = starred ? "Зняти із закладок" : "У закладки";
@@ -1393,10 +1396,12 @@ function setView(view) {
   state.view = view;
   document.body.classList.toggle("view-graph", view === "graph");
   document.body.classList.toggle("view-canvas", view === "canvas");
+  document.body.classList.toggle("view-base", view === "base");
   emit("view", view);
 }
 
 async function openNote(path, pushHistory = true) {
+  if (path.endsWith(".base")) { openBase(path); return; }
   if (path.endsWith(".canvas")) { openCanvas(path); return; }
   const existing = state.open.find((f) => f.path === path);
   if (existing) {
@@ -1761,7 +1766,7 @@ async function renameNote(path) {
   const next = prompt("Нове імʼя:", path);
   if (!next || next === path) return;
   let target = next.trim().replace(/^\/+/, "");
-  if (!/\.(md|canvas)$/.test(target)) target += path.endsWith(".canvas") ? ".canvas" : ".md";
+  if (!/\.(md|canvas|base)$/.test(target)) target += path.endsWith(".canvas") ? ".canvas" : path.endsWith(".base") ? ".base" : ".md";
   try {
     const { text, sha } = await ghGet(path);
     await ghPut(target, text, null, "rename " + path + " → " + target);
@@ -1890,7 +1895,7 @@ function stripYamlComment(value) {
 }
 
 function parseProps(text) {
-  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n/);
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/);
   if (!m) return null;
   const rows = m[1].split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
   const props = [];
@@ -3462,7 +3467,7 @@ function renderSwitcher() {
   switcherActive = Math.min(switcherActive, Math.max(0, switcherItems.length - 1));
   switcherItems.slice(0, 80).forEach((path, i) => {
     const item = el("div", "item" + (i === switcherActive ? " active" : ""));
-    item.appendChild(el("span", null, switcherMode === "template" ? "🧾" : path.endsWith(".canvas") ? "🎨" : "📄"));
+    item.appendChild(el("span", null, switcherMode === "template" ? "🧾" : path.endsWith(".canvas") ? "🎨" : path.endsWith(".base") ? "🗃" : "📄"));
     item.appendChild(el("span", null, switcherMode === "template" ? path.replace(/\.md$/, "") : path.replace(/\.(md|canvas)$/, "")));
     item.onclick = () => {
       chooseSwitcherItem(path);
@@ -3558,6 +3563,301 @@ function printNote() {
 let canvasApi = null;
 function openCanvas(path) { if (canvasApi) canvasApi.open(path); }
 function openGraph() { setView("graph"); emit("view", "graph"); }
+
+/* ---------------- bases ---------------- */
+let jsyamlPromise = null;
+let basePath = null;
+let baseConfig = null;
+let baseViewIndex = 0;
+let baseSort = null;
+
+const BASE_DEFAULT_YAML = [
+  "filters:",
+  "  and: []",
+  "views:",
+  "  - type: table",
+  "    name: Table",
+  "    order:",
+  "      - file.name",
+  "      - tags",
+  "      - status",
+  "      - project",
+  "",
+].join("\n");
+
+function ensureJsYaml() {
+  if (window.jsyaml) return Promise.resolve(window.jsyaml);
+  if (jsyamlPromise) return jsyamlPromise;
+  jsyamlPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js";
+    script.async = true;
+    script.onload = () => window.jsyaml ? resolve(window.jsyaml) : reject(new Error("js-yaml missing"));
+    script.onerror = () => reject(new Error("js-yaml load failed"));
+    document.head.appendChild(script);
+  });
+  return jsyamlPromise;
+}
+
+function baseNormalizeKey(key) {
+  const text = String(key || "").trim();
+  if (text === "file.name" || text === "name") return { key: "name", label: "Файл", source: "file" };
+  if (text === "file.path" || text === "path") return { key: "path", label: "Шлях", source: "file" };
+  if (text === "file.tags" || text === "tags") return { key: "tags", label: "Теги", source: "tags" };
+  if (text === "file.ext") return { key: "ext", label: "Тип", source: "file" };
+  if (text.startsWith("file.")) return { key: text.slice(5), label: text.slice(5), source: "file" };
+  if (text.startsWith("note.")) return { key: text.slice(5), label: text.slice(5), source: "prop" };
+  if (text.startsWith("formula.")) return { key: text, label: text.slice(8), source: "formula" };
+  return { key: text, label: text, source: "prop" };
+}
+
+function baseCellValue(row, column) {
+  if (!row || !column) return "";
+  if (column.source === "file") return row.file[column.key] ?? "";
+  if (column.source === "tags") return row.tags.join(", ");
+  if (column.source === "prop") return row.props[column.key] ?? "";
+  return "";
+}
+
+function baseFilterMatch(expr, row) {
+  if (expr == null) return true;
+  if (Array.isArray(expr)) return expr.every((item) => baseFilterMatch(item, row));
+  if (typeof expr === "object") {
+    if (Array.isArray(expr.and) && !expr.and.every((item) => baseFilterMatch(item, row))) return false;
+    if (Array.isArray(expr.or) && !expr.or.some((item) => baseFilterMatch(item, row))) return false;
+    if (Array.isArray(expr.not) && expr.not.some((item) => baseFilterMatch(item, row))) return false;
+    return true;
+  }
+  const text = String(expr).trim();
+  if (!text) return true;
+  if (text.startsWith("!")) return !baseFilterMatch(text.slice(1), row);
+  if (text === "true") return true;
+  if (text === "false") return false;
+  let match = text.match(/^file\.hasTag\(["'](.*?)["']\)$/i);
+  if (match) return row.tags.some((tag) => tag === match[1] || tag.startsWith(match[1] + "/"));
+  match = text.match(/^file\.inFolder\(["'](.*?)["']\)$/i);
+  if (match) return row.file.path.startsWith(match[1].replace(/\/+$/, "") + "/");
+  match = text.match(/^file\.name\s*(==|!=)\s*["'](.*?)["']$/i);
+  if (match) return (row.file.name === match[2]) === (match[1] === "==");
+  match = text.match(/^([A-Za-z0-9_\u0400-\u04FF-]+)\.contains\(["'](.*?)["']\)$/i);
+  if (match) return String(row.props[match[1]] ?? "").toLowerCase().includes(match[2].toLowerCase());
+  match = text.match(/^([A-Za-z0-9_\u0400-\u04FF-]+)\s*(==|!=)\s*["']?(.*?)["']?$/);
+  if (match) {
+    const value = String(row.props[match[1]] ?? "").trim();
+    return (value === String(match[3]).trim()) === (match[2] === "==");
+  }
+  return true;
+}
+
+function baseRowsFromDocs(docs) {
+  return docs.map(({ path, text }) => {
+    const parsed = parseProps(text || "");
+    const props = {};
+    if (parsed) for (const [key, value] of parsed.props) props[key] = value;
+    return {
+      path,
+      file: { name: noteName(path), path, ext: path.split(".").pop() || "" },
+      props,
+      tags: [...noteTags(text || "")],
+    };
+  });
+}
+
+function baseColumns(view, rows) {
+  let order = Array.isArray(view.order) ? view.order.slice() : [];
+  if (!order.length) {
+    order = ["file.name"];
+    const seen = new Set(["name"]);
+    for (const row of rows) {
+      for (const key of Object.keys(row.props)) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+        order.push(key);
+        if (order.length >= 7) break;
+      }
+      if (order.length >= 7) break;
+    }
+  }
+  return order.map(baseNormalizeKey);
+}
+
+function baseBuild(config, docs) {
+  const rows = baseRowsFromDocs(docs);
+  const views = Array.isArray(config.views) && config.views.length ? config.views : [{ type: "table", name: "Table", order: [] }];
+  const view = views[Math.min(Math.max(0, baseViewIndex), views.length - 1)] || views[0];
+  let filtered = rows.filter((row) => baseFilterMatch(config.filters, row));
+  const columns = baseColumns(view, filtered);
+  const search = ($("baseSearch")?.value || "").trim().toLowerCase();
+  if (search) {
+    filtered = filtered.filter((row) => columns.some((column) => String(baseCellValue(row, column)).toLowerCase().includes(search)));
+  }
+  const sortSpecs = [];
+  if (baseSort) {
+    sortSpecs.push(baseSort);
+  } else if (Array.isArray(view.sort)) {
+    for (const item of view.sort) {
+      if (typeof item === "string") sortSpecs.push({ key: item.replace(/^-/, ""), dir: item.startsWith("-") ? -1 : 1 });
+      else if (item && item.property) sortSpecs.push({ key: item.property, dir: String(item.direction).toLowerCase() === "desc" ? -1 : 1 });
+    }
+  }
+  if (sortSpecs.length) {
+    filtered = filtered.slice().sort((a, b) => {
+      for (const spec of sortSpecs) {
+        const column = baseNormalizeKey(spec.key);
+        const av = String(baseCellValue(a, column)).toLowerCase();
+        const bv = String(baseCellValue(b, column)).toLowerCase();
+        if (av < bv) return -1 * spec.dir;
+        if (av > bv) return 1 * spec.dir;
+      }
+      return 0;
+    });
+  }
+  return { rows: filtered, columns, view, views };
+}
+
+function renderBaseTable(data) {
+  const table = $("baseTable");
+  if (!table) return;
+  const thead = table.querySelector("thead");
+  const tbody = table.querySelector("tbody");
+  thead.innerHTML = "";
+  tbody.innerHTML = "";
+  const headRow = document.createElement("tr");
+  for (const column of data.columns) {
+    const th = el("th", null, column.label);
+    th.title = "Сортувати за " + column.label;
+    th.onclick = () => {
+      const same = baseSort && baseSort.key === column.key;
+      baseSort = { key: column.key, dir: same && baseSort.dir === 1 ? -1 : 1 };
+      renderBase();
+    };
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  for (const row of data.rows.slice(0, 500)) {
+    const tr = document.createElement("tr");
+    for (const column of data.columns) {
+      const td = document.createElement("td");
+      if (column.source === "file" && column.key === "name") {
+        td.className = "base-file";
+        td.textContent = row.file.name;
+      } else if (column.source === "tags") {
+        for (const tag of row.tags) {
+          const chip = el("a", "tag", "#" + tag);
+          chip.onclick = (event) => {
+            event.stopPropagation();
+            $("searchInput").value = "tag:#" + tag;
+            showPane("search");
+            runSearch();
+          };
+          td.appendChild(chip);
+        }
+      } else {
+        td.textContent = String(baseCellValue(row, column));
+      }
+      tr.appendChild(td);
+    }
+    tr.onclick = () => openNote(row.path);
+    tbody.appendChild(tr);
+  }
+  const empty = $("baseEmpty");
+  if (empty) {
+    empty.style.display = data.rows.length ? "none" : "";
+    empty.textContent = data.rows.length ? "" : "Немає рядків за цим фільтром";
+  }
+  const count = $("baseCount");
+  if (count) count.textContent = data.rows.length + " рядків";
+}
+
+async function renderBase() {
+  if (!baseConfig) return;
+  await ensureIndex();
+  const docs = [];
+  for (const path of state.files) {
+    if (!path.endsWith(".md")) continue;
+    const text = state.index.get(path);
+    if (text != null) docs.push({ path, text });
+  }
+  const data = baseBuild(baseConfig, docs);
+  const select = $("baseViewSelect");
+  if (select) {
+    select.innerHTML = "";
+    data.views.forEach((view, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = view.name || ("View " + (index + 1));
+      select.appendChild(option);
+    });
+    select.value = String(Math.min(baseViewIndex, data.views.length - 1));
+  }
+  const name = $("baseName");
+  if (name) name.textContent = (basePath ? noteName(basePath) : "Base") + " · " + (data.view.name || "Table");
+  renderBaseTable(data);
+}
+
+async function openBase(path) {
+  let text = state.index.get(path);
+  if (text == null) {
+    try {
+      const got = await ghGet(path);
+      text = got.text;
+      state.index.set(path, text);
+    } catch (error) { toast("Не відкрилось: " + error.message); return; }
+  }
+  let config = {};
+  try {
+    const yaml = await ensureJsYaml();
+    const parsed = yaml.load(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
+  } catch { config = {}; }
+  basePath = path;
+  baseConfig = config;
+  baseViewIndex = 0;
+  baseSort = null;
+  setView("base");
+  await renderBase();
+}
+
+async function createBase() {
+  const raw = prompt("Назва бази (можна з текою):", "Нова база");
+  if (!raw) return;
+  let path = raw.trim().replace(/^\/+/, "");
+  if (!path) return;
+  if (!path.endsWith(".base")) path += ".base";
+  try {
+    await ghPut(path, BASE_DEFAULT_YAML, null, "add base " + path);
+    state.pending.add(path);
+    await loadTree();
+    await openBase(path);
+    toast("базу створено: " + path);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+function renderBasePreview(config, docs) {
+  basePath = null;
+  baseConfig = config || {};
+  baseViewIndex = 0;
+  baseSort = null;
+  setView("base");
+  const data = baseBuild(baseConfig, docs || []);
+  const select = $("baseViewSelect");
+  if (select) {
+    select.innerHTML = "";
+    data.views.forEach((view, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = view.name || ("View " + (index + 1));
+      select.appendChild(option);
+    });
+  }
+  renderBaseTable(data);
+  return {
+    rows: data.rows.length,
+    columns: data.columns.length,
+    keys: data.columns.map((column) => column.source + ":" + column.key),
+    paths: data.rows.map((row) => row.path),
+  };
+}
 
 /* ---------------- API for modules ---------------- */
 export const Vault = {
@@ -4139,6 +4439,11 @@ $("navFwd").onclick = goFwd;
 $("openGraph").onclick = () => setView(state.view === "graph" ? "note" : "graph");
 $("openCanvas").onclick = () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas — створи 🎨"); };
 $("newCanvas").onclick = () => { if (canvasApi) canvasApi.create(); };
+$("openBase").onclick = createBase;
+$("baseViewSelect").onchange = () => { baseViewIndex = Number($("baseViewSelect").value) || 0; baseSort = null; renderBase(); };
+$("baseSearch").oninput = () => { clearTimeout($("baseSearch")._t); $("baseSearch")._t = setTimeout(renderBase, 150); };
+$("baseRefresh").onclick = () => renderBase();
+$("baseSource").onclick = () => { if (basePath) window.open(imageUrlFor(basePath), "_blank", "noopener"); };
 $("newFolderBtn").onclick = () => newFolder();
 $("leftAddTab").onclick = (event) => {
   event.stopPropagation();
@@ -4413,6 +4718,8 @@ registerCommand({ id: "pdf", label: "Експорт PDF (файл)", hint: "PDF"
 registerCommand({ id: "print", label: "Друк / зберегти як PDF (вікно друку)", hint: "Ctrl+P", run: printNote });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
+registerCommand({ id: "create-base", label: "Bases: створити базу", run: createBase });
+registerCommand({ id: "base-refresh", label: "Bases: оновити базу", run: () => { if (state.view === "base") renderBase(); } });
 registerCommand({ id: "bookmark", label: "Додати/зняти закладку", run: () => { if (state.active) toggleBookmark(state.active); } });
 registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.active) addPane(state.active); else toast("відкрий нотатку"); } });
 registerCommand({ id: "new-folder", label: "Нова тека", run: newFolder });
@@ -4511,4 +4818,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview };
