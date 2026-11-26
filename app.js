@@ -1,15 +1,16 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=81";
-import { initCanvas } from "./canvas.js?v=81";
-import { initCollab } from "./collab.js?v=81";
-import { initPlugins } from "./plugins.js?v=81";
-import { exportPdfFile } from "./pdf.js?v=81";
-import { initLive } from "./live.js?v=81";
-import { initDaily } from "./daily.js?v=81";
+import { initGraph } from "./graph.js?v=82";
+import { initCanvas } from "./canvas.js?v=82";
+import { initCollab } from "./collab.js?v=82";
+import { initPlugins } from "./plugins.js?v=82";
+import { exportPdfFile } from "./pdf.js?v=82";
+import { initLive } from "./live.js?v=82";
+import { initDaily } from "./daily.js?v=82";
+import { initRecorder } from "./recorder.js?v=82";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v81";
+const BUILD = "v82";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -68,6 +69,7 @@ const CORE_PLUGINS = [
   { id: "bases", label: "Bases", desc: "Табличні бази з нотаток", def: true },
   { id: "webviewer", label: "Web viewer", desc: "Відкривати сайти в застосунку", def: true },
   { id: "file-recovery", label: "File recovery", desc: "Історія версій нотатки", def: true },
+  { id: "audiorecorder", label: "Audio recorder", desc: "Запис звуку в нотатку", def: true },
   { id: "workspaces", label: "Workspaces", desc: "Збережені розкладки", def: false },
   { id: "random-note", label: "Random note", desc: "Випадкова нотатка", def: false },
   { id: "sync", label: "Sync / collab", desc: "Спільна робота", def: true },
@@ -123,6 +125,7 @@ const liveApis = [];
 const livePaths = [];
 const paneRefs = [];
 let dailyApi = null;
+let recorderApi = null;
 let pluginsApi = null;
 
 /* ---------------- events ---------------- */
@@ -5248,6 +5251,7 @@ const SETTINGS_TABS = [
   { id: "daily", label: "Daily notes" },
   { id: "templates", label: "Templates" },
   { id: "unique", label: "Unique note creator" },
+  { id: "recorder", label: "Audio recorder" },
   { id: "hotkeys", label: "Hotkeys" },
   { id: "core", label: "Core plugins" },
   { id: "plugins", label: "Community plugins" },
@@ -5402,6 +5406,7 @@ function openSettings() {
   $("setDefaultMode").value = store.get("defaultMode", "live");
   $("setSpellcheck").checked = store.get("spellcheck", "1") !== "0";
   $("setWebLinks").checked = store.get("webLinks", "0") === "1";
+  $("setRecorderFolder").value = recorderApi && recorderApi.config ? recorderApi.config.folder || "" : "";
   const noteCfg = dailyApi && dailyApi.config ? dailyApi.config : null;
   if (noteCfg) {
     $("setDailyFolder").value = noteCfg.daily.folder || "";
@@ -5481,6 +5486,9 @@ $("saveSettings").onclick = async () => {
       format: $("setUniqueFormat").value.trim() || "YYYYMMDDHHmm",
       template: $("setUniqueTemplate").value.trim(),
     });
+    await writeVaultJson(".obsidian/audio-recorder.json", {
+      folder: $("setRecorderFolder").value.trim(),
+    });
   } catch (error) {
     toast("Налаштування нотаток: " + error.message);
   }
@@ -5542,6 +5550,8 @@ async function connect(repo, branch, token, remember) {
     if (dailyApi) await dailyApi.loadConfigs();
     else dailyApi = await initDaily(Vault);
     window.__daily = dailyApi;
+    recorderApi = await initRecorder(Vault);
+    window.__recorder = recorderApi;
     const restored = await restoreWorkspace();
     if (!restored) {
       const first = state.files.find((p) => p.endsWith(".md"));

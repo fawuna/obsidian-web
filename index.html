@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=81">
+<link rel="stylesheet" href="styles.css?v=82">
 </head>
 <body>
 
@@ -367,6 +367,12 @@
           <input id="setUniqueTemplate" placeholder="templates/unique">
           <div class="hint">Назва файлу береться з формату moment.js. Існуюча нотатка з такою назвою просто відкривається.</div>
         </section>
+        <section class="settings-section" data-settings="recorder">
+          <h3>Audio recorder</h3>
+          <label style="display:block">Тека для записів</label>
+          <input id="setRecorderFolder" placeholder="(корінь)">
+          <div class="hint">Записи зберігаються як .webm і вставляються в поточну нотатку.</div>
+        </section>
         <section class="settings-section" data-settings="hotkeys">
           <h3>Hotkeys</h3>
           <div id="hotkeyList" class="hotkey-list"></div>
@@ -436,7 +442,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=81"></script>
-<script type="module" src="app.js?v=81"></script>
+<script src="vendor/marked.min.js?v=82"></script>
+<script type="module" src="app.js?v=82"></script>
 </body>
 </html>
