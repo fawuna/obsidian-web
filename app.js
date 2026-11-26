@@ -1,14 +1,14 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=21";
-import { initCanvas } from "./canvas.js?v=21";
-import { initCollab } from "./collab.js?v=21";
-import { initPlugins } from "./plugins.js?v=21";
-import { exportPdfFile } from "./pdf.js?v=21";
-import { initLive } from "./live.js?v=21";
+import { initGraph } from "./graph.js?v=22";
+import { initCanvas } from "./canvas.js?v=22";
+import { initCollab } from "./collab.js?v=22";
+import { initPlugins } from "./plugins.js?v=22";
+import { exportPdfFile } from "./pdf.js?v=22";
+import { initLive } from "./live.js?v=22";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v21";
+const BUILD = "v22";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -41,6 +41,7 @@ const state = {
 };
 
 let liveApi = null;
+let livePath = null;
 
 /* ---------------- events ---------------- */
 function on(event, fn) {
@@ -497,7 +498,11 @@ function paint() {
   $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch + " · " + BUILD;
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
   renderPreview();
-  liveApi?.setDoc(file ? file.text : "");
+  if (liveApi) {
+    if (!file) { liveApi.setDoc(""); livePath = null; }
+    else if (livePath !== file.path) { liveApi.reset(file.text); livePath = file.path; }
+    else liveApi.setDoc(file.text);
+  }
   renderContext();
   renderOutline();
   syncHighlight();

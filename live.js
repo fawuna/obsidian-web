@@ -225,6 +225,48 @@ function wrapSelection(editorView, before, after) {
   return true;
 }
 
+function buildExtensions() {
+  return [
+    history(),
+    drawSelection(),
+    EditorView.lineWrapping,
+    keymap.of([
+      { key: "Mod-b", run: (v) => wrapSelection(v, "**", "**") },
+      { key: "Mod-i", run: (v) => wrapSelection(v, "*", "*") },
+      { key: "Mod-k", run: (v) => wrapSelection(v, "[[", "]]") },
+      indentWithTab,
+      ...defaultKeymap,
+      ...historyKeymap,
+    ]),
+    liveDecorations,
+    EditorView.contentAttributes.of({ spellcheck: "false", autocapitalize: "off", autocorrect: "off" }),
+    EditorView.domEventHandlers({
+      mousedown(event) {
+        const link = event.target.closest && event.target.closest(".cm-wikilink");
+        if (link && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          cfg.onOpenNote(link.dataset.target || "");
+          return true;
+        }
+        return false;
+      },
+    }),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged && !suppress) {
+        const text = update.state.doc.toString();
+        const prev = lastText;
+        lastText = text;
+        cfg.onChange(text, prev);
+      }
+      if ((update.selectionSet || update.docChanged) && update.view.hasFocus) {
+        const head = update.state.selection.main.head;
+        const line = update.state.doc.lineAt(head);
+        cfg.onCursor(line.number, head - line.from + 1);
+      }
+    }),
+  ];
+}
+
 export function initLive(options) {
   cfg = options;
   const host = document.getElementById("live");
@@ -232,45 +274,7 @@ export function initLive(options) {
 
   const state = EditorState.create({
     doc: options.getText(),
-    extensions: [
-      history(),
-      drawSelection(),
-      EditorView.lineWrapping,
-      keymap.of([
-        { key: "Mod-b", run: (v) => wrapSelection(v, "**", "**") },
-        { key: "Mod-i", run: (v) => wrapSelection(v, "*", "*") },
-        { key: "Mod-k", run: (v) => wrapSelection(v, "[[", "]]") },
-        indentWithTab,
-        ...defaultKeymap,
-        ...historyKeymap,
-      ]),
-      liveDecorations,
-      EditorView.contentAttributes.of({ spellcheck: "false", autocapitalize: "off", autocorrect: "off" }),
-      EditorView.domEventHandlers({
-        mousedown(event) {
-          const link = event.target.closest && event.target.closest(".cm-wikilink");
-          if (link && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            cfg.onOpenNote(link.dataset.target || "");
-            return true;
-          }
-          return false;
-        },
-      }),
-      EditorView.updateListener.of((update) => {
-        if (update.docChanged && !suppress) {
-          const text = update.state.doc.toString();
-          const prev = lastText;
-          lastText = text;
-          cfg.onChange(text, prev);
-        }
-        if ((update.selectionSet || update.docChanged) && update.view.hasFocus) {
-          const head = update.state.selection.main.head;
-          const line = update.state.doc.lineAt(head);
-          cfg.onCursor(line.number, head - line.from + 1);
-        }
-      }),
-    ],
+    extensions: buildExtensions(),
   });
 
   view = new EditorView({ state, parent: host });
@@ -278,6 +282,15 @@ export function initLive(options) {
   host.classList.add("cm-live-host");
 
   return {
+    reset(text) {
+      if (!view) return;
+      suppress = true;
+      view.setState(EditorState.create({ doc: text, extensions: buildExtensions() }));
+      suppress = false;
+      lastText = text;
+      view.scrollDOM.scrollTop = 0;
+      cfg.onCursor(1, 1);
+    },
     setDoc(text) {
       if (!view) return;
       if (view.state.doc.toString() === text) { lastText = text; return; }
