@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=48";
-import { initCanvas } from "./canvas.js?v=48";
-import { initCollab } from "./collab.js?v=48";
-import { initPlugins } from "./plugins.js?v=48";
-import { exportPdfFile } from "./pdf.js?v=48";
-import { initLive } from "./live.js?v=48";
-import { initDaily } from "./daily.js?v=48";
+import { initGraph } from "./graph.js?v=49";
+import { initCanvas } from "./canvas.js?v=49";
+import { initCollab } from "./collab.js?v=49";
+import { initPlugins } from "./plugins.js?v=49";
+import { exportPdfFile } from "./pdf.js?v=49";
+import { initLive } from "./live.js?v=49";
+import { initDaily } from "./daily.js?v=49";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v48";
+const BUILD = "v49";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1770,6 +1770,151 @@ function wireRendered(root, sourceText, lineOffset = 0) {
   });
 }
 
+/* ---------------- page preview ---------------- */
+let previewShowTimer = null;
+let previewHideTimer = null;
+let previewAnchor = null;
+let previewTarget = null;
+
+function previewEnabled() { return store.get("pagePreview", "1") !== "0"; }
+
+function previewLinkFor(node) {
+  if (!node || typeof node.closest !== "function") return null;
+  return node.closest(".internal-link[data-target], .cm-wikilink[data-target]");
+}
+
+function hidePagePreview() {
+  clearTimeout(previewShowTimer);
+  clearTimeout(previewHideTimer);
+  previewShowTimer = null;
+  previewHideTimer = null;
+  previewAnchor = null;
+  previewTarget = null;
+  const host = $("pagePreview");
+  if (host) {
+    host.classList.remove("show");
+    host.setAttribute("aria-hidden", "true");
+  }
+}
+
+function scheduleHidePagePreview() {
+  clearTimeout(previewHideTimer);
+  previewHideTimer = setTimeout(hidePagePreview, 300);
+}
+
+function placePagePreview(host, link) {
+  const rect = link.getBoundingClientRect();
+  const margin = 12;
+  const width = host.offsetWidth;
+  const height = host.offsetHeight;
+  const left = Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin);
+  let top = rect.bottom + 8;
+  if (top + height > window.innerHeight - margin) top = Math.max(margin, rect.top - height - 8);
+  host.style.left = Math.round(left) + "px";
+  host.style.top = Math.round(top) + "px";
+}
+
+function paintPagePreview(host, path, text) {
+  const parsed = parseProps(text);
+  host.innerHTML = "";
+  host.appendChild(el("div", "inline-title", noteName(path)));
+  const body = el("div", "markdown-preview-view markdown-rendered");
+  const tmp = document.createElement("div");
+  tmp.innerHTML = markdownToHtml(parsed ? parsed.body : text);
+  styleCallouts(tmp);
+  for (const child of [...tmp.children]) body.appendChild(child);
+  body.querySelectorAll(".internal-link[data-target]").forEach((a) => {
+    a.onclick = (event) => {
+      event.preventDefault();
+      hidePagePreview();
+      const target = a.dataset.target.replace(/^#/, "");
+      const hit = state.files.find((p) => p === target + ".md" || p === target || p.endsWith("/" + target + ".md"));
+      if (hit) openNote(hit);
+    };
+  });
+  body.querySelectorAll("img").forEach((img) => {
+    const src = img.getAttribute("src") || "";
+    if (!/^https?:/.test(src)) img.src = imageUrlFor(src);
+  });
+  body.querySelectorAll("a[href]").forEach((a) => {
+    if (a.classList.contains("internal-link") || a.classList.contains("tag")) return;
+    a.target = "_blank";
+    a.rel = "noopener";
+  });
+  host.appendChild(body);
+}
+
+function showPagePreview(link) {
+  const target = link.getAttribute("data-target");
+  if (!target) return;
+  const clean = String(target).split("|")[0].split("#")[0].replace(/\.md$/i, "").trim();
+  const path = state.files.find((p) => p === clean + ".md" || p === clean || p.endsWith("/" + clean + ".md"));
+  if (!path) return;
+  const host = $("pagePreview");
+  if (!host) return;
+  previewTarget = target;
+  previewAnchor = link;
+  host.classList.add("show");
+  host.setAttribute("aria-hidden", "false");
+  host.style.visibility = "hidden";
+  const cached = state.index.get(path);
+  if (cached == null) {
+    host.innerHTML = '<div class="empty">завантажую…</div>';
+    placePagePreview(host, link);
+    host.style.visibility = "";
+    ghGet(path).then(({ text }) => {
+      state.index.set(path, text);
+      if (previewTarget === target && host.classList.contains("show")) {
+        paintPagePreview(host, path, text);
+        placePagePreview(host, link);
+      }
+    }).catch(() => {
+      if (previewTarget === target) {
+        host.innerHTML = '<div class="empty">не вдалося завантажити</div>';
+        placePagePreview(host, link);
+      }
+    });
+  } else {
+    paintPagePreview(host, path, cached);
+    placePagePreview(host, link);
+    host.style.visibility = "";
+  }
+}
+
+document.addEventListener("mouseover", (event) => {
+  const host = $("pagePreview");
+  if (host && event.target.closest && event.target.closest("#pagePreview")) {
+    clearTimeout(previewHideTimer);
+    return;
+  }
+  const link = previewLinkFor(event.target);
+  if (!link || !previewEnabled()) return;
+  if (previewAnchor === link && host && host.classList.contains("show")) return;
+  clearTimeout(previewShowTimer);
+  clearTimeout(previewHideTimer);
+  previewAnchor = link;
+  previewShowTimer = setTimeout(() => showPagePreview(link), 320);
+});
+document.addEventListener("mouseout", (event) => {
+  const link = previewLinkFor(event.target);
+  if (!link) return;
+  const host = $("pagePreview");
+  if (event.relatedTarget && (link.contains(event.relatedTarget) || (host && host.contains(event.relatedTarget)))) return;
+  clearTimeout(previewShowTimer);
+  if (previewAnchor === link) scheduleHidePagePreview();
+});
+$("pagePreview").addEventListener("mouseenter", () => clearTimeout(previewHideTimer));
+$("pagePreview").addEventListener("mouseleave", () => scheduleHidePagePreview());
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") hidePagePreview(); });
+document.addEventListener("mousedown", (event) => {
+  const host = $("pagePreview");
+  if (host && !host.contains(event.target)) hidePagePreview();
+});
+window.addEventListener("scroll", (event) => {
+  if (event.target && event.target.closest && event.target.closest("#pagePreview")) return;
+  hidePagePreview();
+}, true);
+
 function resolveEmbeds(root) {
   root.querySelectorAll(".embed-note").forEach((box) => {
     const name = decodeURIComponent(box.dataset.note || "").split("#")[0].trim();
@@ -3109,6 +3254,7 @@ function openSettings() {
   $("setFont").value = store.get("font", "15");
   $("setWidth").value = store.get("width", "46rem");
   $("setGraphForce").value = store.get("graphForce", "120");
+  $("setPagePreview").checked = previewEnabled();
   const computed = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
   $("setAccent").value = /^#[0-9a-f]{6}$/i.test(computed) ? computed : "#a882ff";
   renderAccentPresets();
@@ -3138,6 +3284,7 @@ $("saveSettings").onclick = () => {
   store.set("width", $("setWidth").value);
   store.set("accent", $("setAccent").value);
   store.set("graphForce", $("setGraphForce").value);
+  store.set("pagePreview", $("setPagePreview").checked ? "1" : "0");
   store.set("hotkeys", JSON.stringify(hotkeys));
   theme(); applyPrefs();
   closeModals();

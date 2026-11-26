@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=48">
+<link rel="stylesheet" href="styles.css?v=49">
 </head>
 <body>
 
@@ -254,6 +254,7 @@
     <div class="hint">Клікни поле й натисни комбінацію. Backspace — очистити, Esc — скасувати.</div>
     <label style="margin-top:18px">Graph view: сила відштовхування</label>
     <input id="setGraphForce" type="range" min="40" max="220" step="10">
+    <label style="margin-top:18px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setPagePreview" checked> Прев'ю нотатки при наведенні на посилання</label>
   </div>
   <div class="foot"><button class="ghost-border" id="closeSettings">Закрити</button><button class="primary" id="saveSettings">Зберегти</button></div>
 </div>
@@ -274,11 +275,12 @@
   <div class="foot"><button class="ghost-border" id="collabClose">Закрити</button><button class="primary" id="collabToggle">Увімкнути</button></div>
 </div>
 
+<div id="pagePreview" class="popover hover-popover" aria-hidden="true"></div>
 <div id="dropHint">Відпусти, щоб вставити картинку</div>
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=48"></script>
-<script type="module" src="app.js?v=48"></script>
+<script src="vendor/marked.min.js?v=49"></script>
+<script type="module" src="app.js?v=49"></script>
 </body>
 </html>
