@@ -359,6 +359,25 @@ body.view-canvas #canvasHost { display: flex; }
 .plugin-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; font-size: 12.5px; }
 .plugin-card b { color: var(--text); }
 .plugin-card .muted { color: var(--muted); }
+.plugin-title { display: flex; align-items: center; gap: 6px; }
+.plugin-badge { font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.plugin-status { color: var(--muted); margin-top: 2px; }
+.plugin-status.err { color: var(--red); }
+.plugin-actions { display: flex; gap: 6px; margin-top: 6px; }
+.plugin-actions button { font-size: 11.5px; padding: 3px 8px; }
+.plugin-settings { display: none; margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+.plugin-settings.open { display: block; }
+.setting-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.setting-item-info { flex: 1; min-width: 0; }
+.setting-item-name { font-size: 12.5px; color: var(--text); }
+.setting-item-description { font-size: 11.5px; color: var(--muted); }
+.setting-item-control { display: flex; gap: 6px; align-items: center; }
+.plugin-input, .plugin-textarea, .plugin-select { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; color: var(--text); padding: 3px 6px; font-size: 12px; }
+.plugin-textarea { min-height: 54px; resize: vertical; }
+.plugin-button { background: var(--bg-3); border: 1px solid var(--line); border-radius: 5px; color: var(--text); padding: 3px 8px; font-size: 12px; cursor: pointer; }
+.plugin-button.primary { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+.plugin-toggle { accent-color: var(--accent); }
+.plugin-slider { width: 120px; }
 #dropHint { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: center; justify-content: center; font-size: 18px; color: #fff; z-index: 70; pointer-events: none; border: 3px dashed var(--accent); }
 #dropHint.show { display: flex; }
 

@@ -1,14 +1,14 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=29";
-import { initCanvas } from "./canvas.js?v=29";
-import { initCollab } from "./collab.js?v=29";
-import { initPlugins } from "./plugins.js?v=29";
-import { exportPdfFile } from "./pdf.js?v=29";
-import { initLive } from "./live.js?v=29";
+import { initGraph } from "./graph.js?v=30";
+import { initCanvas } from "./canvas.js?v=30";
+import { initCollab } from "./collab.js?v=30";
+import { initPlugins } from "./plugins.js?v=30";
+import { exportPdfFile } from "./pdf.js?v=30";
+import { initLive } from "./live.js?v=30";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v29";
+const BUILD = "v30";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -192,8 +192,22 @@ function runHotkey(id) {
 
 
 /* ---------------- commands ---------------- */
-function registerCommand(cmd) { state.commands.push(cmd); }
-function addRibbonButton(btn) { state.ribbonButtons.push(btn); renderRibbonExtra(); }
+function registerCommand(cmd) {
+  state.commands.push(cmd);
+  return () => {
+    const at = state.commands.indexOf(cmd);
+    if (at >= 0) state.commands.splice(at, 1);
+  };
+}
+function addRibbonButton(btn) {
+  state.ribbonButtons.push(btn);
+  renderRibbonExtra();
+  return () => {
+    const at = state.ribbonButtons.indexOf(btn);
+    if (at >= 0) state.ribbonButtons.splice(at, 1);
+    renderRibbonExtra();
+  };
+}
 function renderRibbonExtra() {
   const ribbon = $("ribbon");
   ribbon.querySelectorAll("[data-extra]").forEach((n) => n.remove());
@@ -226,6 +240,11 @@ async function loadTree() {
   renderBookmarks();
   renderTags();
   emit("tree", state.files);
+}
+
+async function listAll() {
+  const data = await api("/repos/" + state.repo + "/git/trees/" + state.branch + "?recursive=1");
+  return (data.tree || []).filter((node) => node.type === "blob").map((node) => node.path);
 }
 
 function renderTree() {
@@ -333,6 +352,7 @@ async function moveFile(path, folder) {
     await loadTree();
     renderTabs(); paint();
     setState("переміщено", "ok");
+    emit("rename", { from: path, to: target });
     toast("→ " + target);
   } catch (error) {
     setState("помилка: " + error.message, "err");
@@ -414,6 +434,7 @@ async function duplicateNote(path) {
     await ghPut(target, text, null, "duplicate " + path);
     state.pending.add(target);
     await loadTree();
+    emit("create", target);
     toast("створено " + target);
   } catch (error) { toast("Не вийшло: " + error.message); }
 }
@@ -427,6 +448,7 @@ async function newFolder() {
   try {
     await ghPut(marker, "", null, "add folder " + name);
     await loadTree();
+    emit("create", marker);
     toast("теку створено: " + name);
   } catch (error) { toast("Не вийшло: " + error.message); }
 }
@@ -615,6 +637,7 @@ async function newNote() {
     state.pending.add(path);
     await loadTree();
     await openNote(path);
+    emit("create", path);
     toast("створено " + path);
   } catch (error) { toast("Не вийшло: " + error.message); }
 }
@@ -634,6 +657,7 @@ async function renameNote(path) {
     if (openFile) openFile.path = target;
     if (state.active === path) state.active = target;
     await loadTree(); renderTabs(); paint();
+    emit("rename", { from: path, to: target });
     toast("перейменовано");
   } catch (error) { toast("Не вийшло: " + error.message); }
 }
@@ -646,6 +670,7 @@ async function deleteNote(path) {
     state.open = state.open.filter((f) => f.path !== path);
     if (state.active === path) state.active = state.open[0]?.path || null;
     await loadTree(); renderTabs(); paint();
+    emit("delete", path);
     toast("видалено");
   } catch (error) { toast("Не вийшло: " + error.message); }
 }
@@ -712,6 +737,7 @@ function toggleTaskLine(lineIndex, prefixLen) {
   renderPreview();
   setState("не збережено", "warn");
   emit("edit", { path: file.path, text: file.text, prev: file.text });
+  emit("modify", { path: file.path, text: file.text, prev: file.text });
   clearTimeout($("editor")._t);
   $("editor")._t = setTimeout(() => saveNote(true), 1200);
   toast("позначено");
@@ -887,6 +913,7 @@ function noteEdited(prev) {
   const words = file.text.trim().split(/\s+/).filter(Boolean).length;
   $("stMeta").textContent = words + " слів · " + file.text.length + " симв.";
   emit("edit", { path: file.path, text: file.text, prev });
+  emit("modify", { path: file.path, text: file.text, prev });
   clearTimeout($("editor")._t);
   $("editor")._t = setTimeout(() => saveNote(true), 3000);
   clearTimeout($("editor")._o);
@@ -1171,7 +1198,7 @@ function openGraph() { setView("graph"); emit("view", "graph"); }
 export const Vault = {
   state, api, ghGet, ghPut, ghPutRaw, ghDelete, b64encode, b64decode,
   contentsPath, openNote, openCanvas, openGraph, toast, setState, currentFile,
-  saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree,
+  saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
   renderTree, renderTabs, paint, renderPreview, renderContext, renderTags, showPane,
   moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote,
   exportPdfFile: (opts = {}) => exportPdfFile($("preview"), (currentFile()?.path || "note").split("/").pop().replace(/\.md$/, ""), opts),
