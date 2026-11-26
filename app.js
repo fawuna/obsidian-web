@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=109";
-import { initCanvas } from "./canvas.js?v=109";
-import { initCollab } from "./collab.js?v=109";
-import { initPlugins } from "./plugins.js?v=109";
-import { exportPdfFile } from "./pdf.js?v=109";
-import { initLive } from "./live.js?v=109";
-import { initDaily } from "./daily.js?v=109";
-import { initRecorder } from "./recorder.js?v=109";
-import { initPdfViewer } from "./pdfviewer.js?v=109";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=109";
+import { initGraph } from "./graph.js?v=110";
+import { initCanvas } from "./canvas.js?v=110";
+import { initCollab } from "./collab.js?v=110";
+import { initPlugins } from "./plugins.js?v=110";
+import { exportPdfFile } from "./pdf.js?v=110";
+import { initLive } from "./live.js?v=110";
+import { initDaily } from "./daily.js?v=110";
+import { initRecorder } from "./recorder.js?v=110";
+import { initPdfViewer } from "./pdfviewer.js?v=110";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=110";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v109";
+const BUILD = "v110";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -70,6 +70,7 @@ const CORE_PLUGINS = [
   { id: "canvas", label: "Canvas", desc: "Полотно", def: true },
   { id: "bases", label: "Bases", desc: "Табличні бази з нотаток", def: true },
   { id: "webviewer", label: "Web viewer", desc: "Відкривати сайти в застосунку", def: true },
+  { id: "format-converter", label: "Format converter", desc: "Конвертація HTML ↔ Markdown", def: true },
   { id: "file-recovery", label: "File recovery", desc: "Історія версій нотатки", def: true },
   { id: "audiorecorder", label: "Audio recorder", desc: "Запис звуку в нотатку", def: true },
   { id: "workspaces", label: "Workspaces", desc: "Збережені розкладки", def: false },
@@ -2846,6 +2847,77 @@ function markdownToHtml(body) {
     return "<img" + attrs.replace(alt[0], 'alt="' + alt[1] + '" width="' + alt[2] + '"') + ">";
   });
   return html;
+}
+
+let turndownPromise = null;
+function ensureTurndown() {
+  if (window.TurndownService) return Promise.resolve(window.TurndownService);
+  if (turndownPromise) return turndownPromise;
+  turndownPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js";
+    script.async = true;
+    script.onload = () => window.TurndownService ? resolve(window.TurndownService) : reject(new Error("Turndown missing"));
+    script.onerror = () => reject(new Error("Turndown load failed"));
+    document.head.appendChild(script);
+  });
+  return turndownPromise;
+}
+
+async function htmlToMarkdown(html) {
+  const Service = await ensureTurndown();
+  const service = new Service({ headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-" });
+  return service.turndown(String(html || ""))
+    .replace(/^(\s*[-*+])\s{2,}/gm, "$1 ")
+    .replace(/^(\s*\d+[.)])\s{2,}/gm, "$1 ")
+    .trim();
+}
+
+function markdownToHtmlSource(md) {
+  return window.marked ? window.marked.parse(md, { breaks: true, mangle: false, headerIds: false }) : escapeHtml(md);
+}
+
+function replaceNoteSource(text) {
+  const file = currentFile();
+  if (!file) return false;
+  const prev = file.text;
+  file.text = text;
+  file.dirty = true;
+  state.index.set(file.path, text);
+  $("editor").value = text;
+  if (liveApi && livePath === file.path) liveApi.setDoc(text);
+  syncLiveCopies(0, file);
+  renderPreview();
+  setState("не збережено", "warn");
+  clearTimeout($("editor")._t);
+  $("editor")._t = setTimeout(() => saveNote(true, file), 1500);
+  emit("modify", { path: file.path, text, prev });
+  return true;
+}
+
+async function convertHtmlToMarkdown() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  const selection = activeSelectionRange();
+  const source = selection.text.trim() ? selection.text : file.text;
+  if (!/<[a-z][\s\S]*>/i.test(source)) { toast("Немає HTML для конвертації"); return; }
+  try {
+    const md = await htmlToMarkdown(source);
+    if (selection.text.trim()) replaceActiveSelection(md);
+    else replaceNoteSource(md);
+    toast("HTML → Markdown");
+  } catch (error) { toast("Конвертація: " + error.message); }
+}
+
+function convertMarkdownToHtml() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  const selection = activeSelectionRange();
+  const source = selection.text.trim() ? selection.text : file.text;
+  const html = markdownToHtmlSource(source);
+  if (selection.text.trim()) replaceActiveSelection(html);
+  else replaceNoteSource(html);
+  toast("Markdown → HTML");
 }
 
 let katexPromise = null;
@@ -6412,6 +6484,8 @@ registerCommand({ id: "web-viewer", label: "Відкрити Web viewer", hint: 
   if (url) openWebViewer(url);
 } });
 registerCommand({ id: "slides", label: "Почати презентацію", hint: "Slides", plugin: "slides", run: startSlides });
+registerCommand({ id: "format-html-md", label: "Форматування: HTML → Markdown", plugin: "format-converter", run: convertHtmlToMarkdown });
+registerCommand({ id: "format-md-html", label: "Форматування: Markdown → HTML", plugin: "format-converter", run: convertMarkdownToHtml });
 registerCommand({ id: "stack-tabs", label: "Скласти / розкласти вкладки", hint: "Stack tabs", run: () => toggleStackedTabs() });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", plugin: "graph", run: () => {
   const localToggle = $("graphLocal");
@@ -6533,4 +6607,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName };
