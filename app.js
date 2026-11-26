@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=108";
-import { initCanvas } from "./canvas.js?v=108";
-import { initCollab } from "./collab.js?v=108";
-import { initPlugins } from "./plugins.js?v=108";
-import { exportPdfFile } from "./pdf.js?v=108";
-import { initLive } from "./live.js?v=108";
-import { initDaily } from "./daily.js?v=108";
-import { initRecorder } from "./recorder.js?v=108";
-import { initPdfViewer } from "./pdfviewer.js?v=108";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=108";
+import { initGraph } from "./graph.js?v=109";
+import { initCanvas } from "./canvas.js?v=109";
+import { initCollab } from "./collab.js?v=109";
+import { initPlugins } from "./plugins.js?v=109";
+import { exportPdfFile } from "./pdf.js?v=109";
+import { initLive } from "./live.js?v=109";
+import { initDaily } from "./daily.js?v=109";
+import { initRecorder } from "./recorder.js?v=109";
+import { initPdfViewer } from "./pdfviewer.js?v=109";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=109";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v108";
+const BUILD = "v109";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -132,6 +132,7 @@ let pdfApi = null;
 let mediaApi = null;
 let pluginsApi = null;
 let appCfg = { newFileLocation: "root", newFileFolderPath: "", attachmentFolderPath: "" };
+let propertyTypes = {};
 
 /* ---------------- events ---------------- */
 function on(event, fn) {
@@ -2158,6 +2159,13 @@ async function loadAppConfig() {
   } catch { /* defaults */ }
 }
 
+async function loadPropertyTypes() {
+  try {
+    const raw = JSON.parse((await ghGet(".obsidian/types.json")).text);
+    propertyTypes = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  } catch { propertyTypes = {}; }
+}
+
 function attachmentFolder() {
   const setting = String(appCfg.attachmentFolderPath || "").replace(/\\/g, "/");
   if (setting === "./") {
@@ -2314,6 +2322,8 @@ function propertyIsList(raw, key) {
 }
 
 function inferPropertyType(key, value) {
+  const override = propertyTypes[String(key || "")];
+  if (override && ["text", "number", "checkbox", "date", "datetime"].includes(override)) return override;
   const text = String(value == null ? "" : value).trim();
   if (/^(true|false)$/i.test(text)) return "checkbox";
   if (/^-?\d+(?:\.\d+)?$/.test(text)) return "number";
@@ -2343,6 +2353,22 @@ function applyFrontmatterEdit(file, nextText, prevText) {
   clearTimeout($("editor")._t);
   $("editor")._t = setTimeout(() => saveNote(true, file), 1500);
   emit("modify", { path: file.path, text: nextText, prev: prevText });
+}
+
+async function setPropertyType(key, type) {
+  if (type) propertyTypes[key] = type; else delete propertyTypes[key];
+  renderPreview();
+  try {
+    let raw = {};
+    try {
+      const got = await ghGet(".obsidian/types.json");
+      raw = JSON.parse(got.text) || {};
+    } catch { raw = {}; }
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) raw = {};
+    if (type) raw[key] = type; else delete raw[key];
+    await writeVaultJson(".obsidian/types.json", raw);
+    toast("тип " + key + ": " + type);
+  } catch (error) { toast("Тип: " + error.message); }
 }
 
 function setFrontmatterProperty(file, key, value, nextKey) {
@@ -2563,6 +2589,12 @@ function buildReadingHeader(file, parsed) {
       event.preventDefault();
       event.stopPropagation();
       showCtx(event.clientX, event.clientY, [
+        { label: "Текст", run: () => setPropertyType(key, "text") },
+        { label: "Число", run: () => setPropertyType(key, "number") },
+        { label: "Чекбокс", run: () => setPropertyType(key, "checkbox") },
+        { label: "Дата", run: () => setPropertyType(key, "date") },
+        { label: "Дата й час", run: () => setPropertyType(key, "datetime") },
+        { sep: true },
         { label: "Видалити властивість", danger: true, run: () => removeFrontmatterProperty(file, key) },
       ]);
     };
@@ -6343,6 +6375,7 @@ async function connect(repo, branch, token, remember) {
     window.__daily = dailyApi;
     await loadAppConfig();
     await loadAppearanceConfig();
+    await loadPropertyTypes();
     recorderApi = await initRecorder(Vault);
     window.__recorder = recorderApi;
     pdfApi = initPdfViewer(Vault);
