@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=86">
+<link rel="stylesheet" href="styles.css?v=87">
 </head>
 <body>
 
@@ -162,6 +162,15 @@
           <button class="ghost-border" id="cvAddGroup">＋ група</button>
           <button class="ghost-border" id="cvAddLink">＋ веб</button>
           <button class="ghost-border" id="cvConnect">Звʼязати</button>
+          <span id="cvAlign" class="cv-align" style="display:none">
+            <button class="ghost-border" data-align="left" title="Вирівняти ліворуч">⇤</button>
+            <button class="ghost-border" data-align="hcenter" title="По центру горизонталі">↔</button>
+            <button class="ghost-border" data-align="right" title="Вирівняти праворуч">⇥</button>
+            <button class="ghost-border" data-align="top" title="Вирівняти вгору">⤒</button>
+            <button class="ghost-border" data-align="vcenter" title="По центру вертикалі">↕</button>
+            <button class="ghost-border" data-align="bottom" title="Вирівняти вниз">⤓</button>
+          </span>
+          <button class="ghost-border" id="cvExport" title="Експорт PNG">PNG</button>
           <button class="ghost-border" id="cvFit">Вписати</button>
           <button class="primary" id="cvSave">Зберегти</button>
         </div>
@@ -473,7 +482,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=86"></script>
-<script type="module" src="app.js?v=86"></script>
+<script src="vendor/marked.min.js?v=87"></script>
+<script type="module" src="app.js?v=87"></script>
 </body>
 </html>

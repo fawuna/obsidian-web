@@ -9,7 +9,9 @@ let sha = null;
 let dirty = false;
 let view = { x: 60, y: 60, k: 1 };
 let selected = null;
+let selectedNodes = new Set();
 let selectedEdge = null;
+let skipClick = false;
 let resizing = null;
 let connectMode = false;
 let connectFrom = null;
@@ -239,6 +241,8 @@ function isInsideGroup(node, group) {
 
 function render() {
   hideEdgeBar();
+  const alignBar = document.getElementById("cvAlign");
+  if (alignBar) alignBar.style.display = selectedNodes.size >= 2 ? "" : "none";
   world.innerHTML = "";
   svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "cv-svg");
@@ -275,6 +279,7 @@ function render() {
       ev.stopPropagation();
       selectedEdge = e.id;
       selected = null;
+      selectedNodes.clear();
       render();
       showEdgeBar(e, ev.clientX, ev.clientY);
     });
@@ -304,7 +309,7 @@ function render() {
     const isGroup = n.type === "group";
     const isLink = n.type === "link";
     const node = document.createElement("div");
-    node.className = "cv-node" + (isGroup ? " cv-group" : "") + (isLink ? " cv-link" : "") + (selected === n.id ? " selected" : "");
+    node.className = "cv-node" + (isGroup ? " cv-group" : "") + (isLink ? " cv-link" : "") + (selectedNodes.has(n.id) || selected === n.id ? " selected" : "");
     node.style.left = n.x + "px";
     node.style.top = n.y + "px";
     node.style.width = (n.width || 320) + "px";
@@ -328,11 +333,27 @@ function render() {
     head.appendChild(dot);
     head.onmousedown = (e) => {
       e.stopPropagation();
+      selectedEdge = null;
+      hideEdgeBar();
+      if (e.shiftKey) {
+        if (selectedNodes.has(n.id)) selectedNodes.delete(n.id); else selectedNodes.add(n.id);
+        selected = selectedNodes.has(n.id) ? n.id : (selectedNodes.values().next().value || null);
+        skipClick = true;
+        dragging = null;
+        render();
+        return;
+      }
+      if (!selectedNodes.has(n.id)) selectedNodes = new Set([n.id]);
       selected = n.id;
+      const peers = [...selectedNodes]
+        .filter((id) => id !== n.id)
+        .map((id) => model.nodes.find((item) => item.id === id))
+        .filter(Boolean)
+        .map((node) => ({ node, x: node.x, y: node.y }));
       const children = isGroup
         ? model.nodes.filter((other) => other.id !== n.id && other.type !== "group" && isInsideGroup(other, n)).map((other) => ({ node: other, x: other.x, y: other.y }))
         : [];
-      dragging = { node: n, startX: e.clientX, startY: e.clientY, origX: n.x, origY: n.y, children };
+      dragging = { node: n, startX: e.clientX, startY: e.clientY, origX: n.x, origY: n.y, children, peers };
       render();
     };
     if (isGroup) {
@@ -388,6 +409,8 @@ function render() {
 
     node.onclick = (e) => {
       e.stopPropagation();
+      if (skipClick) { skipClick = false; return; }
+      selectedEdge = null;
       if (connectMode) {
         if (!connectFrom) { connectFrom = n.id; selected = n.id; Vault.toast("тепер тицьни другу картку"); }
         else if (connectFrom !== n.id) {
@@ -410,6 +433,13 @@ function render() {
         render();
         return;
       }
+      if (e.shiftKey) {
+        if (selectedNodes.has(n.id)) selectedNodes.delete(n.id); else selectedNodes.add(n.id);
+        selected = selectedNodes.has(n.id) ? n.id : (selectedNodes.values().next().value || null);
+        render();
+        return;
+      }
+      selectedNodes = new Set([n.id]);
       selected = n.id;
       render();
     };
@@ -458,6 +488,8 @@ async function open(p) {
   }
   dirty = false;
   selected = null;
+  selectedEdge = null;
+  selectedNodes.clear();
   view = { x: 60, y: 60, k: 1 };
   render();
   Vault.paint();
@@ -476,6 +508,120 @@ async function create() {
   } catch (error) {
     Vault.toast("Не створилось: " + error.message);
   }
+}
+
+function alignSelection(mode) {
+  const nodes = model.nodes.filter((n) => selectedNodes.has(n.id));
+  if (nodes.length < 2) { Vault.toast("Вибери 2+ картки"); return false; }
+  const minX = Math.min(...nodes.map((n) => n.x));
+  const minY = Math.min(...nodes.map((n) => n.y));
+  const maxX = Math.max(...nodes.map((n) => n.x + (n.width || 320)));
+  const maxY = Math.max(...nodes.map((n) => n.y + (n.height || 200)));
+  for (const n of nodes) {
+    const w = n.width || 320;
+    const h = n.height || 200;
+    if (mode === "left") n.x = minX;
+    else if (mode === "hcenter") n.x = Math.round((minX + maxX) / 2 - w / 2);
+    else if (mode === "right") n.x = maxX - w;
+    else if (mode === "top") n.y = minY;
+    else if (mode === "vcenter") n.y = Math.round((minY + maxY) / 2 - h / 2);
+    else if (mode === "bottom") n.y = maxY - h;
+  }
+  dirty = true;
+  render();
+  return true;
+}
+
+function roundedPath(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function canvasImageDataUrl() {
+  if (!model.nodes.length) return "";
+  const pad = 40;
+  const minX = Math.min(...model.nodes.map((n) => n.x)) - pad;
+  const minY = Math.min(...model.nodes.map((n) => n.y)) - pad;
+  const maxX = Math.max(...model.nodes.map((n) => n.x + (n.width || 320))) + pad;
+  const maxY = Math.max(...model.nodes.map((n) => n.y + (n.height || 200))) + pad;
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+  const scale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.translate(-minX, -minY);
+  const css = getComputedStyle(document.documentElement);
+  const bg = css.getPropertyValue("--bg").trim() || "#111";
+  const bg2 = css.getPropertyValue("--bg-2").trim() || "#1c1c1f";
+  const text = css.getPropertyValue("--text").trim() || "#ddd";
+  const line = css.getPropertyValue("--line").trim() || "#333";
+  const accent = css.getPropertyValue("--accent").trim() || "#a882ff";
+  ctx.fillStyle = bg;
+  ctx.fillRect(minX, minY, width, height);
+  const byId = new Map(model.nodes.map((n) => [n.id, n]));
+  for (const e of model.edges) {
+    const a = byId.get(e.fromNode), b = byId.get(e.toNode);
+    if (!a || !b) continue;
+    const geo = edgeGeometry(a, b, e);
+    ctx.strokeStyle = CANVAS_COLORS[e.color] || accent;
+    ctx.lineWidth = 2;
+    ctx.stroke(new Path2D(geo.d));
+    if (e.label) {
+      ctx.fillStyle = text;
+      ctx.font = "11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(e.label, geo.labelX, geo.labelY - 4);
+    }
+  }
+  const ordered = [...model.nodes].sort((a, b) => (a.type === "group" ? 0 : 1) - (b.type === "group" ? 0 : 1));
+  for (const n of ordered) {
+    const w = n.width || 320;
+    const h = n.height || 200;
+    const tone = n.color && CANVAS_COLORS[n.color] ? CANVAS_COLORS[n.color] : line;
+    roundedPath(ctx, n.x, n.y, w, h, n.type === "group" ? 14 : 10);
+    ctx.fillStyle = n.type === "group" ? "rgba(168,130,255,.08)" : bg2;
+    ctx.fill();
+    ctx.strokeStyle = tone;
+    ctx.lineWidth = n.type === "group" ? 2 : 1;
+    ctx.setLineDash(n.type === "group" ? [6, 4] : []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = n.type === "group" ? text : accent;
+    ctx.font = "600 13px sans-serif";
+    ctx.textAlign = "left";
+    const title = n.type === "group" ? (n.label || "Група") : n.type === "link" ? (n.title || linkHost(n.url)) : (n.file || "text");
+    ctx.fillText(String(title).slice(0, 60), n.x + 12, n.y + 22);
+    const body = n.type === "text" ? (n.text || "") : n.type === "file" ? (excerpts.get(n.file) || "") : n.type === "link" ? n.url : "";
+    if (body) {
+      ctx.fillStyle = text;
+      ctx.font = "12px sans-serif";
+      const words = String(body).replace(/\s+/g, " ").slice(0, 240).split(" ");
+      let lineText = "";
+      let y = n.y + 44;
+      for (const word of words) {
+        const test = lineText ? lineText + " " + word : word;
+        if (ctx.measureText(test).width > w - 24) {
+          ctx.fillText(lineText, n.x + 12, y);
+          y += 16;
+          lineText = word;
+          if (y > n.y + h - 12) break;
+        } else {
+          lineText = test;
+        }
+      }
+      if (lineText && y <= n.y + h - 12) ctx.fillText(lineText, n.x + 12, y);
+    }
+  }
+  return canvas.toDataURL("image/png");
 }
 
 export function initCanvas(vault) {
@@ -501,6 +647,8 @@ export function initCanvas(vault) {
     panning = { x: e.clientX - view.x, y: e.clientY - view.y };
     board.classList.add("dragging");
     selected = null;
+    selectedEdge = null;
+    selectedNodes.clear();
     render();
   });
 
@@ -532,6 +680,14 @@ export function initCanvas(vault) {
           child.node.y = Math.round(child.y + dy);
           const childEl = world.querySelector('[data-id="' + child.node.id + '"]');
           if (childEl) { childEl.style.left = child.node.x + "px"; childEl.style.top = child.node.y + "px"; }
+        }
+      }
+      if (dragging.peers && dragging.peers.length) {
+        for (const peer of dragging.peers) {
+          peer.node.x = Math.round(peer.x + dx);
+          peer.node.y = Math.round(peer.y + dy);
+          const peerEl = world.querySelector('[data-id="' + peer.node.id + '"]');
+          if (peerEl) { peerEl.style.left = peer.node.x + "px"; peerEl.style.top = peer.node.y + "px"; }
         }
       }
       updateEdgePaths();
@@ -611,6 +767,18 @@ export function initCanvas(vault) {
   };
 
   document.getElementById("cvSave").onclick = () => save(false);
+  document.querySelectorAll("#cvAlign [data-align]").forEach((btn) => {
+    btn.onclick = () => alignSelection(btn.dataset.align);
+  });
+  document.getElementById("cvExport").onclick = () => {
+    if (Vault.state.view !== "canvas") return;
+    const data = canvasImageDataUrl();
+    if (!data) { Vault.toast("Порожній canvas"); return; }
+    const link = document.createElement("a");
+    link.href = data;
+    link.download = (path ? path.split("/").pop().replace(/\.canvas$/i, "") : "canvas") + ".png";
+    link.click();
+  };
 
   document.addEventListener("keydown", (e) => {
     if (Vault.state.view !== "canvas") return;
@@ -618,6 +786,24 @@ export function initCanvas(vault) {
       hideEdgeBar();
       selectedEdge = null;
       selected = null;
+      selectedNodes.clear();
+      render();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      selectedNodes = new Set(model.nodes.map((n) => n.id));
+      selected = null;
+      render();
+      return;
+    }
+    if (e.key === "Delete" && selectedNodes.size) {
+      const ids = new Set(selectedNodes);
+      model.nodes = model.nodes.filter((n) => !ids.has(n.id));
+      model.edges = model.edges.filter((ed) => !ids.has(ed.fromNode) && !ids.has(ed.toNode));
+      selectedNodes.clear();
+      selected = null;
+      dirty = true;
       render();
       return;
     }
@@ -647,6 +833,16 @@ export function initCanvas(vault) {
       render();
     },
     getModel() { return JSON.parse(JSON.stringify(model)); },
+    selection() { return [...selectedNodes]; },
+    select(ids) {
+      selectedNodes = new Set(Array.isArray(ids) ? ids : []);
+      selected = selectedNodes.values().next().value || null;
+      selectedEdge = null;
+      render();
+      return [...selectedNodes];
+    },
+    align(mode) { return alignSelection(mode); },
+    exportDataUrl: canvasImageDataUrl,
     addGroup(label, x = 40, y = 40, width = 480, height = 340) {
       const node = { id: uid(), type: "group", label: label || "Група", x, y, width, height };
       model.nodes.push(node);
