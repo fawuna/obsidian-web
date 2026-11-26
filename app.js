@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=49";
-import { initCanvas } from "./canvas.js?v=49";
-import { initCollab } from "./collab.js?v=49";
-import { initPlugins } from "./plugins.js?v=49";
-import { exportPdfFile } from "./pdf.js?v=49";
-import { initLive } from "./live.js?v=49";
-import { initDaily } from "./daily.js?v=49";
+import { initGraph } from "./graph.js?v=50";
+import { initCanvas } from "./canvas.js?v=50";
+import { initCollab } from "./collab.js?v=50";
+import { initPlugins } from "./plugins.js?v=50";
+import { exportPdfFile } from "./pdf.js?v=50";
+import { initLive } from "./live.js?v=50";
+import { initDaily } from "./daily.js?v=50";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v49";
+const BUILD = "v50";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -320,6 +320,7 @@ const ACCENT_PRESETS = ["#a882ff", "#5d9cff", "#52c98a", "#e0b458", "#e5686c", "
 
 const HOTKEY_ACTIONS = [
   { id: "save", label: "Зберегти нотатку", def: "Mod+S" },
+  { id: "close-tab", label: "Закрити вкладку", def: "Mod+W" },
   { id: "mode", label: "Режим: редактор / live / читання", def: "Mod+E" },
   { id: "palette", label: "Палітра команд", def: "Mod+P" },
   { id: "switcher", label: "Швидкий перехід", def: "Mod+O" },
@@ -368,6 +369,12 @@ function comboFromEvent(event) {
 function runHotkey(id) {
   switch (id) {
     case "save": saveNote(); break;
+    case "close-tab": {
+      const index = activeGroupIndex();
+      const group = state.groups[index];
+      if (group && group.active) closeTab(group.active, index);
+      break;
+    }
     case "mode": toggleMode(); break;
     case "palette": showPalette(); break;
     case "switcher": showSwitcher(); break;
@@ -472,6 +479,11 @@ function renderTree() {
         if (isCollapsed) collapsed.delete(full); else collapsed.add(full);
         store.set("collapsed", JSON.stringify([...collapsed]));
         renderTree();
+      };
+      row.oncontextmenu = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        folderContext(event, full);
       };
       row.ondragover = (e) => { e.preventDefault(); row.classList.add("drop-target"); };
       row.ondragleave = () => row.classList.remove("drop-target");
@@ -583,13 +595,17 @@ function toggleBookmark(path) {
   toast(at >= 0 ? "знято із закладок" : "у закладках: " + path.split("/").pop());
 }
 
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => toast("скопійовано"), () => toast("буфер недоступний"));
+}
+
 function showCtx(x, y, items) {
   const menu = $("ctxMenu");
   menu.innerHTML = "";
   for (const item of items) {
     if (item.sep) { menu.appendChild(el("div", "ctx-sep")); continue; }
-    const row = el("div", "ctx-item" + (item.danger ? " danger" : ""), item.label);
-    row.onclick = () => { hideCtx(); item.run(); };
+    const row = el("div", "ctx-item" + (item.danger ? " danger" : "") + (item.disabled ? " disabled" : ""), item.label);
+    if (!item.disabled) row.onclick = () => { hideCtx(); item.run(); };
     menu.appendChild(row);
   }
   menu.classList.add("show");
@@ -603,16 +619,49 @@ function fileContext(event, path) {
   showCtx(event.clientX, event.clientY, [
     { label: "Відкрити", run: () => openNote(path) },
     { label: "Відкрити в другій панелі", run: () => openInSecond(path) },
+    { label: "Відкрити в новій панелі", run: () => addPane(path) },
     { sep: true },
     { label: "Перейменувати", run: () => renameNote(path) },
     { label: "Перемістити…", run: () => moveFilePrompt(path) },
     { label: "Дублювати", run: () => duplicateNote(path) },
-    { label: "Копіювати шлях", run: () => navigator.clipboard.writeText(path).then(() => toast("шлях скопійовано"), () => toast("буфер недоступний")) },
+    { label: "Копіювати шлях", run: () => copyText(path) },
     { sep: true },
     { label: state.bookmarks.includes(path) ? "Зняти із закладок" : "У закладки", run: () => toggleBookmark(path) },
     { sep: true },
     { label: "Видалити", danger: true, run: () => deleteNote(path) },
   ]);
+}
+
+function tabContext(event, groupIndex, path) {
+  showCtx(event.clientX, event.clientY, [
+    { label: "Закрити", run: () => closeTab(path, groupIndex) },
+    { label: "Закрити інші", run: () => closeOtherTabs(groupIndex, path) },
+    { label: "Закрити всі", run: () => closeAllTabs(groupIndex) },
+    { sep: true },
+    { label: "Відкрити в новій панелі", run: () => addPane(path) },
+    { label: "Перемістити в першу панель", disabled: groupIndex === 0, run: () => moveTabBetweenGroups(groupIndex, path, 0) },
+    { sep: true },
+    { label: "Копіювати шлях", run: () => copyText(path) },
+    { label: state.bookmarks.includes(path) ? "Зняти із закладок" : "У закладки", run: () => toggleBookmark(path) },
+  ]);
+}
+
+function closeOtherTabs(groupIndex, keepPath) {
+  const group = state.groups[groupIndex];
+  if (!group) return;
+  for (const path of group.tabs.slice()) {
+    if (path !== keepPath) closeTab(path, groupIndex);
+  }
+  const next = state.groups[groupIndex];
+  if (next) next.active = keepPath;
+  state.active = group1().active;
+  renderTabs(); renderTree(); paint(); scheduleWorkspaceSave();
+}
+
+function closeAllTabs(groupIndex) {
+  const group = state.groups[groupIndex];
+  if (!group) return;
+  for (const path of group.tabs.slice()) closeTab(path, groupIndex);
 }
 
 async function moveFilePrompt(path) {
@@ -646,6 +695,108 @@ async function newFolder() {
     await loadTree();
     emit("create", marker);
     toast("теку створено: " + name);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+function folderContext(event, folder) {
+  showCtx(event.clientX, event.clientY, [
+    { label: "Нова нотатка", run: () => newNoteInFolder(folder) },
+    { label: "Нова тека", run: () => newSubfolder(folder) },
+    { sep: true },
+    { label: "Перейменувати теку", run: () => renameFolder(folder) },
+    { label: "Копіювати шлях", run: () => copyText(folder) },
+    { sep: true },
+    { label: "Видалити теку", danger: true, run: () => deleteFolder(folder) },
+  ]);
+}
+
+async function newNoteInFolder(folder) {
+  const raw = prompt("Назва нотатки:", "Нова нотатка");
+  if (!raw) return;
+  let name = raw.trim().replace(/^\/+/, "");
+  if (!name) return;
+  if (!name.endsWith(".md")) name += ".md";
+  const path = folder ? folder + "/" + name : name;
+  try {
+    await ghPut(path, "# " + name.split("/").pop().replace(/\.md$/, "") + "\n\n", null, "add " + path);
+    state.pending.add(path);
+    await loadTree();
+    await openNote(path);
+    emit("create", path);
+    toast("створено " + path);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+async function newSubfolder(folder) {
+  const raw = prompt("Назва теки:", "Нова тека");
+  if (!raw) return;
+  const name = raw.trim().replace(/^\/+|\/+$/g, "");
+  if (!name) return;
+  const path = folder ? folder + "/" + name : name;
+  try {
+    await ghPut(path + "/.gitkeep", "", null, "add folder " + path);
+    await loadTree();
+    emit("create", path + "/.gitkeep");
+    toast("теку створено: " + path);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+async function renameFolder(folder) {
+  const next = prompt("Нове імʼя теки:", folder);
+  if (!next) return;
+  const target = next.trim().replace(/^\/+|\/+$/g, "");
+  if (!target || target === folder || target.startsWith(folder + "/")) return;
+  if (state.files.some((path) => path.startsWith(target + "/")) || state.folders.includes(target)) {
+    toast("тека вже існує");
+    return;
+  }
+  const prefix = folder + "/";
+  const affected = [...new Set([...state.files, ...state.folders.map((name) => name + "/.gitkeep")])]
+    .filter((path) => path.startsWith(prefix));
+  if (!affected.length) { toast("тека порожня"); return; }
+  try {
+    setState("перейменовую…");
+    for (const path of affected) {
+      const { text, sha } = await ghGet(path);
+      const moved = target + "/" + path.slice(prefix.length);
+      await ghPut(moved, text, null, "rename " + path + " → " + moved);
+      await ghDelete(path, sha);
+    }
+    for (const file of state.open) {
+      if (file.path.startsWith(prefix)) file.path = target + "/" + file.path.slice(prefix.length);
+    }
+    for (const group of state.groups) {
+      group.tabs = group.tabs.map((path) => path.startsWith(prefix) ? target + "/" + path.slice(prefix.length) : path);
+      if (group.active && group.active.startsWith(prefix)) group.active = target + "/" + group.active.slice(prefix.length);
+    }
+    state.active = group1().active;
+    syncSecond();
+    await loadTree(); renderTabs(); paint(); updateSplitButtons();
+    toast("теку перейменовано");
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+async function deleteFolder(folder) {
+  if (!confirm("Видалити теку " + folder + " і весь її вміст?")) return;
+  const prefix = folder + "/";
+  const targets = state.files.filter((path) => path.startsWith(prefix));
+  try {
+    setState("видаляю…");
+    for (const path of targets) {
+      try {
+        const { sha } = await ghGet(path);
+        await ghDelete(path, sha);
+      } catch { /* skip missing */ }
+    }
+    state.open = state.open.filter((file) => !file.path.startsWith(prefix));
+    for (const group of state.groups) {
+      group.tabs = group.tabs.filter((path) => !path.startsWith(prefix));
+      if (group.active && group.active.startsWith(prefix)) group.active = group.tabs[0] || null;
+    }
+    state.active = group1().active;
+    syncSecond();
+    await loadTree(); renderTabs(); paint(); updateSplitButtons(); applyMobilePane();
+    toast("теку видалено");
   } catch (error) { toast("Не вийшло: " + error.message); }
 }
 
@@ -791,6 +942,11 @@ function makeGroupTab(index, path, bar) {
     }
   };
   tab.onauxclick = (event) => { if (event.button === 1) closeTab(path, index); };
+  tab.oncontextmenu = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    tabContext(event, index, path);
+  };
   makeTabDraggable(tab, path, "group:" + index);
   tab.addEventListener("dragover", (event) => {
     if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
