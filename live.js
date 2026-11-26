@@ -82,7 +82,97 @@ class ImageWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-const INLINE_RE = /\*\*([^*\n]+)\*\*|__([^_\n]+)__|(?<![*_])\*([^*\n]+)\*(?![*_])|(?<![*_])_([^_\n]+)_(?![*_])|`([^`\n]+)`|==([^=\n]+)==|~~([^~\n]+)~~|!\[\[([^\]\n]+?)\]\]|\[\[([^\]\n]+?)\]\]|\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+let katexLoader = null;
+function ensureKatex() {
+  if (window.katex) return Promise.resolve(window.katex);
+  if (katexLoader) return katexLoader;
+  katexLoader = new Promise((resolve, reject) => {
+    if (!document.querySelector("link[data-katex]")) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css";
+      link.dataset.katex = "1";
+      document.head.appendChild(link);
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js";
+    script.onload = () => window.katex ? resolve(window.katex) : reject(new Error("katex missing"));
+    script.onerror = () => reject(new Error("katex load failed"));
+    document.head.appendChild(script);
+  });
+  return katexLoader;
+}
+
+let mermaidLoader = null;
+function ensureMermaid() {
+  if (window.mermaid) {
+    if (!window.__vaultMermaidReady) {
+      window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: document.documentElement.dataset.theme === "light" ? "default" : "dark" });
+      window.__vaultMermaidReady = true;
+    }
+    return Promise.resolve(window.mermaid);
+  }
+  if (mermaidLoader) return mermaidLoader;
+  mermaidLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js";
+    script.onload = () => {
+      try {
+        window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: document.documentElement.dataset.theme === "light" ? "default" : "dark" });
+        window.__vaultMermaidReady = true;
+        resolve(window.mermaid);
+      } catch (error) { reject(error); }
+    };
+    script.onerror = () => reject(new Error("mermaid load failed"));
+    document.head.appendChild(script);
+  });
+  return mermaidLoader;
+}
+
+let mermaidSeq = 0;
+class MathWidget extends WidgetType {
+  constructor(tex, display) {
+    super();
+    this.tex = tex;
+    this.display = !!display;
+  }
+  eq(other) { return other.tex === this.tex && other.display === this.display; }
+  toDOM() {
+    const node = document.createElement(this.display ? "div" : "span");
+    node.className = "cm-math " + (this.display ? "cm-math-display" : "cm-math-inline");
+    node.textContent = this.tex;
+    ensureKatex().then((katex) => {
+      try {
+        katex.render(this.tex, node, { displayMode: this.display, throwOnError: false, strict: false });
+        node.dataset.rendered = "1";
+      } catch { /* keep source text */ }
+    });
+    return node;
+  }
+  ignoreEvent() { return true; }
+}
+
+class MermaidWidget extends WidgetType {
+  constructor(src) {
+    super();
+    this.src = src;
+    this.id = "cm-mermaid-" + (++mermaidSeq);
+  }
+  eq(other) { return other.src === this.src; }
+  toDOM() {
+    const node = document.createElement("div");
+    node.className = "cm-mermaid";
+    node.textContent = this.src;
+    ensureMermaid().then((mermaid) => mermaid.render(this.id + "-svg", this.src)).then((result) => {
+      node.innerHTML = result.svg;
+      node.dataset.rendered = "1";
+    }).catch(() => { /* keep source text */ });
+    return node;
+  }
+  ignoreEvent() { return true; }
+}
+
+const INLINE_RE = /\*\*([^*\n]+)\*\*|__([^_\n]+)__|(?<![*_])\*([^*\n]+)\*(?![*_])|(?<![*_])_([^_\n]+)_(?![*_])|`([^`\n]+)`|==([^=\n]+)==|~~([^~\n]+)~~|!\[\[([^\]\n]+?)\]\]|\[\[([^\]\n]+?)\]\]|\[([^\]\n]+)\]\(([^)\s]+)\)|(?<!\\)\$([^$\n]+?)\$(?!\d)/g;
 const TAG_RE = /(^|[\s(])#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]*)/g;
 
 function decorateInline(decos, text, lineFrom, imageUrl) {
@@ -133,6 +223,8 @@ function decorateInline(decos, text, lineFrom, imageUrl) {
       mark(decos, at + 1, at + 1 + label.length, "cm-md-link");
       hide(decos, at, at + 1);
       hide(decos, at + 1 + label.length, at + full.length);
+    } else if (m[12] !== undefined) {
+      decos.push(Decoration.replace({ widget: new MathWidget(m[12], false) }).range(at, at + full.length));
     }
   }
   TAG_RE.lastIndex = 0;
@@ -471,6 +563,59 @@ function buildDecorations(state, imageUrl) {
 
     const text = line.text;
     const isActive = line.from === activeFrom;
+
+    if (!inCode && text.trim().startsWith("$$")) {
+      const first = text.trim().slice(2);
+      const same = first.endsWith("$$");
+      let end = n;
+      let tex = same ? first.slice(0, -2) : first;
+      if (!same) {
+        const parts = [first];
+        end = n + 1;
+        while (end <= doc.lines && !doc.line(end).text.trim().endsWith("$$")) { parts.push(doc.line(end).text); end++; }
+        if (end <= doc.lines) {
+          const tail = doc.line(end).text.trim();
+          if (tail.length > 2) parts.push(tail.slice(0, -2));
+          tex = parts.join("\n");
+        }
+      }
+      if (same || (end <= doc.lines && doc.line(end).text.trim().endsWith("$$"))) {
+        const from = line.from;
+        const to = doc.line(end).to;
+        if (!active(from, to)) {
+          decos.push(Decoration.replace({ widget: new MathWidget(tex.trim(), true), block: true }).range(from, to));
+          skip.push([from, to]);
+        } else {
+          for (let k = n; k <= end; k++) decos.push(Decoration.line({ class: "cm-math-src" }).range(doc.line(k).from));
+        }
+        n = end + 1;
+        continue;
+      }
+    }
+
+    if (!inCode) {
+      const fenced = text.match(/^\s*(```|~~~)\s*mermaid\b/i);
+      if (fenced) {
+        const marker = fenced[1];
+        const closeRe = new RegExp("^\\s*" + marker + "\\s*$");
+        let end = n + 1;
+        while (end <= doc.lines && !closeRe.test(doc.line(end).text)) end++;
+        if (end <= doc.lines) {
+          const from = line.from;
+          const to = doc.line(end).to;
+          if (!active(from, to)) {
+            const src = [];
+            for (let k = n + 1; k < end; k++) src.push(doc.line(k).text);
+            decos.push(Decoration.replace({ widget: new MermaidWidget(src.join("\n")), block: true }).range(from, to));
+            skip.push([from, to]);
+          } else {
+            for (let k = n; k <= end; k++) decos.push(Decoration.line({ class: "cm-code-line" }).range(doc.line(k).from));
+          }
+          n = end + 1;
+          continue;
+        }
+      }
+    }
 
     if (/^\s*(```|~~~)/.test(text)) {
       decos.push(Decoration.line({ class: "cm-code-fence" }).range(line.from));

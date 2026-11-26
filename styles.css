@@ -654,3 +654,9 @@ body.split #previewHost { display: none; }
   #right { bottom: 52px; }
   .mobile-switch { bottom: 62px; }
 }
+
+.cm-math-inline { display: inline; }
+.cm-math-display { display: block; text-align: center; margin: 8px 0; }
+.cm-mermaid { display: flex; justify-content: center; margin: 10px 0; overflow-x: auto; }
+.cm-mermaid svg { max-width: 100%; height: auto; }
+.cm-math-src { color: var(--muted); }

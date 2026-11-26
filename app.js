@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=64";
-import { initCanvas } from "./canvas.js?v=64";
-import { initCollab } from "./collab.js?v=64";
-import { initPlugins } from "./plugins.js?v=64";
-import { exportPdfFile } from "./pdf.js?v=64";
-import { initLive } from "./live.js?v=64";
-import { initDaily } from "./daily.js?v=64";
+import { initGraph } from "./graph.js?v=65";
+import { initCanvas } from "./canvas.js?v=65";
+import { initCollab } from "./collab.js?v=65";
+import { initPlugins } from "./plugins.js?v=65";
+import { exportPdfFile } from "./pdf.js?v=65";
+import { initLive } from "./live.js?v=65";
+import { initDaily } from "./daily.js?v=65";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v64";
+const BUILD = "v65";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -4887,4 +4887,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api };
