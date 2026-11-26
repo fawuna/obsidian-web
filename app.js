@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=50";
-import { initCanvas } from "./canvas.js?v=50";
-import { initCollab } from "./collab.js?v=50";
-import { initPlugins } from "./plugins.js?v=50";
-import { exportPdfFile } from "./pdf.js?v=50";
-import { initLive } from "./live.js?v=50";
-import { initDaily } from "./daily.js?v=50";
+import { initGraph } from "./graph.js?v=51";
+import { initCanvas } from "./canvas.js?v=51";
+import { initCollab } from "./collab.js?v=51";
+import { initPlugins } from "./plugins.js?v=51";
+import { exportPdfFile } from "./pdf.js?v=51";
+import { initLive } from "./live.js?v=51";
+import { initDaily } from "./daily.js?v=51";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v50";
+const BUILD = "v51";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2723,11 +2723,43 @@ function renderSwitcher() {
 
 /* ---------------- panes / modes ---------------- */
 function showPane(pane) {
-  ["files", "search", "tags", "plugins"].forEach((p) => { const node = $(p + "Pane"); if (node) node.style.display = p === pane ? "" : "none"; });
-  $("paneTitle").textContent = pane === "files" ? "Файли" : pane === "search" ? "Пошук" : pane === "tags" ? "Теги" : "Плагіни";
-  document.querySelectorAll("#ribbon [data-pane]").forEach((b) => b.classList.toggle("active", b.dataset.pane === pane));
+  const LEFT_TABS = ["files", "search", "bookmarks", "tags", "plugins"];
+  if (!LEFT_TABS.includes(pane)) pane = "files";
+  store.set("leftTab", pane);
+  LEFT_TABS.forEach((p) => { const node = $(p + "Pane"); if (node) node.style.display = p === pane ? "" : "none"; });
+  const toolbar = $("leftToolbar");
+  if (toolbar) toolbar.style.display = pane === "files" ? "flex" : "none";
+  renderLeftTabs();
   if (pane === "tags") renderTags();
+  if (pane === "bookmarks") renderBookmarks();
   if (pane === "plugins") emit("plugins:pane");
+}
+
+function renderLeftTabs() {
+  const host = $("leftTabs");
+  if (!host) return;
+  const tabs = [
+    { id: "files", label: "Files", icon: "🗂" },
+    { id: "search", label: "Search", icon: "🔍" },
+    { id: "bookmarks", label: "Bookmarks", icon: "🔖" },
+    { id: "tags", label: "Tags", icon: "🏷" },
+    { id: "plugins", label: "Plugins", icon: "🧩" },
+  ];
+  const active = store.get("leftTab", "files");
+  host.innerHTML = "";
+  for (const tab of tabs) {
+    const head = el("div", "workspace-tab-header tappable" + (tab.id === active ? " is-active" : ""));
+    head.dataset.type = tab.id;
+    head.setAttribute("aria-label", tab.label);
+    head.title = tab.label;
+    const inner = el("div", "workspace-tab-header-inner");
+    const icon = el("div", "workspace-tab-header-inner-icon", tab.icon);
+    const title = el("div", "workspace-tab-header-inner-title", tab.label);
+    inner.append(icon, title);
+    head.appendChild(inner);
+    head.onclick = () => showPane(tab.id);
+    host.appendChild(head);
+  }
 }
 const MODES = ["edit", "live", "split", "read"];
 function setMode(mode) {
@@ -3335,7 +3367,45 @@ $("navFwd").onclick = goFwd;
 $("openGraph").onclick = () => setView(state.view === "graph" ? "note" : "graph");
 $("openCanvas").onclick = () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas — створи 🎨"); };
 $("newCanvas").onclick = () => { if (canvasApi) canvasApi.create(); };
-document.querySelectorAll("#ribbon [data-pane]").forEach((b) => { b.onclick = () => showPane(b.dataset.pane); });
+$("newFolderBtn").onclick = () => newFolder();
+$("leftAddTab").onclick = (event) => {
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  showCtx(rect.left, rect.bottom + 4, [
+    { label: "Files", run: () => showPane("files") },
+    { label: "Search", run: () => showPane("search") },
+    { label: "Bookmarks", run: () => showPane("bookmarks") },
+    { label: "Tags", run: () => showPane("tags") },
+    { label: "Plugins", run: () => showPane("plugins") },
+  ]);
+};
+$("collapseAll").onclick = () => {
+  const all = [];
+  const walk = (node, prefix) => {
+    for (const key of Object.keys(node)) {
+      if (node[key] === null) continue;
+      const full = prefix ? prefix + "/" + key : key;
+      all.push(full);
+      walk(node[key], full);
+    }
+  };
+  const files = state.files.filter((p) => p.endsWith(".md") || p.endsWith(".canvas"));
+  const tree = {};
+  for (const path of files) {
+    const parts = path.split("/");
+    let node = tree;
+    for (let i = 0; i < parts.length - 1; i++) { node[parts[i]] = node[parts[i]] || {}; node = node[parts[i]]; }
+    node[parts[parts.length - 1]] = null;
+  }
+  for (const folder of state.folders) {
+    const parts = folder.split("/");
+    let node = tree;
+    for (const part of parts) { if (!node[part] || node[part] === null) node[part] = {}; node = node[part]; }
+  }
+  walk(tree, "");
+  store.set("collapsed", JSON.stringify(all));
+  renderTree();
+};
 
 /* settings */
 function renderAccentPresets() {

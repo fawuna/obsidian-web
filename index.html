@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=50">
+<link rel="stylesheet" href="styles.css?v=51">
 </head>
 <body>
 
@@ -54,37 +54,41 @@
 
   <div class="workspace">
     <nav id="ribbon">
-      <button data-pane="files" class="active" title="Файли">🗂</button>
-      <button data-pane="search" title="Пошук">🔍</button>
-      <button data-pane="tags" title="Теги">🏷</button>
-      <button data-pane="plugins" title="Плагіни">🧩</button>
-      <div class="spacer"></div>
+      <button id="openSwitcher" title="Швидкий перехід (Ctrl+O)">⚡</button>
       <button id="openGraph" title="Graph view (Ctrl+G)">🕸</button>
       <button id="openCanvas" title="Canvas">🎨</button>
       <button id="openPalette" title="Command palette (Ctrl+P)">⌘</button>
-      <button id="openSwitcher" title="Швидкий перехід (Ctrl+O)">⚡</button>
+      <div class="spacer"></div>
       <button id="themeBtn" title="Тема">🌓</button>
       <button id="openSettings" title="Налаштування">⚙</button>
     </nav>
 
     <aside id="left">
-      <div class="pane-head">
-        <span class="title" id="paneTitle">Файли</span>
-        <button class="icon-btn" id="newNote" title="Нова нотатка">＋</button>
-        <button class="icon-btn" id="newCanvas" title="Новий canvas">🎨</button>
-        <button class="icon-btn" id="reloadTree" title="Оновити">⟳</button>
+      <div class="workspace-tab-header-container">
+        <div class="workspace-tab-header-container-inner" id="leftTabs"></div>
+        <button class="clickable-icon left-add" id="leftAddTab" title="Нова вкладка">＋</button>
       </div>
-      <div style="padding:6px 8px;border-bottom:1px solid var(--line)">
+      <div class="left-toolbar" id="leftToolbar">
+        <button class="clickable-icon" id="newNote" title="Нова нотатка">＋</button>
+        <button class="clickable-icon" id="newFolderBtn" title="Нова тека">🗀</button>
+        <button class="clickable-icon" id="newCanvas" title="Новий canvas">🎨</button>
+        <button class="clickable-icon" id="collapseAll" title="Згорнути все">⊟</button>
+        <div class="spacer"></div>
+        <button class="clickable-icon" id="reloadTree" title="Оновити">⟳</button>
+      </div>
+      <div class="pane-body left-panel" id="filesPane">
         <input class="filter" id="filter" placeholder="Фільтр файлів…" autocomplete="off">
+        <div id="tree"></div>
       </div>
-      <div id="bookmarks" class="bookmarks"></div>
-      <div class="pane-body" id="filesPane"><div id="tree"></div></div>
-      <div class="pane-body" id="searchPane" style="display:none">
+      <div class="pane-body left-panel" id="searchPane" style="display:none">
         <input class="filter" id="searchInput" placeholder="Шукати по всьому волту…" autocomplete="off">
         <div id="searchResults" style="margin-top:8px"></div>
       </div>
-      <div class="pane-body" id="tagsPane" style="display:none"></div>
-      <div class="pane-body" id="pluginsPane" style="display:none"></div>
+      <div class="pane-body left-panel" id="bookmarksPane" style="display:none">
+        <div id="bookmarks" class="bookmarks"></div>
+      </div>
+      <div class="pane-body left-panel" id="tagsPane" style="display:none"></div>
+      <div class="pane-body left-panel" id="pluginsPane" style="display:none"></div>
     </aside>
 
     <main>
@@ -280,7 +284,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=50"></script>
-<script type="module" src="app.js?v=50"></script>
+<script src="vendor/marked.min.js?v=51"></script>
+<script type="module" src="app.js?v=51"></script>
 </body>
 </html>
