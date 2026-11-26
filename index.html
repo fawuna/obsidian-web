@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=32">
+<link rel="stylesheet" href="styles.css?v=35">
 </head>
 <body>
 
@@ -93,9 +93,12 @@
         <textarea id="editor" spellcheck="false" placeholder="Обери нотатку або створи нову (＋)"></textarea>
       </div>
       <div id="splitter" title="Потягни, щоб змінити ширину"></div>
-      <div id="pane2" class="editor-host" data-pane="2">
-        <div class="hl-layer" aria-hidden="true"><pre id="hlCode2"></pre></div>
-        <textarea id="editor2" spellcheck="false" placeholder="Друга панель: правою кнопкою по файлу → «Відкрити в другій панелі»"></textarea>
+      <div id="pane2" class="pane2">
+        <div id="pane2Tabs" class="tabs pane2-tabs"></div>
+        <div class="editor-host" data-pane="2">
+          <div class="hl-layer" aria-hidden="true"><pre id="hlCode2"></pre></div>
+          <textarea id="editor2" spellcheck="false" placeholder="Друга панель: перетягни вкладку сюди або правою кнопкою по файлу → «Відкрити в другій панелі»"></textarea>
+        </div>
       </div>
       <div id="findBar" class="find-bar">
         <input id="findInput" placeholder="Знайти…" autocomplete="off" spellcheck="false">
@@ -227,7 +230,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=32"></script>
-<script type="module" src="app.js?v=32"></script>
+<script src="vendor/marked.min.js?v=35"></script>
+<script type="module" src="app.js?v=35"></script>
 </body>
 </html>

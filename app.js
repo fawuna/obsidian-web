@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=32";
-import { initCanvas } from "./canvas.js?v=32";
-import { initCollab } from "./collab.js?v=32";
-import { initPlugins } from "./plugins.js?v=32";
-import { exportPdfFile } from "./pdf.js?v=32";
-import { initLive } from "./live.js?v=32";
-import { initDaily } from "./daily.js?v=32";
+import { initGraph } from "./graph.js?v=35";
+import { initCanvas } from "./canvas.js?v=35";
+import { initCollab } from "./collab.js?v=35";
+import { initPlugins } from "./plugins.js?v=35";
+import { exportPdfFile } from "./pdf.js?v=35";
+import { initLive } from "./live.js?v=35";
+import { initDaily } from "./daily.js?v=35";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v32";
+const BUILD = "v35";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -480,6 +480,63 @@ function updateSplitButtons() {
   }
 }
 
+function renderPane2Tabs() {
+  const host = $("pane2Tabs");
+  if (!host) return;
+  host.innerHTML = "";
+  if (!state.second) return;
+  const file = state.open.find((f) => f.path === state.second);
+  if (!file) return;
+  const tab = el("div", "tab active");
+  tab.appendChild(el("span", "name", file.path.split("/").pop().replace(/\.md$/, "")));
+  if (file.dirty) tab.appendChild(el("span", "dot", "•"));
+  const x = el("span", "close", "✕");
+  x.onclick = (event) => { event.stopPropagation(); closeSecond(); };
+  tab.appendChild(x);
+  tab.onclick = () => {
+    state.active = file.path;
+    pushHistoryState(file.path);
+    renderTabs();
+    paint();
+  };
+  makeTabDraggable(tab, file.path, "pane2");
+  host.appendChild(tab);
+  host.ondragover = (event) => {
+    if ([...event.dataTransfer.types].includes("text/vault-tab")) event.preventDefault();
+  };
+  host.ondrop = (event) => {
+    const path = event.dataTransfer.getData("text/vault-tab");
+    const source = event.dataTransfer.getData("text/vault-tab-source");
+    if (!path) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (source !== "pane2") moveTabToSecond(path);
+  };
+}
+
+async function moveTabToSecond(path) {
+  if (!path) return;
+  if (!state.open.some((f) => f.path === path)) await openNote(path);
+  if (!state.open.some((f) => f.path === path)) return;
+  state.second = path;
+  document.body.classList.add("split");
+  paint();
+  updateSplitButtons();
+}
+
+function returnFromSecond(path) {
+  state.second = null;
+  document.body.classList.remove("split");
+  $("pane2").style.flex = "";
+  if (path && state.open.some((f) => f.path === path)) {
+    state.active = path;
+    pushHistoryState(path);
+  }
+  renderTabs();
+  paint();
+  updateSplitButtons();
+}
+
 function syncHighlight2() {
   const pre = $("hlCode2");
   if (!pre) return;
@@ -495,6 +552,7 @@ function paintSecond() {
   ed.value = file ? file.text : "";
   ed.readOnly = !file;
   syncHighlight2();
+  renderPane2Tabs();
 }
 
 /* ---------------- notes ---------------- */
@@ -558,6 +616,35 @@ function closeTab(path) {
   renderTabs(); renderTree(); paint();
 }
 
+function clearTabDropMarkers() {
+  document.querySelectorAll(".tab.drop-before, .tab.drop-after").forEach((tab) => tab.classList.remove("drop-before", "drop-after"));
+}
+
+function makeTabDraggable(tab, path, source) {
+  tab.draggable = true;
+  tab.addEventListener("dragstart", (event) => {
+    event.dataTransfer.setData("text/vault-tab", path);
+    event.dataTransfer.setData("text/vault-tab-source", source);
+    event.dataTransfer.effectAllowed = "move";
+    tab.classList.add("dragging");
+  });
+  tab.addEventListener("dragend", () => {
+    tab.classList.remove("dragging");
+    clearTabDropMarkers();
+  });
+}
+
+function reorderTabs(fromPath, toPath, after) {
+  const from = state.open.findIndex((file) => file.path === fromPath);
+  if (from < 0) return;
+  const [file] = state.open.splice(from, 1);
+  let at = toPath ? state.open.findIndex((item) => item.path === toPath) : state.open.length;
+  if (at < 0) at = state.open.length;
+  if (after) at += 1;
+  state.open.splice(at, 0, file);
+  renderTabs();
+}
+
 function renderTabs() {
   const host = $("tabs");
   host.innerHTML = "";
@@ -570,8 +657,44 @@ function renderTabs() {
     tab.appendChild(x);
     tab.onclick = () => { state.active = file.path; setView("note"); pushHistoryState(file.path); renderTabs(); renderTree(); paint(); };
     tab.onauxclick = (e) => { if (e.button === 1) closeTab(file.path); };
+    makeTabDraggable(tab, file.path, "main");
+    tab.addEventListener("dragover", (event) => {
+      if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      const rect = tab.getBoundingClientRect();
+      const after = event.clientX > rect.left + rect.width / 2;
+      tab.classList.toggle("drop-after", after);
+      tab.classList.toggle("drop-before", !after);
+    });
+    tab.addEventListener("dragleave", () => tab.classList.remove("drop-before", "drop-after"));
+    tab.addEventListener("drop", (event) => {
+      const path = event.dataTransfer.getData("text/vault-tab");
+      const source = event.dataTransfer.getData("text/vault-tab-source");
+      if (!path) return;
+      event.preventDefault();
+      event.stopPropagation();
+      clearTabDropMarkers();
+      const rect = tab.getBoundingClientRect();
+      const after = event.clientX > rect.left + rect.width / 2;
+      if (source === "pane2") returnFromSecond(path);
+      else reorderTabs(path, file.path, after);
+    });
     host.appendChild(tab);
   }
+  host.ondragover = (event) => {
+    if ([...event.dataTransfer.types].includes("text/vault-tab")) event.preventDefault();
+  };
+  host.ondrop = (event) => {
+    if (event.target.closest(".tab")) return;
+    const path = event.dataTransfer.getData("text/vault-tab");
+    const source = event.dataTransfer.getData("text/vault-tab-source");
+    if (!path) return;
+    event.preventDefault();
+    if (source === "pane2") returnFromSecond(path);
+    else reorderTabs(path, null, false);
+  };
+  renderPane2Tabs();
 }
 
 function paint() {
@@ -1545,6 +1668,7 @@ $("editor2").addEventListener("input", () => {
   state.index.set(file.path, file.text);
   setState("не збережено", "warn");
   syncHighlight2();
+  renderPane2Tabs();
   clearTimeout($("editor2")._t);
   $("editor2")._t = setTimeout(() => saveNote(true, file), 1500);
 });
@@ -1575,6 +1699,24 @@ $("splitter").addEventListener("mousedown", (e) => {
   };
   window.addEventListener("mousemove", move);
   window.addEventListener("mouseup", up);
+});
+
+$("pane2").addEventListener("dragover", (event) => {
+  if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  $("pane2").classList.add("drop-target");
+});
+$("pane2").addEventListener("dragleave", (event) => {
+  if (!$("pane2").contains(event.relatedTarget)) $("pane2").classList.remove("drop-target");
+});
+$("pane2").addEventListener("drop", (event) => {
+  const path = event.dataTransfer.getData("text/vault-tab");
+  const source = event.dataTransfer.getData("text/vault-tab-source");
+  $("pane2").classList.remove("drop-target");
+  if (!path) return;
+  event.preventDefault();
+  if (source !== "pane2") moveTabToSecond(path);
 });
 
 $("tree").addEventListener("contextmenu", (e) => {
