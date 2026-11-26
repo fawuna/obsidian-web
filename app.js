@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=77";
-import { initCanvas } from "./canvas.js?v=77";
-import { initCollab } from "./collab.js?v=77";
-import { initPlugins } from "./plugins.js?v=77";
-import { exportPdfFile } from "./pdf.js?v=77";
-import { initLive } from "./live.js?v=77";
-import { initDaily } from "./daily.js?v=77";
+import { initGraph } from "./graph.js?v=78";
+import { initCanvas } from "./canvas.js?v=78";
+import { initCollab } from "./collab.js?v=78";
+import { initPlugins } from "./plugins.js?v=78";
+import { exportPdfFile } from "./pdf.js?v=78";
+import { initLive } from "./live.js?v=78";
+import { initDaily } from "./daily.js?v=78";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v77";
+const BUILD = "v78";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2386,6 +2386,57 @@ function toggleHeadingFold(heading) {
   }
 }
 
+function transformInlineBlocks(text) {
+  let out = text.replace(/!\[\[([^\]]+)\]\]/g, (m, inner) => {
+    const parts = inner.split("|").map((part) => part.trim());
+    const name = parts[0];
+    const size = parts[1] && /^\d+$/.test(parts[1]) ? parts[1] : "";
+    const fileUrl = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + name.split("#")[0].replace(/^\.?\//, "");
+    if (/\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(name)) {
+      return '<img src="' + encodeURI(fileUrl) + '" alt="' + escapeAttr(name) + '"' + (size ? ' width="' + size + '"' : "") + ">";
+    }
+    if (/\.pdf$/i.test(name)) {
+      return '<iframe class="pdf-embed" src="' + encodeURI(fileUrl) + '"' + (size ? ' width="' + size + '"' : "") + ' title="' + escapeAttr(name) + '"></iframe>';
+    }
+    if (/\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i.test(name)) {
+      return '<audio class="media-embed" controls preload="none" src="' + encodeURI(fileUrl) + '"' + (size ? ' style="width:' + size + 'px"' : "") + "></audio>";
+    }
+    if (/\.(mp4|webm|ogv|mov|mkv|m4v)$/i.test(name)) {
+      return '<video class="media-embed" controls preload="none" src="' + encodeURI(fileUrl) + '"' + (size ? ' style="width:' + size + 'px"' : "") + "></video>";
+    }
+    return '<div class="embed-note" data-note="' + encodeURIComponent(name) + '">…</div>';
+  });
+  out = out.replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (m, t, l) => {
+    const target = t.trim();
+    const label = (l ? l.slice(1) : t).trim();
+    const safe = target.replace(/"/g, "&quot;");
+    return '<a class="internal-link" data-target="' + safe + '" data-href="' + safe + '" href="' + encodeURI(target) + '" aria-label="' + safe + '" data-tooltip-position="top" target="_blank" rel="noopener nofollow">' + escapeHtml(label) + "</a>";
+  });
+  out = out.replace(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]{1,})/g, (m, pre, tag) =>
+    pre + '<a class="tag" data-tag="' + escapeHtml(tag) + '" href="#' + escapeHtml(tag) + '" target="_blank" rel="noopener nofollow">#' + escapeHtml(tag) + "</a>");
+  out = out.replace(/==([^=\n]+)==/g, '<mark data-highlight="">$1</mark>');
+  out = out.replace(/^>\s*\[!(\w+)\]([+-]?)\s*(.*)$/gm, (m, kind, fold, title) =>
+    "> <span class=\"callout-kind\" data-kind=\"" + kind.toLowerCase() + "\" data-fold=\"" + fold + "\">" + escapeHtml(title) + "</span>");
+  return out;
+}
+
+function extractFootnotes(body) {
+  const defs = new Map();
+  const lines = String(body).split("\n");
+  const kept = [];
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^\[\^([^\]\s]+)\]:[ \t]*(.*)$/);
+    if (!match) { kept.push(lines[i]); continue; }
+    let text = match[2];
+    while (i + 1 < lines.length && /^(?: {2,}|\t)/.test(lines[i + 1])) {
+      text += "\n" + lines[i + 1].replace(/^(?: {2,}|\t)/, "");
+      i++;
+    }
+    defs.set(match[1], text);
+  }
+  return { body: kept.join("\n"), defs };
+}
+
 function markdownToHtml(body) {
   const fences = [];
   let src = body.replace(/(^|\n)(```|~~~)[\s\S]*?(?:\n\2\s*(?=\n|$)|$)/g, (m, pre) => {
@@ -2404,30 +2455,23 @@ function markdownToHtml(body) {
     return pre + "\u0000M" + (maths.length - 1) + "\u0000";
   });
 
-  src = src.replace(/!\[\[([^\]]+)\]\]/g, (m, inner) => {
-    const parts = inner.split("|").map((part) => part.trim());
-    const name = parts[0];
-    const size = parts[1] && /^\d+$/.test(parts[1]) ? parts[1] : "";
-    const fileUrl = "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + name.split("#")[0].replace(/^\.?\//, "");
-    if (/\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(name)) {
-      return '<img src="' + encodeURI(fileUrl) + '" alt="' + escapeAttr(name) + '"' + (size ? ' width="' + size + '"' : "") + ">";
-    }
-    if (/\.pdf$/i.test(name)) {
-      return '<iframe class="pdf-embed" src="' + encodeURI(fileUrl) + '"' + (size ? ' width="' + size + '"' : "") + ' title="' + escapeAttr(name) + '"></iframe>';
-    }
-    return '<div class="embed-note" data-note="' + encodeURIComponent(name) + '">…</div>';
+  const footnote = extractFootnotes(src);
+  src = footnote.body;
+  const footnoteOrder = [];
+  const footnoteCounts = new Map();
+  const footnoteAnchors = new Map();
+  src = src.replace(/\[\^([^\]\s]+)\]/g, (m, id) => {
+    if (!footnote.defs.has(id)) return m;
+    if (!footnoteOrder.includes(id)) footnoteOrder.push(id);
+    const count = (footnoteCounts.get(id) || 0) + 1;
+    footnoteCounts.set(id, count);
+    const anchor = count === 1 ? "fnref-" + id : "fnref-" + id + "-" + count;
+    if (!footnoteAnchors.has(id)) footnoteAnchors.set(id, []);
+    footnoteAnchors.get(id).push(anchor);
+    return "\u0000R" + footnoteOrder.indexOf(id) + ":" + count + "\u0000";
   });
-  src = src.replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (m, t, l) => {
-    const target = t.trim();
-    const label = (l ? l.slice(1) : t).trim();
-    const safe = target.replace(/"/g, "&quot;");
-    return '<a class="internal-link" data-target="' + safe + '" data-href="' + safe + '" href="' + encodeURI(target) + '" aria-label="' + safe + '" data-tooltip-position="top" target="_blank" rel="noopener nofollow">' + escapeHtml(label) + "</a>";
-  });
-  src = src.replace(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]{1,})/g, (m, pre, tag) =>
-    pre + '<a class="tag" data-tag="' + escapeHtml(tag) + '" href="#' + escapeHtml(tag) + '" target="_blank" rel="noopener nofollow">#' + escapeHtml(tag) + "</a>");
-  src = src.replace(/==([^=\n]+)==/g, '<mark data-highlight="">$1</mark>');
-  src = src.replace(/^>\s*\[!(\w+)\]([+-]?)\s*(.*)$/gm, (m, kind, fold, title) =>
-    "> <span class=\"callout-kind\" data-kind=\"" + kind.toLowerCase() + "\" data-fold=\"" + fold + "\">" + escapeHtml(title) + "</span>");
+
+  src = transformInlineBlocks(src);
   src = src.replace(/\u0000F(\d+)\u0000/g, (m, i) => fences[Number(i)]);
 
   let html;
@@ -2437,6 +2481,25 @@ function markdownToHtml(body) {
       "<pre>" + escapeHtml(src) + "</pre>";
   } else {
     html = marked.parse(src, { breaks: true, mangle: false, headerIds: false });
+  }
+  html = html.replace(/\u0000R(\d+):(\d+)\u0000/g, (m, index, count) => {
+    const id = footnoteOrder[Number(index)];
+    if (id === undefined) return "";
+    const number = Number(index) + 1;
+    const anchor = Number(count) === 1 ? "fnref-" + id : "fnref-" + id + "-" + count;
+    return '<sup class="footnote-ref"><a href="#fn-' + escapeAttr(id) + '" id="' + escapeAttr(anchor) + '" data-footnote-ref="' + escapeAttr(id) + '">' + number + "</a></sup>";
+  });
+  if (footnoteOrder.length && window.marked) {
+    const items = footnoteOrder.map((id) => {
+      const raw = footnote.defs.get(id) || "";
+      const item = window.marked.parseInline(transformInlineBlocks(raw), { mangle: false, headerIds: false });
+      const anchors = footnoteAnchors.get(id) || [];
+      const backrefs = anchors.map((anchor, index) =>
+        '<a href="#' + escapeAttr(anchor) + '" class="footnote-backref" data-footnote-backref="' + escapeAttr(anchor) + '">↩' + (index ? "<sup>" + (index + 1) + "</sup>" : "") + "</a>"
+      ).join(" ");
+      return '<li id="fn-' + escapeAttr(id) + '" data-footnote="' + escapeAttr(id) + '">' + item + " " + backrefs + "</li>";
+    }).join("");
+    html += '<section class="footnotes" data-footnotes="1"><hr><ol>' + items + "</ol></section>";
   }
   html = html.replace(/\u0000D(\d+)\u0000/g, (m, index) => {
     const tex = maths[Number(index)] ? maths[Number(index)].tex : "";
@@ -2696,6 +2759,17 @@ function wireRendered(root, sourceText, lineOffset = 0) {
       if (!hit) { toast("Немає такої нотатки: " + fileTarget); return; }
       await openNote(hit);
       if (anchor) setTimeout(() => jumpToAnchor(anchor), 120);
+    };
+  });
+  root.querySelectorAll(".footnote-ref a, .footnote-backref").forEach((a) => {
+    a.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const href = a.getAttribute("href") || "";
+      if (!href.startsWith("#")) return;
+      const id = href.slice(1);
+      const target = root.querySelector('[id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+      if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
     };
   });
   root.querySelectorAll("img").forEach((img) => {

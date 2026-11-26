@@ -82,6 +82,27 @@ class ImageWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
+const AUDIO_RE = /\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i;
+const VIDEO_RE = /\.(mp4|webm|ogv|mov|mkv|m4v)$/i;
+
+class MediaWidget extends WidgetType {
+  constructor(src, kind) {
+    super();
+    this.src = src;
+    this.kind = kind;
+  }
+  eq(other) { return other.src === this.src && other.kind === this.kind; }
+  toDOM() {
+    const media = document.createElement(this.kind);
+    media.className = "cm-media-embed";
+    media.src = this.src;
+    media.controls = true;
+    media.preload = "none";
+    return media;
+  }
+  ignoreEvent() { return true; }
+}
+
 const noteEmbedCache = new Map();
 class NoteEmbedWidget extends WidgetType {
   constructor(name) {
@@ -254,6 +275,10 @@ function decorateInline(decos, text, lineFrom, imageUrl) {
       if (IMAGE_RE.test(name)) {
         const src = imageUrl(name);
         decos.push(Decoration.replace({ widget: new ImageWidget(src, name) }).range(at, at + full.length));
+      } else if (AUDIO_RE.test(name)) {
+        decos.push(Decoration.replace({ widget: new MediaWidget(imageUrl(name), "audio") }).range(at, at + full.length));
+      } else if (VIDEO_RE.test(name)) {
+        decos.push(Decoration.replace({ widget: new MediaWidget(imageUrl(name), "video") }).range(at, at + full.length));
       } else if (name) {
         decos.push(Decoration.replace({ widget: new NoteEmbedWidget(name) }).range(at, at + full.length));
       }
