@@ -470,6 +470,7 @@ body.view-media #editor, body.view-media #previewHost, body.view-media #liveHost
 body.view-base #editor, body.view-base #previewHost, body.view-base #liveHost, body.view-base #splitter, body.view-base #pane2, body.view-base #findBar { display: none !important; }
 .base-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg-2); }
 .base-bar .spacer { flex: 1; }
+.base-bar select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; color: var(--text); font-size: 12px; }
 #baseName { font-size: 13px; color: var(--text); white-space: nowrap; }
 #baseViewSelect { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
 #baseSearch { width: 220px; }

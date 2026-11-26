@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=104";
-import { initCanvas } from "./canvas.js?v=104";
-import { initCollab } from "./collab.js?v=104";
-import { initPlugins } from "./plugins.js?v=104";
-import { exportPdfFile } from "./pdf.js?v=104";
-import { initLive } from "./live.js?v=104";
-import { initDaily } from "./daily.js?v=104";
-import { initRecorder } from "./recorder.js?v=104";
-import { initPdfViewer } from "./pdfviewer.js?v=104";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=104";
+import { initGraph } from "./graph.js?v=105";
+import { initCanvas } from "./canvas.js?v=105";
+import { initCollab } from "./collab.js?v=105";
+import { initPlugins } from "./plugins.js?v=105";
+import { exportPdfFile } from "./pdf.js?v=105";
+import { initLive } from "./live.js?v=105";
+import { initDaily } from "./daily.js?v=105";
+import { initRecorder } from "./recorder.js?v=105";
+import { initPdfViewer } from "./pdfviewer.js?v=105";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=105";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v104";
+const BUILD = "v105";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -5079,16 +5079,14 @@ function renderBaseTable(data) {
   if (count) count.textContent = data.rows.length + " рядків";
 }
 
-async function renderBase() {
-  if (!baseConfig) return;
-  await ensureIndex();
-  const docs = [];
-  for (const path of state.files) {
-    if (!path.endsWith(".md")) continue;
-    const text = state.index.get(path);
-    if (text != null) docs.push({ path, text });
-  }
-  const data = baseBuild(baseConfig, docs);
+function baseColumnKey(column) {
+  if (column.source === "formula") return "formula." + column.key;
+  if (column.source === "file") return "file." + column.key;
+  if (column.source === "tags") return "tags";
+  return column.key;
+}
+
+function renderBaseControls(data) {
   const select = $("baseViewSelect");
   if (select) {
     select.innerHTML = "";
@@ -5100,6 +5098,36 @@ async function renderBase() {
     });
     select.value = String(Math.min(baseViewIndex, data.views.length - 1));
   }
+  const groupSelect = $("baseGroupBy");
+  if (groupSelect) {
+    groupSelect.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "Без груп";
+    groupSelect.appendChild(none);
+    for (const column of data.columns) {
+      const option = document.createElement("option");
+      option.value = baseColumnKey(column);
+      option.textContent = column.label;
+      groupSelect.appendChild(option);
+    }
+    const groupBy = data.view && data.view.groupBy;
+    const current = groupBy ? (typeof groupBy === "string" ? groupBy : (groupBy.property || "")) : "";
+    groupSelect.value = current;
+  }
+}
+
+async function renderBase() {
+  if (!baseConfig) return;
+  await ensureIndex();
+  const docs = [];
+  for (const path of state.files) {
+    if (!path.endsWith(".md")) continue;
+    const text = state.index.get(path);
+    if (text != null) docs.push({ path, text });
+  }
+  const data = baseBuild(baseConfig, docs);
+  renderBaseControls(data);
   const name = $("baseName");
   if (name) name.textContent = (basePath ? noteName(basePath) : "Base") + " · " + (data.view.name || "Table");
   renderBaseView(data);
@@ -5150,17 +5178,7 @@ function renderBasePreview(config, docs, viewIndex = 0) {
   baseSort = null;
   setView("base");
   const data = baseBuild(baseConfig, docs || []);
-  const select = $("baseViewSelect");
-  if (select) {
-    select.innerHTML = "";
-    data.views.forEach((view, index) => {
-      const option = document.createElement("option");
-      option.value = String(index);
-      option.textContent = view.name || ("View " + (index + 1));
-      select.appendChild(option);
-    });
-    select.value = String(Math.min(baseViewIndex, data.views.length - 1));
-  }
+  renderBaseControls(data);
   renderBaseView(data);
   return {
     rows: data.rows.length,
@@ -5757,6 +5775,26 @@ $("openCanvas").onclick = () => { const c = state.files.find((p) => p.endsWith("
 $("newCanvas").onclick = () => { if (canvasApi) canvasApi.create(); };
 $("openBase").onclick = createBase;
 $("baseViewSelect").onchange = () => { baseViewIndex = Number($("baseViewSelect").value) || 0; baseSort = null; renderBase(); };
+$("baseGroupBy").onchange = () => {
+  if (!baseConfig) return;
+  if (!Array.isArray(baseConfig.views) || !baseConfig.views.length) {
+    baseConfig.views = [{ type: "table", name: "Table", order: [] }];
+  }
+  const view = baseConfig.views[Math.min(baseViewIndex, baseConfig.views.length - 1)];
+  const value = $("baseGroupBy").value;
+  if (value) view.groupBy = value; else delete view.groupBy;
+  renderBase();
+};
+$("baseSave").onclick = async () => {
+  if (!basePath || !baseConfig) { toast("Немає .base для збереження"); return; }
+  try {
+    const yaml = await ensureJsYaml();
+    const text = yaml.dump(baseConfig, { lineWidth: 120 });
+    const got = await ghGet(basePath);
+    await ghPut(basePath, text, got.sha, "base: " + basePath);
+    toast("базу збережено");
+  } catch (error) { toast("Не збереглось: " + error.message); }
+};
 $("baseSearch").oninput = () => { clearTimeout($("baseSearch")._t); $("baseSearch")._t = setTimeout(renderBase, 150); };
 $("baseRefresh").onclick = () => renderBase();
 $("baseSource").onclick = () => { if (basePath) window.open(imageUrlFor(basePath), "_blank", "noopener"); };

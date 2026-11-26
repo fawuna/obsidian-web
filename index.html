@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=104">
+<link rel="stylesheet" href="styles.css?v=105">
 </head>
 <body>
 
@@ -185,9 +185,11 @@
         <div class="base-bar">
           <span id="baseName">Base</span>
           <select id="baseViewSelect"></select>
+          <select id="baseGroupBy" title="Групувати за"></select>
           <input id="baseSearch" class="graph-input" placeholder="Фільтр…" autocomplete="off">
           <div class="spacer"></div>
           <span id="baseCount" class="base-count"></span>
+          <button class="ghost-border" id="baseSave">Зберегти</button>
           <button class="ghost-border" id="baseSource">Джерело</button>
           <button class="ghost-border" id="baseRefresh" title="Оновити">⟳</button>
         </div>
@@ -507,7 +509,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=104"></script>
-<script type="module" src="app.js?v=104"></script>
+<script src="vendor/marked.min.js?v=105"></script>
+<script type="module" src="app.js?v=105"></script>
 </body>
 </html>
