@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=35";
-import { initCanvas } from "./canvas.js?v=35";
-import { initCollab } from "./collab.js?v=35";
-import { initPlugins } from "./plugins.js?v=35";
-import { exportPdfFile } from "./pdf.js?v=35";
-import { initLive } from "./live.js?v=35";
-import { initDaily } from "./daily.js?v=35";
+import { initGraph } from "./graph.js?v=37";
+import { initCanvas } from "./canvas.js?v=37";
+import { initCollab } from "./collab.js?v=37";
+import { initPlugins } from "./plugins.js?v=37";
+import { exportPdfFile } from "./pdf.js?v=37";
+import { initLive } from "./live.js?v=37";
+import { initDaily } from "./daily.js?v=37";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v35";
+const BUILD = "v37";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -39,6 +39,7 @@ const state = {
   bookmarks: JSON.parse(store.get("bookmarks", "[]")),
   folders: new Set(),
   second: null,
+  groups: [{ tabs: [], active: null }],
 };
 
 let liveApi = null;
@@ -125,6 +126,33 @@ function toast(msg) {
 }
 function setState(text, cls) { $("stState").textContent = text; $("stState").className = cls || ""; }
 function currentFile() { return state.open.find((f) => f.path === state.active) || null; }
+
+function group1() { return state.groups[0]; }
+function group2() { return state.groups[1] || null; }
+function ensureGroup2() {
+  if (!state.groups[1]) state.groups[1] = { tabs: [], active: null };
+  return state.groups[1];
+}
+function groupFile(group) {
+  if (!group || !group.active) return null;
+  return state.open.find((f) => f.path === group.active) || null;
+}
+function addTab(group, path) {
+  if (!group.tabs.includes(path)) group.tabs.push(path);
+  group.active = path;
+}
+function removeTab(group, path) {
+  const at = group.tabs.indexOf(path);
+  if (at < 0) return;
+  group.tabs.splice(at, 1);
+  if (group.active === path) group.active = group.tabs[Math.max(0, at - 1)] || null;
+}
+function fileInAnyGroup(path) {
+  return state.groups.some((group) => group.tabs.includes(path));
+}
+function syncSecond() {
+  state.second = state.groups[1] ? state.groups[1].active : null;
+}
 
 function theme() { document.documentElement.dataset.theme = store.get("theme", "dark"); }
 
@@ -347,6 +375,12 @@ async function moveFile(path, folder) {
     const openFile = state.open.find((f) => f.path === path);
     if (openFile) openFile.path = target;
     if (state.active === path) state.active = target;
+    for (const group of state.groups) {
+      group.tabs = group.tabs.map((item) => (item === path ? target : item));
+      if (group.active === path) group.active = target;
+    }
+    state.active = group1().active;
+    syncSecond();
     if (state.index.has(path)) { state.index.set(target, state.index.get(path)); state.index.delete(path); }
     const bmAt = state.bookmarks.indexOf(path);
     if (bmAt >= 0) { state.bookmarks[bmAt] = target; store.set("bookmarks", JSON.stringify(state.bookmarks)); renderBookmarks(); }
@@ -456,27 +490,48 @@ async function newFolder() {
 }
 
 function openInSecond(path) {
-  state.second = path;
-  document.body.classList.add("split");
-  const file = state.open.find((f) => f.path === path);
-  const done = () => { paint(); updateSplitButtons(); };
-  if (file) { done(); return; }
-  openNote(path).then(done, done);
+  if (!path) return;
+  const apply = () => {
+    const group = ensureGroup2();
+    addTab(group, path);
+    document.body.classList.add("split");
+    syncSecond();
+    paint();
+    updateSplitButtons();
+  };
+  if (state.open.some((f) => f.path === path)) { apply(); return; }
+  openNote(path).then(apply, apply);
 }
 
 function closeSecond() {
-  state.second = null;
+  const group = state.groups[1];
+  if (group) {
+    const orphanDirty = group.tabs
+      .filter((path) => !group1().tabs.includes(path))
+      .map((path) => state.open.find((file) => file.path === path))
+      .filter((file) => file && file.dirty);
+    if (orphanDirty.length && !confirm("У другій панелі є незбережені зміни. Закрити?")) return;
+    for (const path of group.tabs.slice()) {
+      if (!group1().tabs.includes(path)) {
+        const at = state.open.findIndex((f) => f.path === path);
+        if (at >= 0) state.open.splice(at, 1);
+      }
+    }
+    state.groups.splice(1, 1);
+  }
   document.body.classList.remove("split");
   $("pane2").style.flex = "";
-  paint();
-  updateSplitButtons();
+  syncSecond();
+  state.active = group1().active;
+  renderTabs(); renderTree(); paint(); updateSplitButtons();
 }
 
 function updateSplitButtons() {
   const btn = $("splitBtn");
+  const open = !!state.groups[1];
   if (btn) {
-    btn.textContent = state.second ? "▣" : "▢";
-    btn.title = state.second ? "Закрити другу панель" : "Відкрити другу панель";
+    btn.textContent = open ? "▣" : "▢";
+    btn.title = open ? "Закрити другу панель" : "Відкрити другу панель";
   }
 }
 
@@ -484,57 +539,70 @@ function renderPane2Tabs() {
   const host = $("pane2Tabs");
   if (!host) return;
   host.innerHTML = "";
-  if (!state.second) return;
-  const file = state.open.find((f) => f.path === state.second);
-  if (!file) return;
-  const tab = el("div", "tab active");
-  tab.appendChild(el("span", "name", file.path.split("/").pop().replace(/\.md$/, "")));
-  if (file.dirty) tab.appendChild(el("span", "dot", "•"));
-  const x = el("span", "close", "✕");
-  x.onclick = (event) => { event.stopPropagation(); closeSecond(); };
-  tab.appendChild(x);
-  tab.onclick = () => {
-    state.active = file.path;
-    pushHistoryState(file.path);
-    renderTabs();
-    paint();
-  };
-  makeTabDraggable(tab, file.path, "pane2");
-  host.appendChild(tab);
+  const group = state.groups[1];
+  if (!group) { syncSecond(); return; }
+  for (const path of group.tabs) {
+    const file = state.open.find((f) => f.path === path);
+    if (!file) continue;
+    const tab = el("div", "tab" + (path === group.active ? " active" : ""));
+    tab.appendChild(el("span", "name", path.split("/").pop().replace(/\.md$/, "")));
+    if (file.dirty) tab.appendChild(el("span", "dot", "•"));
+    const x = el("span", "close", "✕");
+    x.onclick = (event) => { event.stopPropagation(); closeTab(path, 1); };
+    tab.appendChild(x);
+    tab.onclick = () => {
+      group.active = path;
+      syncSecond();
+      paintSecond();
+      renderPane2Tabs();
+    };
+    tab.onauxclick = (event) => { if (event.button === 1) closeTab(path, 1); };
+    makeTabDraggable(tab, path, "pane2");
+    tab.addEventListener("dragover", (event) => {
+      if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      const rect = tab.getBoundingClientRect();
+      const after = event.clientX > rect.left + rect.width / 2;
+      tab.classList.toggle("drop-after", after);
+      tab.classList.toggle("drop-before", !after);
+    });
+    tab.addEventListener("dragleave", () => tab.classList.remove("drop-before", "drop-after"));
+    tab.addEventListener("drop", (event) => {
+      const moved = event.dataTransfer.getData("text/vault-tab");
+      const source = event.dataTransfer.getData("text/vault-tab-source");
+      if (!moved) return;
+      event.preventDefault();
+      event.stopPropagation();
+      clearTabDropMarkers();
+      if (source === "main") { moveTabBetweenGroups(0, moved, 1); return; }
+      const rect = tab.getBoundingClientRect();
+      const after = event.clientX > rect.left + rect.width / 2;
+      reorderGroupTabs(1, moved, path, after);
+    });
+    host.appendChild(tab);
+  }
   host.ondragover = (event) => {
     if ([...event.dataTransfer.types].includes("text/vault-tab")) event.preventDefault();
   };
   host.ondrop = (event) => {
-    const path = event.dataTransfer.getData("text/vault-tab");
+    const moved = event.dataTransfer.getData("text/vault-tab");
     const source = event.dataTransfer.getData("text/vault-tab-source");
-    if (!path) return;
+    if (!moved) return;
     event.preventDefault();
     event.stopPropagation();
-    if (source !== "pane2") moveTabToSecond(path);
+    if (source === "main") moveTabBetweenGroups(0, moved, 1);
+    else reorderGroupTabs(1, moved, null, false);
   };
+  syncSecond();
 }
 
-async function moveTabToSecond(path) {
-  if (!path) return;
-  if (!state.open.some((f) => f.path === path)) await openNote(path);
-  if (!state.open.some((f) => f.path === path)) return;
-  state.second = path;
-  document.body.classList.add("split");
-  paint();
-  updateSplitButtons();
+function moveTabToSecond(path) {
+  moveTabBetweenGroups(0, path, 1);
 }
 
 function returnFromSecond(path) {
-  state.second = null;
-  document.body.classList.remove("split");
-  $("pane2").style.flex = "";
-  if (path && state.open.some((f) => f.path === path)) {
-    state.active = path;
-    pushHistoryState(path);
-  }
-  renderTabs();
-  paint();
-  updateSplitButtons();
+  moveTabBetweenGroups(1, path, 0);
 }
 
 function syncHighlight2() {
@@ -548,10 +616,11 @@ function syncHighlight2() {
 function paintSecond() {
   const ed = $("editor2");
   if (!ed) return;
-  const file = state.second ? state.open.find((f) => f.path === state.second) : null;
+  const file = groupFile(state.groups[1]);
   ed.value = file ? file.text : "";
   ed.readOnly = !file;
   syncHighlight2();
+  syncSecond();
   renderPane2Tabs();
 }
 
@@ -568,6 +637,7 @@ async function openNote(path, pushHistory = true) {
   const existing = state.open.find((f) => f.path === path);
   if (existing) {
     state.active = path;
+    addTab(group1(), path);
     setView("note");
     if (pushHistory) pushHistoryState(path);
     renderTabs(); renderTree(); paint();
@@ -587,6 +657,7 @@ async function openNote(path, pushHistory = true) {
     state.index.set(path, text);
     state.open.push({ path, sha, text, dirty: false });
     state.active = path;
+    addTab(group1(), path);
     setView("note");
     if (pushHistory) pushHistoryState(path);
     renderTabs(); renderTree(); paint();
@@ -607,13 +678,30 @@ function pushHistoryState(path) {
 const goBack = () => { if (state.hIndex > 0) openNote(state.history[--state.hIndex], false); };
 const goFwd = () => { if (state.hIndex < state.history.length - 1) openNote(state.history[++state.hIndex], false); };
 
-function closeTab(path) {
-  const idx = state.open.findIndex((f) => f.path === path);
-  if (idx === -1) return;
-  if (state.open[idx].dirty && !confirm("Є незбережені зміни. Закрити?")) return;
-  state.open.splice(idx, 1);
-  if (state.active === path) state.active = state.open[Math.max(0, idx - 1)]?.path || null;
-  renderTabs(); renderTree(); paint();
+function closeTab(path, groupIndex = 0) {
+  const file = state.open.find((f) => f.path === path);
+  if (!file) return;
+  const group = state.groups[groupIndex];
+  if (!group) return;
+  const otherGroupHas = state.groups.some((item, index) => index !== groupIndex && item.tabs.includes(path));
+  if (file.dirty && !otherGroupHas && !confirm("Є незбережені зміни. Закрити?")) return;
+  removeTab(group, path);
+  if (!fileInAnyGroup(path)) {
+    const at = state.open.indexOf(file);
+    if (at >= 0) state.open.splice(at, 1);
+  }
+  if (groupIndex === 0) {
+    state.active = group.active;
+  } else {
+    if (!group.tabs.length) {
+      state.groups.splice(1, 1);
+      document.body.classList.remove("split");
+      $("pane2").style.flex = "";
+    }
+    syncSecond();
+  }
+  if (!group1().tabs.length) state.active = group1().active;
+  renderTabs(); renderTree(); paint(); updateSplitButtons();
 }
 
 function clearTabDropMarkers() {
@@ -634,30 +722,55 @@ function makeTabDraggable(tab, path, source) {
   });
 }
 
-function reorderTabs(fromPath, toPath, after) {
-  const from = state.open.findIndex((file) => file.path === fromPath);
+function reorderGroupTabs(groupIndex, fromPath, toPath, after) {
+  const group = state.groups[groupIndex];
+  if (!group) return;
+  const from = group.tabs.indexOf(fromPath);
   if (from < 0) return;
-  const [file] = state.open.splice(from, 1);
-  let at = toPath ? state.open.findIndex((item) => item.path === toPath) : state.open.length;
-  if (at < 0) at = state.open.length;
+  const [path] = group.tabs.splice(from, 1);
+  let at = toPath ? group.tabs.indexOf(toPath) : group.tabs.length;
+  if (at < 0) at = group.tabs.length;
   if (after) at += 1;
-  state.open.splice(at, 0, file);
+  group.tabs.splice(at, 0, path);
   renderTabs();
+}
+
+function moveTabBetweenGroups(fromIndex, path, toIndex) {
+  const from = state.groups[fromIndex];
+  if (!from || fromIndex === toIndex || !from.tabs.includes(path)) return;
+  const to = toIndex === 1 ? ensureGroup2() : state.groups[0];
+  removeTab(from, path);
+  addTab(to, path);
+  if (toIndex === 0) {
+    state.active = path;
+    pushHistoryState(path);
+  } else {
+    state.active = group1().active;
+  }
+  if (state.groups[1] && !state.groups[1].tabs.length) {
+    state.groups.splice(1, 1);
+    document.body.classList.remove("split");
+    $("pane2").style.flex = "";
+  }
+  syncSecond();
+  renderTabs(); renderTree(); paint(); updateSplitButtons();
 }
 
 function renderTabs() {
   const host = $("tabs");
   host.innerHTML = "";
-  for (const file of state.open) {
-    const tab = el("div", "tab" + (file.path === state.active && state.view === "note" ? " active" : ""));
-    tab.appendChild(el("span", "name", file.path.split("/").pop().replace(/\.md$/, "")));
+  for (const path of group1().tabs) {
+    const file = state.open.find((item) => item.path === path);
+    if (!file) continue;
+    const tab = el("div", "tab" + (path === state.active && state.view === "note" ? " active" : ""));
+    tab.appendChild(el("span", "name", path.split("/").pop().replace(/\.md$/, "")));
     if (file.dirty) tab.appendChild(el("span", "dot", "•"));
     const x = el("span", "close", "✕");
-    x.onclick = (e) => { e.stopPropagation(); closeTab(file.path); };
+    x.onclick = (e) => { e.stopPropagation(); closeTab(path); };
     tab.appendChild(x);
-    tab.onclick = () => { state.active = file.path; setView("note"); pushHistoryState(file.path); renderTabs(); renderTree(); paint(); };
-    tab.onauxclick = (e) => { if (e.button === 1) closeTab(file.path); };
-    makeTabDraggable(tab, file.path, "main");
+    tab.onclick = () => { state.active = path; group1().active = path; setView("note"); pushHistoryState(path); renderTabs(); renderTree(); paint(); };
+    tab.onauxclick = (e) => { if (e.button === 1) closeTab(path); };
+    makeTabDraggable(tab, path, "main");
     tab.addEventListener("dragover", (event) => {
       if (![...event.dataTransfer.types].includes("text/vault-tab")) return;
       event.preventDefault();
@@ -669,16 +782,16 @@ function renderTabs() {
     });
     tab.addEventListener("dragleave", () => tab.classList.remove("drop-before", "drop-after"));
     tab.addEventListener("drop", (event) => {
-      const path = event.dataTransfer.getData("text/vault-tab");
+      const moved = event.dataTransfer.getData("text/vault-tab");
       const source = event.dataTransfer.getData("text/vault-tab-source");
-      if (!path) return;
+      if (!moved) return;
       event.preventDefault();
       event.stopPropagation();
       clearTabDropMarkers();
+      if (source === "pane2") { moveTabBetweenGroups(1, moved, 0); return; }
       const rect = tab.getBoundingClientRect();
       const after = event.clientX > rect.left + rect.width / 2;
-      if (source === "pane2") returnFromSecond(path);
-      else reorderTabs(path, file.path, after);
+      reorderGroupTabs(0, moved, path, after);
     });
     host.appendChild(tab);
   }
@@ -687,12 +800,12 @@ function renderTabs() {
   };
   host.ondrop = (event) => {
     if (event.target.closest(".tab")) return;
-    const path = event.dataTransfer.getData("text/vault-tab");
+    const moved = event.dataTransfer.getData("text/vault-tab");
     const source = event.dataTransfer.getData("text/vault-tab-source");
-    if (!path) return;
+    if (!moved) return;
     event.preventDefault();
-    if (source === "pane2") returnFromSecond(path);
-    else reorderTabs(path, null, false);
+    if (source === "pane2") moveTabBetweenGroups(1, moved, 0);
+    else reorderGroupTabs(0, moved, null, false);
   };
   renderPane2Tabs();
 }
@@ -781,6 +894,12 @@ async function renameNote(path) {
     const openFile = state.open.find((f) => f.path === path);
     if (openFile) openFile.path = target;
     if (state.active === path) state.active = target;
+    for (const group of state.groups) {
+      group.tabs = group.tabs.map((item) => (item === path ? target : item));
+      if (group.active === path) group.active = target;
+    }
+    state.active = group1().active;
+    syncSecond();
     await loadTree(); renderTabs(); paint();
     emit("rename", { from: path, to: target });
     toast("перейменовано");
@@ -793,8 +912,18 @@ async function deleteNote(path) {
     const { sha } = await ghGet(path);
     await ghDelete(path, sha);
     state.open = state.open.filter((f) => f.path !== path);
-    if (state.active === path) state.active = state.open[0]?.path || null;
-    await loadTree(); renderTabs(); paint();
+    for (const group of state.groups) {
+      group.tabs = group.tabs.filter((item) => item !== path);
+      if (group.active === path) group.active = group.tabs[0] || null;
+    }
+    if (state.groups[1] && !state.groups[1].tabs.length) {
+      state.groups.splice(1, 1);
+      document.body.classList.remove("split");
+      $("pane2").style.flex = "";
+    }
+    state.active = group1().active;
+    syncSecond();
+    await loadTree(); renderTabs(); paint(); updateSplitButtons();
     emit("delete", path);
     toast("видалено");
   } catch (error) { toast("Не вийшло: " + error.message); }
@@ -1331,7 +1460,7 @@ export const Vault = {
   contentsPath, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
   renderTree, renderTabs, paint, renderPreview, renderContext, renderTags, showPane, showSwitcher,
-  moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote,
+  moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote, openInSecond, closeSecond,
   exportPdfFile: (opts = {}) => exportPdfFile($("preview"), (currentFile()?.path || "note").split("/").pop().replace(/\.md$/, ""), opts),
   get files() { return state.files; },
   get index() { return state.index; },
@@ -1661,7 +1790,7 @@ function wrapSelection(marker) {
 $("editor").addEventListener("scroll", () => syncHighlight());
 
 $("editor2").addEventListener("input", () => {
-  const file = state.open.find((f) => f.path === state.second);
+  const file = groupFile(state.groups[1]);
   if (!file) return;
   file.text = $("editor2").value;
   file.dirty = true;
@@ -1796,7 +1925,7 @@ $("openSettings").onclick = openSettings;
 $("closeSettings").onclick = closeModals;
 $("newNote").onclick = newNote;
 $("splitBtn").onclick = () => {
-  if (state.second) closeSecond();
+  if (state.groups[1]) closeSecond();
   else if (state.active) openInSecond(state.active);
   else toast("відкрий нотатку");
 };
@@ -1988,7 +2117,7 @@ registerCommand({ id: "print", label: "Друк / зберегти як PDF (в�
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", run: () => setView(state.view === "graph" ? "note" : "graph") });
 registerCommand({ id: "canvas", label: "Відкрити canvas", run: () => { const c = state.files.find((p) => p.endsWith(".canvas")); if (c) openCanvas(c); else toast("Нема .canvas"); } });
 registerCommand({ id: "bookmark", label: "Додати/зняти закладку", run: () => { if (state.active) toggleBookmark(state.active); } });
-registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.second) closeSecond(); else if (state.active) openInSecond(state.active); else toast("відкрий нотатку"); } });
+registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.groups[1]) closeSecond(); else if (state.active) openInSecond(state.active); else toast("відкрий нотатку"); } });
 registerCommand({ id: "new-folder", label: "Нова тека", run: newFolder });
 registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
 registerCommand({ id: "bold", label: "Жирний", hint: "Ctrl+B", run: () => { wrapSelection("**"); } });
