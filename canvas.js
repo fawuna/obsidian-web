@@ -167,6 +167,7 @@ async function create() {
   const p = name.trim().replace(/^\/+/, "").replace(/\.canvas$/, "") + ".canvas";
   try {
     await Vault.ghPut(p, JSON.stringify({ nodes: [], edges: [] }, null, 2), null, "add " + p);
+    Vault.state.pending.add(p);
     await Vault.loadTree();
     await open(p);
     Vault.toast("створено " + p);

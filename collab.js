@@ -1,4 +1,4 @@
-// Real-time collaboration: Yjs CRDT over WebRTC (y-webrtc). No server of our own.
+﻿// Real-time collaboration: Yjs CRDT over WebRTC (y-webrtc). No server of our own.
 let Vault = null;
 let Y = null;
 let WebrtcProvider = null;
@@ -40,7 +40,7 @@ function renderPresence() {
     host.appendChild(dot);
     i++;
   });
-  status(active ? "collab: " + i + " онлайн" : "");
+  status(active ? "collab: " + i + " РѕРЅР»Р°Р№РЅ" : "");
 }
 
 function applyDiff(oldText, newText) {
@@ -54,16 +54,34 @@ function applyDiff(oldText, newText) {
   if (endNew > start) ytext.insert(start, newText.slice(start, endNew));
 }
 
+function log(...args) {
+  if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | "));
+}
+
+function seedWhenSafe(path, file, attempt = 0) {
+  setTimeout(() => {
+    if (!active || boundPath !== path || !ytext || ytext.length > 0) return;
+    const peers = provider && provider.awareness ? provider.awareness.getStates().size : 1;
+    if (peers > 1 && attempt < 2) { seedWhenSafe(path, file, attempt + 1); return; }
+    if (file.text) ytext.insert(0, file.text);
+  }, 1500);
+}
+
 function bindNote(path) {
   if (!active || !doc) return;
   if (boundPath === path) return;
   boundPath = path;
   ytext = doc.getText("note:" + path);
   const file = Vault.state.open.find((f) => f.path === path);
-  if (ytext.length === 0 && file && file.text) ytext.insert(0, file.text);
-  else if (file && ytext.toString() !== file.text) {
+  if (!file) return;
+  log("bind " + path + " ytext=" + ytext.length + " file=" + file.text.length);
+  if (ytext.length === 0) {
+    seedWhenSafe(path, file);
+  } else if (ytext.toString() !== file.text) {
+    const remote = ytext.toString();
+    if (!remote) return;
     applyingRemote = true;
-    file.text = ytext.toString();
+    file.text = remote;
     const ed = document.getElementById("editor");
     if (ed) ed.value = file.text;
     applyingRemote = false;
@@ -73,30 +91,28 @@ function bindNote(path) {
     const file2 = Vault.state.open.find((f) => f.path === boundPath);
     if (!file2) return;
     const text = ytext.toString();
+    log("observe text=" + text.length + " file=" + file2.text.length);
     if (text === file2.text) return;
+    if (!text && file2.text) return;
     applyingRemote = true;
     const ed = document.getElementById("editor");
     const pos = ed.selectionStart;
     file2.text = text;
     ed.value = text;
     try { ed.selectionStart = ed.selectionEnd = Math.min(pos, text.length); } catch { /* noop */ }
-    file2.dirty = true;
+    file2.dirty = false;
     applyingRemote = false;
     Vault.paint();
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => Vault.saveNote(true), 2500);
   });
 }
 
 export async function initCollab(vault) {
   Vault = vault;
 
-  Vault.on("edit", ({ path, text }) => {
+  Vault.on("edit", ({ path, text, prev }) => {
+    log("edit " + path + " active=" + active + " ytext=" + (ytext ? ytext.length : "none") + " bound=" + boundPath + " from=" + (prev || "").length + " to=" + text.length);
     if (!active || !ytext || path !== boundPath) return;
-    const file = Vault.state.open.find((f) => f.path === path);
-    if (!file) return;
-    applyDiff(file._prevText ?? file.text, text);
-    file._prevText = text;
+    applyDiff(prev ?? "", text);
   });
 
   Vault.on("open", (path) => {
@@ -113,8 +129,8 @@ export async function initCollab(vault) {
   function openModal() {
     document.getElementById("collabRoom").value = localStorage.getItem("vw-room") || (Vault.repo + "@" + Vault.branch);
     document.getElementById("collabName").value = myName();
-    document.getElementById("collabToggle").textContent = active ? "Вимкнути" : "Увімкнути";
-    modalState(active ? "сесія активна" : "сесія вимкнена");
+    document.getElementById("collabToggle").textContent = active ? "Р’РёРјРєРЅСѓС‚Рё" : "РЈРІС–РјРєРЅСѓС‚Рё";
+    modalState(active ? "СЃРµСЃС–СЏ Р°РєС‚РёРІРЅР°" : "СЃРµСЃС–СЏ РІРёРјРєРЅРµРЅР°");
     Vault.openModal("collabModal");
   }
 
@@ -124,35 +140,46 @@ export async function initCollab(vault) {
     if (active) { stop(); return; }
     const room = document.getElementById("collabRoom").value.trim();
     const name = document.getElementById("collabName").value.trim() || "me";
-    if (!room) { modalState("введи назву кімнати"); return; }
+    if (!room) { modalState("РІРІРµРґРё РЅР°Р·РІСѓ РєС–РјРЅР°С‚Рё"); return; }
     localStorage.setItem("vw-room", room);
     localStorage.setItem("vw-myName", name);
-    modalState("підключаюсь…");
+    modalState("РїС–РґРєР»СЋС‡Р°СЋСЃСЊвЂ¦");
     try {
       await start(room, name);
-      modalState("працює. кімната: " + room);
-      document.getElementById("collabToggle").textContent = "Вимкнути";
+      modalState("РїСЂР°С†СЋС”. РєС–РјРЅР°С‚Р°: " + room);
+      document.getElementById("collabToggle").textContent = "Р’РёРјРєРЅСѓС‚Рё";
       Vault.closeModals();
-      Vault.toast("спільна сесія увімкнена");
+      Vault.toast("СЃРїС–Р»СЊРЅР° СЃРµСЃС–СЏ СѓРІС–РјРєРЅРµРЅР°");
     } catch (error) {
-      modalState("не вийшло: " + error.message + " (перевір інтернет)");
+      modalState("РЅРµ РІРёР№С€Р»Рѕ: " + error.message + " (РїРµСЂРµРІС–СЂ С–РЅС‚РµСЂРЅРµС‚)");
     }
   };
 
   async function start(room, name) {
     if (!Y) {
-      const yjs = await import("https://esm.sh/yjs@13.6.18");
-      const webrtc = await import("https://esm.sh/y-webrtc@10.3.0?bundle");
+      const yjs = await import("https://esm.sh/yjs@13.6.33");
       Y = yjs;
-      WebrtcProvider = webrtc.WebrtcProvider;
     }
     doc = new Y.Doc();
-    provider = new WebrtcProvider(room, doc, { signaling: ["wss://signaling.yjs.dev"], maxConns: 20 });
+    let connected = false;
+    // 1) public Yjs relay (reliable, works across networks)
+    try {
+      const mod = await import("https://esm.sh/y-websocket@2.0.4?external=yjs");
+      provider = new mod.WebsocketProvider("wss://demos.yjs.dev/ws", room, doc, { connect: true });
+      connected = true;
+    } catch (error) {
+      console.warn("y-websocket failed, falling back to webrtc", error);
+    }
+    // 2) fallback: peer-to-peer WebRTC with a public signalling server
+    if (!connected) {
+      const webrtc = await import("https://esm.sh/y-webrtc@10.3.0?bundle");
+      provider = new webrtc.WebrtcProvider(room, doc, { signaling: ["wss://y-webrtc.fly.dev"], maxConns: 20 });
+    }
     provider.awareness.setLocalStateField("user", { name, color: myColor });
     provider.awareness.on("change", renderPresence);
     active = true;
     boundPath = null;
-    status("collab: підключення…");
+    status("collab: РїС–РґРєР»СЋС‡РµРЅРЅСЏвЂ¦");
     renderPresence();
     if (Vault.state.active) bindNote(Vault.state.active);
   }
@@ -164,8 +191,8 @@ export async function initCollab(vault) {
     provider = null; doc = null; ytext = null; boundPath = null;
     document.getElementById("presence").innerHTML = "";
     status("");
-    document.getElementById("collabToggle").textContent = "Увімкнути";
-    modalState("сесія вимкнена");
+    document.getElementById("collabToggle").textContent = "РЈРІС–РјРєРЅСѓС‚Рё";
+    modalState("СЃРµСЃС–СЏ РІРёРјРєРЅРµРЅР°");
   }
 
   if (localStorage.getItem("vw-autocollab") === "1") {

@@ -6,6 +6,8 @@ import { initPlugins } from "./plugins.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
+window.__dbg = window.__dbg || [];
 
 const store = {
   get: (k, def = "") => { const v = localStorage.getItem("vw-" + k); return v === null ? def : v; },
@@ -28,6 +30,7 @@ const state = {
   commands: [],
   ribbonButtons: [],
   handlers: new Map(),
+  pending: new Set(),
 };
 
 /* ---------------- events ---------------- */
@@ -44,6 +47,7 @@ function emit(event, payload) {
 async function api(path, options = {}) {
   const res = await fetch("https://api.github.com" + path, {
     ...options,
+    cache: "no-store",
     headers: {
       accept: "application/vnd.github+json",
       authorization: "Bearer " + state.token,
@@ -135,10 +139,13 @@ function renderRibbonExtra() {
 /* ---------------- tree ---------------- */
 async function loadTree() {
   const data = await api("/repos/" + state.repo + "/git/trees/" + state.branch + "?recursive=1");
-  state.files = (data.tree || [])
+  const remote = (data.tree || [])
     .filter((n) => n.type === "blob" && (n.path.endsWith(".md") || n.path.endsWith(".canvas")))
-    .map((n) => n.path)
-    .sort((a, b) => a.localeCompare(b, "uk", { numeric: true }));
+    .map((n) => n.path);
+  const remoteSet = new Set(remote);
+  for (const p of [...state.pending]) { if (remoteSet.has(p)) state.pending.delete(p); }
+  for (const p of state.pending) if (!remoteSet.has(p)) remote.push(p);
+  state.files = remote.sort((a, b) => a.localeCompare(b, "uk", { numeric: true }));
   renderTree();
   renderTags();
   emit("tree", state.files);
@@ -217,6 +224,7 @@ async function moveFile(path, folder) {
     setState("переміщую…");
     const { text, sha } = await ghGet(path);
     await ghPut(target, text, null, "move " + path + " → " + target);
+    state.pending.add(target);
     if (path.endsWith(".canvas")) {
       await ghPutRaw(path, b64encode(text), sha, "cleanup move " + path);
       await ghDelete(path, sha);
@@ -226,6 +234,7 @@ async function moveFile(path, folder) {
     const openFile = state.open.find((f) => f.path === path);
     if (openFile) openFile.path = target;
     if (state.active === path) state.active = target;
+    state.pending.delete(path);
     await loadTree();
     renderTabs(); paint();
     setState("переміщено", "ok");
@@ -256,7 +265,15 @@ async function openNote(path, pushHistory = true) {
   }
   try {
     setState("відкриваю…");
-    const { text, sha } = await ghGet(path);
+    let got = await ghGet(path);
+    if (!got.text) {
+      // GitHub occasionally answers with an empty body right after a write; ask again.
+      await new Promise((r) => setTimeout(r, 900));
+      const again = await ghGet(path).catch(() => null);
+      if (again && again.text) got = again;
+    }
+    const { text, sha } = got;
+    dbg("openNote", path, "len=" + text.length);
     state.index.set(path, text);
     state.open.push({ path, sha, text, dirty: false });
     state.active = path;
@@ -307,6 +324,7 @@ function renderTabs() {
 
 function paint() {
   const file = currentFile();
+  dbg("paint", "active=" + state.active, "fileLen=" + (file ? file.text.length : "none"), "editorBefore=" + $("editor").value.length);
   $("editor").value = file ? file.text : "";
   $("editor").readOnly = !file;
   $("stPath").textContent = state.view === "graph" ? "Graph view" : state.view === "canvas" ? ($("canvasName").textContent || "Canvas") : (file ? file.path : "—");
@@ -358,6 +376,7 @@ async function newNote() {
   if (!path.endsWith(".md")) path += ".md";
   try {
     await ghPut(path, "# " + path.split("/").pop().replace(/\.md$/, "") + "\n\n", null, "add " + path);
+    state.pending.add(path);
     await loadTree();
     await openNote(path);
     toast("створено " + path);
@@ -372,6 +391,8 @@ async function renameNote(path) {
   try {
     const { text, sha } = await ghGet(path);
     await ghPut(target, text, null, "rename " + path + " → " + target);
+    state.pending.add(target);
+    state.pending.delete(path);
     await ghDelete(path, sha);
     const openFile = state.open.find((f) => f.path === path);
     if (openFile) openFile.path = target;
@@ -688,6 +709,7 @@ window.Vault = Vault;
 $("editor").addEventListener("input", () => {
   const file = currentFile();
   if (!file) return;
+  const prev = file.text;
   file.text = $("editor").value;
   file.dirty = true;
   state.index.set(file.path, file.text);
@@ -695,7 +717,7 @@ $("editor").addEventListener("input", () => {
   const words = file.text.trim().split(/\s+/).filter(Boolean).length;
   $("stMeta").textContent = words + " слів · " + file.text.length + " симв.";
   renderPreview();
-  emit("edit", { path: file.path, text: file.text });
+  emit("edit", { path: file.path, text: file.text, prev });
   clearTimeout($("editor")._t);
   $("editor")._t = setTimeout(() => saveNote(true), 3000);
 });
@@ -832,6 +854,7 @@ async function connect(repo, branch, token, remember) {
     canvasApi = initCanvas(Vault);
     initCollab(Vault);
     initPlugins(Vault);
+    window.__vaultReady = true;
   } catch (error) {
     $("loginError").textContent = "Не вийшло: " + error.message;
   }
