@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=72";
-import { initCanvas } from "./canvas.js?v=72";
-import { initCollab } from "./collab.js?v=72";
-import { initPlugins } from "./plugins.js?v=72";
-import { exportPdfFile } from "./pdf.js?v=72";
-import { initLive } from "./live.js?v=72";
-import { initDaily } from "./daily.js?v=72";
+import { initGraph } from "./graph.js?v=73";
+import { initCanvas } from "./canvas.js?v=73";
+import { initCollab } from "./collab.js?v=73";
+import { initPlugins } from "./plugins.js?v=73";
+import { exportPdfFile } from "./pdf.js?v=73";
+import { initLive } from "./live.js?v=73";
+import { initDaily } from "./daily.js?v=73";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v72";
+const BUILD = "v73";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -716,64 +716,80 @@ function renderTree() {
     }
   }
   const collapsed = new Set(JSON.parse(store.get("collapsed", "[]")));
+  const sortMode = store.get("fileSort", "name-asc");
+  const sortDir = sortMode === "name-desc" ? -1 : 1;
+  const foldersFirst = store.get("foldersFirst", "1") === "1";
+  const cmp = (a, b) => a.localeCompare(b, "uk", { numeric: true, sensitivity: "base" }) * sortDir;
   const walk = (node, prefix, depth) => {
-    const folders = Object.keys(node).filter((k) => node[k] !== null).sort();
-    const leaves = Object.keys(node).filter((k) => node[k] === null).sort();
-    for (const folder of folders) {
-      const full = prefix ? prefix + "/" + folder : folder;
-      const isCollapsed = collapsed.has(full);
-      const row = el("div", "folder-row");
-      row.style.paddingLeft = 6 + depth * 12 + "px";
-      row.appendChild(el("span", "chev", isCollapsed ? "▸" : "▾"));
-      row.appendChild(el("span", null, folder));
-      row.onclick = () => {
-        if (isCollapsed) collapsed.delete(full); else collapsed.add(full);
-        store.set("collapsed", JSON.stringify([...collapsed]));
-        renderTree();
-      };
-      row.oncontextmenu = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        folderContext(event, full);
-      };
-      row.ondragover = (e) => { e.preventDefault(); row.classList.add("drop-target"); };
-      row.ondragleave = () => row.classList.remove("drop-target");
-      row.ondrop = async (e) => {
-        e.preventDefault();
-        row.classList.remove("drop-target");
-        const path = e.dataTransfer.getData("text/vault-path");
-        if (path) await moveFile(path, full);
-      };
-      host.appendChild(row);
-      if (!isCollapsed) walk(node[folder], full, depth + 1);
+    const folderNames = Object.keys(node).filter((k) => node[k] !== null);
+    const leafNames = Object.keys(node).filter((k) => node[k] === null);
+    const entries = [];
+    if (foldersFirst) {
+      folderNames.sort(cmp).forEach((name) => entries.push({ name, folder: true }));
+      leafNames.sort(cmp).forEach((name) => entries.push({ name, folder: false }));
+    } else {
+      folderNames.forEach((name) => entries.push({ name, folder: true }));
+      leafNames.forEach((name) => entries.push({ name, folder: false }));
+      entries.sort((a, b) => cmp(a.name, b.name));
     }
-    for (const leaf of leaves) {
-      if (leaf.startsWith(".")) continue;
-      const full = prefix ? prefix + "/" + leaf : leaf;
-      const row = el("div", "file-row" + (full === state.active ? " active" : ""));
-      row.style.paddingLeft = 12 + depth * 12 + "px";
-      row.draggable = true;
-      row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : full.endsWith(".base") ? "🗃" : "📄"));
-      row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas|base)$/, "")));
-      const starred = state.bookmarks.includes(full);
-      const star = el("button", "star-btn" + (starred ? " on" : ""), "★");
-      star.title = starred ? "Зняти із закладок" : "У закладки";
-      star.onclick = (e) => { e.stopPropagation(); toggleBookmark(full); };
-      row.appendChild(star);
-      const actions = el("span", "actions");
-      const rename = el("button", null, "✎");
-      rename.title = "Перейменувати";
-      rename.onclick = (e) => { e.stopPropagation(); renameNote(full); };
-      const del = el("button", null, "🗑");
-      del.title = "Видалити";
-      del.onclick = (e) => { e.stopPropagation(); deleteNote(full); };
-      actions.append(rename, del);
-      row.appendChild(actions);
-      row.onclick = () => openNote(full);
-      row.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); fileContext(e, full); };
-      row.ondragstart = (e) => { e.dataTransfer.setData("text/vault-path", full); e.dataTransfer.effectAllowed = "move"; row.classList.add("dragging"); };
-      row.ondragend = () => row.classList.remove("dragging");
-      host.appendChild(row);
+    for (const entry of entries) {
+      if (entry.folder) {
+        const folder = entry.name;
+        const full = prefix ? prefix + "/" + folder : folder;
+        const isCollapsed = collapsed.has(full);
+        const row = el("div", "folder-row");
+        row.style.paddingLeft = 6 + depth * 12 + "px";
+        row.appendChild(el("span", "chev", isCollapsed ? "▸" : "▾"));
+        row.appendChild(el("span", null, folder));
+        row.onclick = () => {
+          if (isCollapsed) collapsed.delete(full); else collapsed.add(full);
+          store.set("collapsed", JSON.stringify([...collapsed]));
+          renderTree();
+        };
+        row.oncontextmenu = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          folderContext(event, full);
+        };
+        row.ondragover = (e) => { e.preventDefault(); row.classList.add("drop-target"); };
+        row.ondragleave = () => row.classList.remove("drop-target");
+        row.ondrop = async (e) => {
+          e.preventDefault();
+          row.classList.remove("drop-target");
+          const path = e.dataTransfer.getData("text/vault-path");
+          if (path) await moveFile(path, full);
+        };
+        host.appendChild(row);
+        if (!isCollapsed) walk(node[folder], full, depth + 1);
+      } else {
+        const leaf = entry.name;
+        if (leaf.startsWith(".")) continue;
+        const full = prefix ? prefix + "/" + leaf : leaf;
+        const row = el("div", "file-row" + (full === state.active ? " active" : ""));
+        row.style.paddingLeft = 12 + depth * 12 + "px";
+        row.draggable = true;
+        row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : full.endsWith(".base") ? "🗃" : "📄"));
+        row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas|base)$/, "")));
+        const starred = state.bookmarks.includes(full);
+        const star = el("button", "star-btn" + (starred ? " on" : ""), "★");
+        star.title = starred ? "Зняти із закладок" : "У закладки";
+        star.onclick = (e) => { e.stopPropagation(); toggleBookmark(full); };
+        row.appendChild(star);
+        const actions = el("span", "actions");
+        const rename = el("button", null, "✎");
+        rename.title = "Перейменувати";
+        rename.onclick = (e) => { e.stopPropagation(); renameNote(full); };
+        const del = el("button", null, "🗑");
+        del.title = "Видалити";
+        del.onclick = (e) => { e.stopPropagation(); deleteNote(full); };
+        actions.append(rename, del);
+        row.appendChild(actions);
+        row.onclick = () => openNote(full);
+        row.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); fileContext(e, full); };
+        row.ondragstart = (e) => { e.dataTransfer.setData("text/vault-path", full); e.dataTransfer.effectAllowed = "move"; row.classList.add("dragging"); };
+        row.ondragend = () => row.classList.remove("dragging");
+        host.appendChild(row);
+      }
     }
   };
   walk(tree, "", 0);
@@ -4822,6 +4838,18 @@ $("baseSearch").oninput = () => { clearTimeout($("baseSearch")._t); $("baseSearc
 $("baseRefresh").onclick = () => renderBase();
 $("baseSource").onclick = () => { if (basePath) window.open(imageUrlFor(basePath), "_blank", "noopener"); };
 $("newFolderBtn").onclick = () => newFolder();
+$("fileSortBtn").onclick = (event) => {
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  const mode = store.get("fileSort", "name-asc");
+  const first = store.get("foldersFirst", "1") === "1";
+  showCtx(rect.left, rect.bottom + 4, [
+    { label: (mode === "name-asc" ? "✓ " : "") + "Назва A→Z", run: () => { store.set("fileSort", "name-asc"); renderTree(); } },
+    { label: (mode === "name-desc" ? "✓ " : "") + "Назва Z→A", run: () => { store.set("fileSort", "name-desc"); renderTree(); } },
+    { sep: true },
+    { label: (first ? "✓ " : "") + "Теки спочатку", run: () => { store.set("foldersFirst", first ? "0" : "1"); renderTree(); } },
+  ]);
+};
 $("leftAddTab").onclick = (event) => {
   event.stopPropagation();
   const rect = event.currentTarget.getBoundingClientRect();
