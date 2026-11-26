@@ -104,6 +104,58 @@ function parityFeatures(root) {
       title: !!root.querySelector(".metadata-properties-title"),
       inlineTitle: root.querySelector(".inline-title")?.textContent.trim() || "",
     },
+    headingDetails: [...root.querySelectorAll("h1, h2, h3, h4, h5, h6")].map((h) => ({
+      text: h.textContent.trim(),
+      dataHeading: h.getAttribute("data-heading") || "",
+      dir: h.getAttribute("dir") || "",
+      hasIndicator: !!h.querySelector(".heading-collapse-indicator"),
+      indicatorClass: sorted(h.querySelector(".heading-collapse-indicator")?.className || ""),
+    })),
+    listDetails: [...root.querySelectorAll(".el-ul ul, .el-ul ol, ul.contains-task-list, ol.contains-task-list")].map((list) => ({
+      cls: sorted(list.className),
+      items: [...list.children].filter((el) => el.tagName === "LI").map((li) => {
+        const box = li.querySelector('input[type="checkbox"]');
+        return {
+          cls: sorted(li.className),
+          dataTask: li.getAttribute("data-task"),
+          dataLine: li.getAttribute("data-line"),
+          dir: li.getAttribute("dir") || "",
+          hasBullet: !!li.querySelector(".list-bullet"),
+          boxClass: sorted(box?.className || ""),
+          boxLine: box?.getAttribute("data-line") || "",
+          checked: box ? box.checked : null,
+        };
+      }),
+    })),
+    metadataDetails: [...root.querySelectorAll(".metadata-property")].map((p) => ({
+      key: p.getAttribute("data-property-key") || "",
+      hasIcon: !!p.querySelector(".metadata-property-icon"),
+      iconClass: sorted(p.querySelector(".metadata-property-icon")?.className || ""),
+      iconAria: p.querySelector(".metadata-property-icon")?.getAttribute("aria-disabled") || "",
+      iconSvg: sorted(p.querySelector(".metadata-property-icon svg")?.getAttribute("class") || ""),
+      keyValue: p.querySelector(".metadata-property-key-input")?.value || "",
+      valueFirstClass: sorted(p.querySelector(".metadata-property-value")?.firstElementChild?.className || ""),
+      pills: p.querySelectorAll(".multi-select-pill").length,
+      pillRemoves: p.querySelectorAll(".multi-select-pill-remove-button").length,
+    })),
+    linkAttrs: [...root.querySelectorAll(".internal-link")].map((a) => ({
+      cls: sorted(a.className),
+      href: a.getAttribute("href") || "",
+      dataHref: a.getAttribute("data-href") || "",
+      aria: a.getAttribute("aria-label") || "",
+      target: a.getAttribute("target") || "",
+      rel: sorted(a.getAttribute("rel") || ""),
+    })),
+    tagAttrs: [...root.querySelectorAll(".tag")].map((a) => ({
+      cls: sorted(a.className),
+      href: a.getAttribute("href") || "",
+      target: a.getAttribute("target") || "",
+      rel: sorted(a.getAttribute("rel") || ""),
+    })),
+    frontmatterTokens: {
+      codeClass: sorted(root.querySelector(".el-pre.mod-frontmatter code")?.className || ""),
+      tokens: [...root.querySelectorAll(".el-pre.mod-frontmatter .token")].map((t) => sorted(t.className)),
+    },
     props,
     markHtml: root.querySelector("mark")?.outerHTML || "",
   };
@@ -204,7 +256,7 @@ function main() {
   return (async () => {
     const obsidian = await extractObsidian();
     const web = await extractWeb();
-    const fields = ["headings", "strong", "em", "mark", "del", "tables", "callouts", "tasks", "links", "tags", "settings", "blocks", "metadata"];
+    const fields = ["headings", "strong", "em", "mark", "del", "tables", "callouts", "tasks", "links", "tags", "settings", "blocks", "metadata", "headingDetails", "listDetails", "metadataDetails", "linkAttrs", "tagAttrs", "frontmatterTokens"];
     const rows = [];
     const diffs = [];
     for (const field of fields) {

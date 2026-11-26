@@ -295,6 +295,11 @@ body.view-graph #liveHost, body.view-canvas #liveHost { display: none; }
 #preview .metadata-input-longtext { white-space: pre-wrap; }
 #preview .multi-select-container { display: flex; gap: 4px; flex-wrap: wrap; }
 #preview .multi-select-pill { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+#preview .metadata-property-icon { display: inline-flex; }
+#preview .multi-select-pill-remove-button { display: inline-flex; align-items: center; margin-left: 4px; opacity: .6; }
+#preview .multi-select-pill-remove-button svg { width: 12px; height: 12px; }
+#preview .heading-collapse-indicator { display: inline-flex; width: 16px; height: 16px; margin-right: 4px; vertical-align: middle; opacity: .35; }
+#preview .heading-collapse-indicator svg { width: 16px; height: 16px; }
 #preview .el-table { overflow-x: auto; }
 
 .backlink { display: block; width: 100%; text-align: left; padding: 6px 8px; border-radius: 6px; font-size: 13px; color: var(--text-dim); }

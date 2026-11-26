@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=45";
-import { initCanvas } from "./canvas.js?v=45";
-import { initCollab } from "./collab.js?v=45";
-import { initPlugins } from "./plugins.js?v=45";
-import { exportPdfFile } from "./pdf.js?v=45";
-import { initLive } from "./live.js?v=45";
-import { initDaily } from "./daily.js?v=45";
+import { initGraph } from "./graph.js?v=46";
+import { initCanvas } from "./canvas.js?v=46";
+import { initCollab } from "./collab.js?v=46";
+import { initPlugins } from "./plugins.js?v=46";
+import { exportPdfFile } from "./pdf.js?v=46";
+import { initLive } from "./live.js?v=46";
+import { initDaily } from "./daily.js?v=46";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v45";
+const BUILD = "v46";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1200,6 +1200,25 @@ function parseProps(text) {
 
 const READING_TRIANGLE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon right-triangle"><path d="M3 8L12 17L21 8"></path></svg>';
 
+function highlightYaml(raw) {
+  const body = String(raw).replace(/^---\r?\n/, "").replace(/\r?\n---[ \t]*\r?\n?$/, "");
+  return body.split(/\r?\n/).map((line) => {
+    const kv = line.match(/^([A-Za-z0-9_\u0400-\u04FF-]+):(.*)$/);
+    if (kv) {
+      const rest = kv[2];
+      const commentAt = rest.search(/\s#/);
+      const value = commentAt >= 0 ? rest.slice(0, commentAt) : rest;
+      const comment = commentAt >= 0 ? rest.slice(commentAt + 1).trimStart() : "";
+      return '<span class="token key atrule">' + escapeHtml(kv[1]) + '</span><span class="token punctuation">:</span>' + escapeHtml(value) +
+        (comment ? ' <span class="token comment">' + escapeHtml(comment) + "</span>" : "");
+    }
+    const item = line.match(/^(\s*)-(\s*)(.*)$/);
+    if (item) return escapeHtml(item[1]) + '<span class="token punctuation">-</span>' + escapeHtml(item[2] + item[3]);
+    if (/^\s*#/.test(line)) return '<span class="token comment">' + escapeHtml(line) + "</span>";
+    return escapeHtml(line);
+  }).join("\n");
+}
+
 function buildReadingHeader(file, parsed) {
   const header = el("div", "mod-header mod-ui");
   const title = el("div", "inline-title", file.path.split("/").pop().replace(/\.md$/, ""));
@@ -1228,7 +1247,11 @@ function buildReadingHeader(file, parsed) {
     prop.dataset.propertyKey = key;
     const keyEl = el("div", "metadata-property-key");
     const icon = el("span", "metadata-property-icon");
-    icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-text"><path d="M17 6.1H3"></path><path d="M21 12.1H3"></path><path d="M15.1 18H3"></path></svg>';
+    icon.setAttribute("aria-disabled", "false");
+    const isList = key === "tags" || key === "aliases";
+    icon.innerHTML = isList
+      ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-tags"><path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 5 9.172V4a2 2 0 0 1 2-2z"></path><path d="M7 7h.01"></path></svg>'
+      : '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-text"><path d="M21 5H3"></path><path d="M15 12H3"></path><path d="M17 19H3"></path></svg>';
     const input = document.createElement("input");
     input.className = "metadata-property-key-input";
     input.value = key;
@@ -1236,13 +1259,15 @@ function buildReadingHeader(file, parsed) {
     input.spellcheck = false;
     keyEl.append(icon, input);
     const valueEl = el("div", "metadata-property-value");
-    if (key === "tags" || key === "aliases") {
+    if (isList) {
       const multi = el("div", "multi-select-container");
       for (const item of String(value).split(",").map((part) => part.trim()).filter(Boolean)) {
         const pill = el("div", "multi-select-pill");
         const pillContent = el("div", "multi-select-pill-content");
         pillContent.appendChild(el("span", null, item));
-        pill.appendChild(pillContent);
+        const remove = el("div", "multi-select-pill-remove-button");
+        remove.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-x"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>';
+        pill.append(pillContent, remove);
         multi.appendChild(pill);
       }
       valueEl.appendChild(multi);
@@ -1294,7 +1319,7 @@ function renderPreview() {
     pre.style.display = "none";
     const code = document.createElement("code");
     code.className = "language-yaml is-loaded";
-    code.textContent = parsed.raw;
+    code.innerHTML = highlightYaml(parsed.raw);
     pre.appendChild(code);
     frontmatter.appendChild(pre);
     host.appendChild(frontmatter);
@@ -1318,6 +1343,16 @@ function renderPreview() {
   backlinks.style.display = "none";
   footer.appendChild(backlinks);
   host.appendChild(footer);
+  host.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
+    heading.setAttribute("dir", "auto");
+    heading.setAttribute("data-heading", heading.textContent.trim());
+    if (!heading.querySelector(".heading-collapse-indicator")) {
+      const indicator = document.createElement("span");
+      indicator.className = "heading-collapse-indicator collapse-indicator collapse-icon";
+      indicator.innerHTML = READING_TRIANGLE_SVG;
+      heading.prepend(indicator);
+    }
+  });
   wireRendered(host, file.text, 0);
   resolveEmbeds(host);
 }
@@ -1340,10 +1375,10 @@ function markdownToHtml(body) {
     const target = t.trim();
     const label = (l ? l.slice(1) : t).trim();
     const safe = target.replace(/"/g, "&quot;");
-    return '<a class="internal-link" data-target="' + safe + '" data-href="' + safe + '" href="' + encodeURI(target) + '">' + escapeHtml(label) + "</a>";
+    return '<a class="internal-link" data-target="' + safe + '" data-href="' + safe + '" href="' + encodeURI(target) + '" aria-label="' + safe + '" data-tooltip-position="top" target="_blank" rel="noopener nofollow">' + escapeHtml(label) + "</a>";
   });
   src = src.replace(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]{1,})/g, (m, pre, tag) =>
-    pre + '<a class="tag" data-tag="' + escapeHtml(tag) + '" href="#' + escapeHtml(tag) + '">#' + escapeHtml(tag) + "</a>");
+    pre + '<a class="tag" data-tag="' + escapeHtml(tag) + '" href="#' + escapeHtml(tag) + '" target="_blank" rel="noopener nofollow">#' + escapeHtml(tag) + "</a>");
   src = src.replace(/==([^=\n]+)==/g, '<mark data-highlight="">$1</mark>');
   src = src.replace(/^>\s*\[!(\w+)\]([+-]?)\s*(.*)$/gm, (m, kind, fold, title) =>
     "> <span class=\"callout-kind\" data-kind=\"" + kind.toLowerCase() + "\" data-fold=\"" + fold + "\">" + escapeHtml(title) + "</span>");
@@ -1429,6 +1464,10 @@ function styleCallouts(root) {
 
 function wireRendered(root, sourceText, lineOffset = 0) {
   const tasks = taskItems(sourceText);
+  root.querySelectorAll("ul, ol").forEach((list) => {
+    if (list.querySelector("li")) list.classList.add("has-list-bullet");
+    if (list.querySelector('input[type="checkbox"]')) list.classList.add("contains-task-list");
+  });
   let boxIndex = 0;
   root.querySelectorAll("li").forEach((li) => {
     const box = li.querySelector('input[type="checkbox"]');
@@ -1439,8 +1478,25 @@ function wireRendered(root, sourceText, lineOffset = 0) {
     box.checked = info.checked;
     box.classList.add("task-list-item-checkbox");
     li.classList.add("task-list-item");
+    const list = li.closest("ul, ol");
+    const siblings = list ? [...list.children].filter((child) => child.tagName === "LI") : [];
+    const lineIndex = Math.max(0, siblings.indexOf(li));
+    li.setAttribute("data-task", info.checked ? "x" : "");
+    li.setAttribute("data-line", String(lineIndex));
+    li.setAttribute("dir", "auto");
+    box.setAttribute("data-line", String(lineIndex));
     box.title = info.checked ? "Зняти позначку" : "Позначити виконаним";
-    if (info.checked) { li.classList.add("is-checked"); }
+    if (info.checked) {
+      li.classList.add("is-checked");
+      box.setAttribute("checked", "");
+    } else {
+      box.removeAttribute("checked");
+    }
+    if (!li.querySelector(".list-bullet")) {
+      const bullet = document.createElement("span");
+      bullet.className = "list-bullet";
+      li.prepend(bullet);
+    }
     box.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
