@@ -14,6 +14,39 @@ let needsRebuild = true;
 
 const FORCE = () => Number(localStorage.getItem("vw-graphForce") || 120);
 
+function tagsOfNote(text) {
+  const tags = new Set();
+  const lines = String(text || "").split(/\r?\n/);
+  let inFront = false;
+  let frontKey = "";
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (i === 0 && line.trim() === "---") { inFront = true; continue; }
+    if (inFront && line.trim() === "---") { inFront = false; continue; }
+    if (inFront) {
+      const kv = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (kv) {
+        frontKey = kv[1].toLowerCase();
+        if (frontKey === "tags" || frontKey === "tag") {
+          for (const part of kv[2].replace(/^\[|\]$/g, "").split(",")) {
+            const tag = part.trim().replace(/^#/, "").replace(/^["']|["']$/g, "");
+            if (tag) tags.add(tag);
+          }
+        }
+        continue;
+      }
+      const item = line.match(/^\s*-\s*(.*)$/);
+      if (item && (frontKey === "tags" || frontKey === "tag")) {
+        const tag = item[1].trim().replace(/^#/, "").replace(/^["']|["']$/g, "");
+        if (tag) tags.add(tag);
+      }
+      continue;
+    }
+    for (const m of line.matchAll(/(^|\s)#([A-Za-z0-9_\u0400-\u04FF][A-Za-z0-9_\u0400-\u04FF/-]*)/g)) tags.add(m[2]);
+  }
+  return [...tags];
+}
+
 function buildGraph() {
   const onlyMd = Vault.files.filter((p) => p.endsWith(".md"));
   const active = Vault.state.active;
@@ -82,7 +115,19 @@ function buildGraph() {
     if (local && active && listSet.has(active)) connected.add(active);
     list = list.filter((p) => connected.has(p));
   }
-  const cx = 0, cy = 0, radius = 90 + list.length * 6;
+  const showTags = document.getElementById("graphTags")?.checked === true;
+  const tagSet = new Set();
+  const tagLinks = [];
+  if (showTags) {
+    for (const path of list) {
+      const text = index.get(path) || "";
+      for (const tag of tagsOfNote(text)) {
+        tagSet.add(tag);
+        tagLinks.push([path, "tag:" + tag]);
+      }
+    }
+  }
+  const cx = 0, cy = 0, radius = 90 + (list.length + tagSet.size) * 6;
   nodes = list.map((path, i) => {
     const angle = (i / list.length) * Math.PI * 2;
     return {
@@ -95,10 +140,24 @@ function buildGraph() {
       r: 7 + Math.min(6, path.split("/").length),
     };
   });
+  for (const tag of tagSet) {
+    const angle = Math.random() * Math.PI * 2;
+    nodes.push({
+      id: "tag:" + tag,
+      label: "#" + tag,
+      type: "tag",
+      folder: "",
+      x: cx + Math.cos(angle) * radius * (0.6 + Math.random() * 0.6),
+      y: cy + Math.sin(angle) * radius * (0.6 + Math.random() * 0.6),
+      vx: 0, vy: 0,
+      r: 5,
+    });
+  }
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const seen = new Set();
   edges = [];
-  for (const [a, b] of links) {
+  const allLinks = links.concat(tagLinks);
+  for (const [a, b] of allLinks) {
     const key = a < b ? a + "|" + b : b + "|" + a;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -108,7 +167,9 @@ function buildGraph() {
   const activeNode = byId.get(active);
   if (activeNode) { activeNode.x = 0; activeNode.y = 0; }
 
-  document.getElementById("graphInfo").textContent = nodes.length + " нотаток · " + edges.length + " звʼязків";
+  const noteCount = nodes.filter((n) => n.type !== "tag").length;
+  const tagCount = nodes.length - noteCount;
+  document.getElementById("graphInfo").textContent = noteCount + " нотаток" + (tagCount ? " · " + tagCount + " тегів" : "") + " · " + edges.length + " звʼязків";
   alpha = 1;
   needsRebuild = false;
   fit();
@@ -234,9 +295,10 @@ function draw() {
   for (const n of nodes) {
     const isActive = n.id === Vault.state.active;
     const isHover = n === hovered;
+    const isTag = n.type === "tag";
     ctx.beginPath();
     ctx.arc(n.x, n.y, n.r + (isHover ? 2 : 0), 0, Math.PI * 2);
-    ctx.fillStyle = isActive ? accent : (n.folder ? "#5d7cff" : "#6cc9a8");
+    ctx.fillStyle = isActive ? accent : isTag ? "#e0b458" : (n.folder ? "#5d7cff" : "#6cc9a8");
     ctx.globalAlpha = isActive || isHover ? 1 : 0.85;
     ctx.fill();
     ctx.globalAlpha = 1;
@@ -244,7 +306,7 @@ function draw() {
     ctx.strokeStyle = isActive ? accent : line;
     ctx.stroke();
 
-    if (view.k > labelThreshold || isActive || isHover) {
+    if (isTag || view.k > labelThreshold || isActive || isHover) {
       ctx.font = (11 / view.k).toFixed(1) + "px Inter, Segoe UI, sans-serif";
       ctx.fillStyle = isActive ? accent : text;
       ctx.globalAlpha = isHover || isActive ? 1 : 0.75;
@@ -291,6 +353,7 @@ export function initGraph(vault) {
   if (gd) gd.addEventListener("input", () => { needsRebuild = true; });
   const savedSettings = [
     ["graphOrphans", "checkbox"],
+    ["graphTags", "checkbox"],
     ["graphArrows", "checkbox"],
     ["graphTextFade", "range"],
     ["graphDistance", "range"],
@@ -306,7 +369,7 @@ export function initGraph(vault) {
     const save = () => {
       if (type === "checkbox") localStorage.setItem("vw-" + id, node.checked ? "1" : "0");
       else localStorage.setItem("vw-" + id, node.value);
-      if (id === "graphOrphans") needsRebuild = true;
+      if (id === "graphOrphans" || id === "graphTags") needsRebuild = true;
     };
     node.addEventListener("input", save);
     node.addEventListener("change", save);
@@ -380,8 +443,26 @@ export function initGraph(vault) {
   canvas.addEventListener("click", (e) => {
     const w = toWorld(e.clientX, e.clientY);
     const node = nodeAt(w);
-    if (node) Vault.openNote(node.id);
+    if (!node) return;
+    if (node.type === "tag") {
+      const input = document.getElementById("searchInput");
+      if (input) {
+        input.value = "tag:#" + node.label.replace(/^#/, "");
+        Vault.showPane("search");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      return;
+    }
+    Vault.openNote(node.id);
   });
+
+  window.__graphTest = {
+    get: () => ({
+      nodes: nodes.map((n) => ({ id: n.id, type: n.type || "note", label: n.label })),
+      edges: edges.map((e) => ({ a: e.a, b: e.b })),
+      info: document.getElementById("graphInfo").textContent,
+    }),
+  };
 
   if (Vault.state.view === "graph") { resize(); loop(); }
 }
