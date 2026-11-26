@@ -602,3 +602,8 @@ body.split #previewHost { display: none; }
 #preview li.is-collapsed > ul, #preview li.is-collapsed > ol { display: none; }
 .tabs { overflow-x: auto; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
+#preview .math-display, #pagePreview .math-display { display: block; text-align: center; margin: 12px 0; overflow-x: auto; }
+#preview .math-inline, #pagePreview .math-inline { display: inline; }
+#preview .mermaid, #pagePreview .mermaid { display: flex; justify-content: center; margin: 14px 0; overflow-x: auto; }
+#preview .mermaid svg, #pagePreview .mermaid svg { max-width: 100%; height: auto; }
+#preview .mermaid-error, #pagePreview .mermaid-error { color: #e5686c; font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; }

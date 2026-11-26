@@ -1,15 +1,15 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=56";
-import { initCanvas } from "./canvas.js?v=56";
-import { initCollab } from "./collab.js?v=56";
-import { initPlugins } from "./plugins.js?v=56";
-import { exportPdfFile } from "./pdf.js?v=56";
-import { initLive } from "./live.js?v=56";
-import { initDaily } from "./daily.js?v=56";
+import { initGraph } from "./graph.js?v=57";
+import { initCanvas } from "./canvas.js?v=57";
+import { initCollab } from "./collab.js?v=57";
+import { initPlugins } from "./plugins.js?v=57";
+import { exportPdfFile } from "./pdf.js?v=57";
+import { initLive } from "./live.js?v=57";
+import { initDaily } from "./daily.js?v=57";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v56";
+const BUILD = "v57";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2136,6 +2136,8 @@ function renderPreview() {
   });
   wireRendered(host, file.text, 0);
   resolveEmbeds(host);
+  renderMathIn(host);
+  renderMermaidIn(host);
 }
 
 function toggleHeadingFold(heading) {
@@ -2159,6 +2161,17 @@ function markdownToHtml(body) {
   let src = body.replace(/(^|\n)(```|~~~)[\s\S]*?(?:\n\2\s*(?=\n|$)|$)/g, (m, pre) => {
     fences.push(m.slice(pre.length));
     return pre + "\u0000F" + (fences.length - 1) + "\u0000";
+  });
+
+  src = src.replace(/%%[\s\S]*?%%/g, "");
+  const maths = [];
+  src = src.replace(/\$\$([\s\S]+?)\$\$/g, (m, tex) => {
+    maths.push({ tex: tex.trim(), display: true });
+    return "\u0000D" + (maths.length - 1) + "\u0000";
+  });
+  src = src.replace(/(^|[^\\$])\$([^$\n]+?)\$(?!\d)/g, (m, pre, tex) => {
+    maths.push({ tex: tex.trim(), display: false });
+    return pre + "\u0000M" + (maths.length - 1) + "\u0000";
   });
 
   src = src.replace(/!\[\[([^\]]+)\]\]/g, (m, inner) => {
@@ -2189,7 +2202,114 @@ function markdownToHtml(body) {
   } else {
     html = marked.parse(src, { breaks: true, mangle: false, headerIds: false });
   }
+  html = html.replace(/\u0000D(\d+)\u0000/g, (m, index) => {
+    const tex = maths[Number(index)] ? maths[Number(index)].tex : "";
+    return '<span class="math math-display" data-tex="' + escapeAttr(tex) + '"></span>';
+  });
+  html = html.replace(/\u0000M(\d+)\u0000/g, (m, index) => {
+    const tex = maths[Number(index)] ? maths[Number(index)].tex : "";
+    return '<span class="math math-inline" data-tex="' + escapeAttr(tex) + '"></span>';
+  });
   return html;
+}
+
+let katexPromise = null;
+function ensureKatex() {
+  if (window.katex) return Promise.resolve(window.katex);
+  if (katexPromise) return katexPromise;
+  katexPromise = new Promise((resolve, reject) => {
+    if (!document.querySelector("link[data-katex]")) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css";
+      link.dataset.katex = "1";
+      document.head.appendChild(link);
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js";
+    script.async = true;
+    script.onload = () => window.katex ? resolve(window.katex) : reject(new Error("katex missing"));
+    script.onerror = () => reject(new Error("katex load failed"));
+    document.head.appendChild(script);
+  });
+  return katexPromise;
+}
+
+function renderMathIn(root) {
+  const nodes = root.querySelectorAll(".math[data-tex]");
+  if (!nodes.length) return;
+  ensureKatex().then((katex) => {
+    nodes.forEach((node) => {
+      if (node.dataset.rendered === "1" || !node.isConnected) return;
+      try {
+        katex.render(node.dataset.tex || "", node, { displayMode: node.classList.contains("math-display"), throwOnError: false, strict: false });
+        node.dataset.rendered = "1";
+      } catch {
+        node.textContent = node.dataset.tex || "";
+      }
+    });
+  }).catch(() => {
+    nodes.forEach((node) => { if (!node.textContent) node.textContent = node.dataset.tex || ""; });
+  });
+}
+
+let mermaidPromise = null;
+function ensureMermaid() {
+  if (window.mermaid) {
+    if (!window.__vaultMermaidReady) {
+      window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: document.documentElement.dataset.theme === "light" ? "default" : "dark" });
+      window.__vaultMermaidReady = true;
+    }
+    return Promise.resolve(window.mermaid);
+  }
+  if (mermaidPromise) return mermaidPromise;
+  mermaidPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js";
+    script.async = true;
+    script.onload = () => {
+      try {
+        window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: document.documentElement.dataset.theme === "light" ? "default" : "dark" });
+        window.__vaultMermaidReady = true;
+        resolve(window.mermaid);
+      } catch (error) { reject(error); }
+    };
+    script.onerror = () => reject(new Error("mermaid load failed"));
+    document.head.appendChild(script);
+  });
+  return mermaidPromise;
+}
+
+async function renderMermaidIn(root) {
+  const codes = root.querySelectorAll("pre > code.language-mermaid, pre > code.lang-mermaid");
+  if (!codes.length) return;
+  const nodes = [];
+  codes.forEach((code, index) => {
+    const pre = code.parentElement;
+    if (!pre) return;
+    const div = document.createElement("div");
+    div.className = "mermaid";
+    div.dataset.src = code.textContent;
+    div.id = "mermaid-" + Date.now() + "-" + index;
+    pre.replaceWith(div);
+    nodes.push(div);
+  });
+  try {
+    const mermaid = await ensureMermaid();
+    for (const node of nodes) {
+      if (!node.isConnected) continue;
+      try {
+        const result = await mermaid.render(node.id + "-svg", node.dataset.src || "");
+        node.innerHTML = result.svg;
+        node.dataset.rendered = "1";
+      } catch {
+        node.textContent = node.dataset.src || "";
+        node.classList.add("mermaid-error");
+      }
+    }
+  } catch {
+    nodes.forEach((node) => { node.textContent = node.dataset.src || ""; node.classList.add("mermaid-error"); });
+  }
 }
 
 const CALLOUT_TITLES = { note: "Нотатка", tip: "Порада", info: "Інфо", success: "Готово", warning: "Увага", danger: "Небезпека", bug: "Баг", example: "Приклад", quote: "Цитата", todo: "Зробити" };
@@ -2417,6 +2537,8 @@ function paintPagePreview(host, path, text) {
     a.rel = "noopener";
   });
   host.appendChild(body);
+  renderMathIn(body);
+  renderMermaidIn(body);
 }
 
 function showPagePreview(link) {
@@ -2501,6 +2623,8 @@ function resolveEmbeds(root) {
       box.innerHTML = '<div class="embed-title">' + escapeHtml(hit.split("/").pop().replace(/\.md$/, "")) + "</div>" + markdownToHtml(body);
       styleCallouts(box);
       wireRendered(box, body, 0);
+      renderMathIn(box);
+      renderMermaidIn(box);
       box.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.disabled = true; });
       box.classList.add("loaded");
       box.onclick = (e) => { e.stopPropagation(); openNote(hit); };
@@ -3332,6 +3456,10 @@ window.Vault = Vault;
 /* ---------------- markdown highlight, outline, find ---------------- */
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(String(value)).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function inlineMarkdown(s) {
@@ -4252,3 +4380,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps };
