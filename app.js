@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=110";
-import { initCanvas } from "./canvas.js?v=110";
-import { initCollab } from "./collab.js?v=110";
-import { initPlugins } from "./plugins.js?v=110";
-import { exportPdfFile } from "./pdf.js?v=110";
-import { initLive } from "./live.js?v=110";
-import { initDaily } from "./daily.js?v=110";
-import { initRecorder } from "./recorder.js?v=110";
-import { initPdfViewer } from "./pdfviewer.js?v=110";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=110";
+import { initGraph } from "./graph.js?v=111";
+import { initCanvas } from "./canvas.js?v=111";
+import { initCollab } from "./collab.js?v=111";
+import { initPlugins } from "./plugins.js?v=111";
+import { exportPdfFile } from "./pdf.js?v=111";
+import { initLive } from "./live.js?v=111";
+import { initDaily } from "./daily.js?v=111";
+import { initRecorder } from "./recorder.js?v=111";
+import { initPdfViewer } from "./pdfviewer.js?v=111";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=111";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v110";
+const BUILD = "v111";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -71,6 +71,7 @@ const CORE_PLUGINS = [
   { id: "bases", label: "Bases", desc: "Табличні бази з нотаток", def: true },
   { id: "webviewer", label: "Web viewer", desc: "Відкривати сайти в застосунку", def: true },
   { id: "format-converter", label: "Format converter", desc: "Конвертація HTML ↔ Markdown", def: true },
+  { id: "importer", label: "Importer", desc: "Імпорт файлів у волт", def: true },
   { id: "file-recovery", label: "File recovery", desc: "Історія версій нотатки", def: true },
   { id: "audiorecorder", label: "Audio recorder", desc: "Запис звуку в нотатку", def: true },
   { id: "workspaces", label: "Workspaces", desc: "Збережені розкладки", def: false },
@@ -2918,6 +2919,50 @@ function convertMarkdownToHtml() {
   if (selection.text.trim()) replaceActiveSelection(html);
   else replaceNoteSource(html);
   toast("Markdown → HTML");
+}
+
+async function importFiles(files) {
+  const list = [...(files || [])].filter((file) => file && file.name);
+  if (!list.length) return [];
+  const imported = [];
+  for (const file of list) {
+    try {
+      let text = await file.text();
+      let name = file.name.replace(/\.[^.]+$/, "");
+      if (/\.html?$/i.test(file.name)) text = await htmlToMarkdown(text);
+      name = name.replace(/[\\/:*?"<>|]+/g, "_").trim() || "Imported";
+      let path = "Imports/" + name + ".md";
+      let suffix = 1;
+      while (state.files.includes(path) || state.pending.has(path)) {
+        suffix += 1;
+        path = "Imports/" + name + " " + suffix + ".md";
+      }
+      await ghPut(path, text, null, "import " + path);
+      state.pending.add(path);
+      imported.push(path);
+    } catch (error) {
+      toast("Імпорт " + file.name + ": " + error.message);
+    }
+  }
+  if (imported.length) {
+    await loadTree();
+    await openNote(imported[0]);
+    toast("імпортовано: " + imported.length);
+  }
+  return imported;
+}
+
+function openImportPicker() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".md,.txt,.html,.htm,text/markdown,text/plain,text/html";
+  input.multiple = true;
+  input.onchange = () => {
+    if (input.files && input.files.length) importFiles(input.files);
+    input.remove();
+  };
+  document.body.appendChild(input);
+  input.click();
 }
 
 let katexPromise = null;
@@ -6486,6 +6531,7 @@ registerCommand({ id: "web-viewer", label: "Відкрити Web viewer", hint: 
 registerCommand({ id: "slides", label: "Почати презентацію", hint: "Slides", plugin: "slides", run: startSlides });
 registerCommand({ id: "format-html-md", label: "Форматування: HTML → Markdown", plugin: "format-converter", run: convertHtmlToMarkdown });
 registerCommand({ id: "format-md-html", label: "Форматування: Markdown → HTML", plugin: "format-converter", run: convertMarkdownToHtml });
+registerCommand({ id: "import-files", label: "Імпортувати файли", plugin: "importer", run: openImportPicker });
 registerCommand({ id: "stack-tabs", label: "Скласти / розкласти вкладки", hint: "Stack tabs", run: () => toggleStackedTabs() });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", plugin: "graph", run: () => {
   const localToggle = $("graphLocal");
@@ -6607,4 +6653,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName };
