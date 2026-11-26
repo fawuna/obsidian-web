@@ -7,7 +7,7 @@ import { exportPdfFile } from "./pdf.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v8";
+const BUILD = "v9";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -335,6 +335,8 @@ function paint() {
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
   renderPreview();
   renderContext();
+  renderOutline();
+  syncHighlight();
   const words = file ? file.text.trim().split(/\s+/).filter(Boolean).length : 0;
   $("stMeta").textContent = file ? words + " слів · " + file.text.length + " симв." : "";
   setState(file ? (file.dirty ? "не збережено" : "синхронізовано") : "", file && file.dirty ? "warn" : "ok");
@@ -789,6 +791,195 @@ export const Vault = {
 };
 window.Vault = Vault;
 
+/* ---------------- markdown highlight, outline, find ---------------- */
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function inlineMarkdown(s) {
+  return s
+    .replace(/!\[\[([^\]]+)\]\]/g, '<span class="hl-l">![[$1]]</span>')
+    .replace(/\[\[([^\]]+)\]\]/g, '<span class="hl-w">[[$1]]</span>')
+    .replace(/!?\[([^\]]*)\]\(([^)]+)\)/g, (m) => '<span class="hl-l">' + m + "</span>")
+    .replace(/`([^`]+)`/g, '<span class="hl-c">`$1`</span>')
+    .replace(/\*\*([^*]+)\*\*/g, '<span class="hl-b">**$1**</span>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<span class="hl-i">*$2*</span>')
+    .replace(/(^|\s)(#[A-Za-z0-9_\u0400-\u04FF-]{2,})/g, '$1<span class="hl-t">$2</span>');
+}
+
+function highlightMarkdown(text) {
+  const lines = text.split("\n");
+  const out = [];
+  let inFence = false;
+  let inFront = lines.length > 0 && /^---\s*$/.test(lines[0]);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (inFront) {
+      out.push('<span class="hl-f">' + escapeHtml(line) + "</span>");
+      if (i > 0 && /^---\s*$/.test(line)) inFront = false;
+      continue;
+    }
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      out.push('<span class="hl-f">' + escapeHtml(line) + "</span>");
+      continue;
+    }
+    if (inFence) {
+      out.push('<span class="hl-code">' + escapeHtml(line) + "</span>");
+      continue;
+    }
+    let html = escapeHtml(line);
+    const heading = html.match(/^(#{1,6})(\s.*)$/);
+    if (heading) {
+      out.push('<span class="hl-h">' + heading[1] + heading[2] + "</span>");
+      continue;
+    }
+    if (/^&gt;\s?/.test(html)) {
+      out.push('<span class="hl-q">' + html + "</span>");
+      continue;
+    }
+    const list = html.match(/^(\s*)([-*+]|\d+\.)(\s+)/);
+    if (list) {
+      const prefix = list[0];
+      html = html.slice(prefix.length);
+      let marker = '<span class="hl-m">' + prefix + "</span>";
+      const task = html.match(/^\[( |x|X)\]\s/);
+      if (task) {
+        marker += '<span class="hl-m">' + task[0] + "</span>";
+        html = html.slice(task[0].length);
+      }
+      out.push(marker + inlineMarkdown(html));
+      continue;
+    }
+    out.push(inlineMarkdown(html));
+  }
+  return out.join("\n");
+}
+
+function syncHighlight() {
+  const pre = $("hlCode");
+  if (!pre) return;
+  const ed = $("editor");
+  pre.innerHTML = highlightMarkdown(ed.value) + "\n";
+  pre.style.transform = "translateY(" + -ed.scrollTop + "px)";
+}
+
+function renderOutline() {
+  const host = $("outline");
+  if (!host) return;
+  host.innerHTML = "";
+  const file = currentFile();
+  if (!file) { host.appendChild(el("div", "empty", "немає нотатки")); return; }
+  const lines = file.text.split("\n");
+  const items = [];
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    const m = line.match(/^(#{1,6})\s+(.*)$/);
+    if (m) items.push({ level: m[1].length, text: m[2].replace(/[*_`]/g, "").trim(), line: i });
+  }
+  if (!items.length) { host.appendChild(el("div", "empty", "немає заголовків")); return; }
+  for (const item of items) {
+    const btn = el("button", "outline-item l" + item.level, item.text);
+    btn.title = "рядок " + (item.line + 1);
+    btn.onclick = () => jumpToLine(item.line);
+    host.appendChild(btn);
+  }
+}
+
+function jumpToLine(line) {
+  const ed = $("editor");
+  const lines = ed.value.split("\n");
+  let pos = 0;
+  for (let i = 0; i < line && i < lines.length; i++) pos += lines[i].length + 1;
+  ed.focus();
+  ed.selectionStart = ed.selectionEnd = pos;
+  const lh = parseFloat(getComputedStyle(ed).lineHeight) || 25;
+  ed.scrollTop = Math.max(0, line * lh - ed.clientHeight / 3);
+  syncHighlight();
+}
+
+let findMatches = [];
+let findIndex = -1;
+
+function openFind() {
+  $("findBar").classList.add("show");
+  $("findInput").focus();
+  $("findInput").select();
+  runFind();
+}
+function closeFind() {
+  $("findBar").classList.remove("show");
+  $("editor").focus();
+}
+function runFind() {
+  const ed = $("editor");
+  const q = $("findInput").value;
+  findMatches = [];
+  findIndex = -1;
+  if (q) {
+    const hay = ed.value.toLowerCase();
+    const needle = q.toLowerCase();
+    let at = hay.indexOf(needle);
+    while (at !== -1) {
+      findMatches.push(at);
+      at = hay.indexOf(needle, at + Math.max(1, needle.length));
+    }
+  }
+  $("findCount").textContent = findMatches.length ? "1/" + findMatches.length : "0";
+  if (findMatches.length) { findIndex = 0; selectMatch(); }
+}
+function selectMatch() {
+  const ed = $("editor");
+  const q = $("findInput").value;
+  if (!findMatches.length) return;
+  const start = findMatches[findIndex];
+  ed.focus();
+  ed.selectionStart = start;
+  ed.selectionEnd = start + q.length;
+  const lh = parseFloat(getComputedStyle(ed).lineHeight) || 25;
+  const line = ed.value.slice(0, start).split("\n").length - 1;
+  ed.scrollTop = Math.max(0, line * lh - ed.clientHeight / 3);
+  $("findCount").textContent = (findIndex + 1) + "/" + findMatches.length;
+  syncHighlight();
+}
+function findNext() {
+  if (!findMatches.length) { runFind(); return; }
+  findIndex = (findIndex + 1) % findMatches.length;
+  selectMatch();
+}
+function findPrev() {
+  if (!findMatches.length) { runFind(); return; }
+  findIndex = (findIndex - 1 + findMatches.length) % findMatches.length;
+  selectMatch();
+}
+function replaceOne() {
+  const ed = $("editor");
+  const q = $("findInput").value;
+  if (!q) return;
+  const sel = ed.value.slice(ed.selectionStart, ed.selectionEnd);
+  if (sel.toLowerCase() === q.toLowerCase()) {
+    ed.setRangeText($("replaceInput").value, ed.selectionStart, ed.selectionEnd, "end");
+    ed.dispatchEvent(new Event("input"));
+  }
+  runFind();
+  findIndex = Math.min(findIndex, Math.max(0, findMatches.length - 1));
+  if (findMatches.length) selectMatch();
+}
+function replaceAllInNote() {
+  const ed = $("editor");
+  const q = $("findInput").value;
+  if (!q) return;
+  const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  const count = (ed.value.match(re) || []).length;
+  ed.value = ed.value.replace(re, $("replaceInput").value);
+  ed.dispatchEvent(new Event("input"));
+  runFind();
+  toast("замінено входжень: " + count);
+}
+
 /* ---------------- editor wiring ---------------- */
 $("editor").addEventListener("input", () => {
   const file = currentFile();
@@ -801,20 +992,98 @@ $("editor").addEventListener("input", () => {
   const words = file.text.trim().split(/\s+/).filter(Boolean).length;
   $("stMeta").textContent = words + " слів · " + file.text.length + " симв.";
   renderPreview();
+  syncHighlight();
+  clearTimeout($("editor")._o);
+  $("editor")._o = setTimeout(renderOutline, 350);
   emit("edit", { path: file.path, text: file.text, prev });
   clearTimeout($("editor")._t);
   $("editor")._t = setTimeout(() => saveNote(true), 3000);
 });
 
 $("editor").addEventListener("keydown", (e) => {
+  const ed = $("editor");
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && "bikfh".indexOf(e.key.toLowerCase()) >= 0) e.stopPropagation();
+
   if (e.key === "Tab") {
     e.preventDefault();
-    const ed = $("editor"), s = ed.selectionStart;
+    const s = ed.selectionStart;
     ed.value = ed.value.slice(0, s) + "  " + ed.value.slice(ed.selectionEnd);
     ed.selectionStart = ed.selectionEnd = s + 2;
     ed.dispatchEvent(new Event("input"));
+    return;
+  }
+
+  if (mod && e.key.toLowerCase() === "b") {
+    e.preventDefault();
+    wrapSelection("**");
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "i") {
+    e.preventDefault();
+    wrapSelection("*");
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    const s = ed.selectionStart, t = ed.selectionEnd;
+    const text = ed.value.slice(s, t) || "текст";
+    ed.value = ed.value.slice(0, s) + "[" + text + "]()" + ed.value.slice(t);
+    ed.selectionStart = ed.selectionEnd = s + text.length + 3;
+    ed.dispatchEvent(new Event("input"));
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    openFind();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "h") {
+    e.preventDefault();
+    openFind();
+    $("replaceInput").focus();
+    return;
+  }
+
+  if (e.key === "Enter" && !e.shiftKey && !mod) {
+    const s = ed.selectionStart;
+    const before = ed.value.slice(0, s);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    const line = before.slice(lineStart);
+    const m = line.match(/^(\s*)([-*+]|\d+\.)\s+(\[[ xX]\]\s+)?/);
+    if (m) {
+      e.preventDefault();
+      const indent = m[1];
+      let marker = m[2];
+      const task = m[3] || "";
+      if (/^\d+\.$/.test(marker)) marker = String(Number(marker.slice(0, -1)) + 1) + ".";
+      const isEmpty = line.trim() === m[2] || line.trim() === m[2] + (task ? "[ ]" : "");
+      if (isEmpty) {
+        ed.value = ed.value.slice(0, lineStart) + ed.value.slice(s);
+        ed.selectionStart = ed.selectionEnd = lineStart;
+      } else {
+        const insert = "\n" + indent + marker + " " + (task ? "[ ] " : "");
+        ed.value = ed.value.slice(0, s) + insert + ed.value.slice(ed.selectionEnd);
+        ed.selectionStart = ed.selectionEnd = s + insert.length;
+      }
+      ed.dispatchEvent(new Event("input"));
+    }
   }
 });
+
+function wrapSelection(marker) {
+  const ed = $("editor");
+  const s = ed.selectionStart;
+  const t = ed.selectionEnd;
+  const sel = ed.value.slice(s, t);
+  const text = marker + sel + marker;
+  ed.value = ed.value.slice(0, s) + text + ed.value.slice(t);
+  ed.selectionStart = s + marker.length;
+  ed.selectionEnd = t + marker.length;
+  ed.dispatchEvent(new Event("input"));
+}
+
+$("editor").addEventListener("scroll", () => syncHighlight());
 
 $("editor").addEventListener("paste", async (e) => {
   const items = [...(e.clipboardData?.items || [])];
@@ -846,7 +1115,9 @@ document.addEventListener("keydown", (e) => {
   else if (mod && e.key.toLowerCase() === "o") { e.preventDefault(); showSwitcher(); }
   else if (mod && e.key.toLowerCase() === "b") { e.preventDefault(); toggleLeft(); }
   else if (mod && e.key.toLowerCase() === "g") { e.preventDefault(); setView(state.view === "graph" ? "note" : "graph"); }
-  else if (e.key === "Escape") closeModals();
+  else if (mod && e.key.toLowerCase() === "f") { e.preventDefault(); openFind(); }
+  else if (mod && e.key.toLowerCase() === "h") { e.preventDefault(); openFind(); $("replaceInput").focus(); }
+  else if (e.key === "Escape") { if ($("findBar").classList.contains("show")) closeFind(); else closeModals(); }
 });
 
 $("paletteInput").addEventListener("input", () => { paletteActive = 0; renderPalette(); });
@@ -879,6 +1150,28 @@ $("reloadTree").onclick = () => loadTree().catch((e) => toast(e.message));
 $("filter").oninput = renderTree;
 $("searchInput").oninput = () => { clearTimeout($("searchInput")._t); $("searchInput")._t = setTimeout(runSearch, 300); };
 $("rebuildIndex").onclick = async () => { state.index.clear(); await ensureIndex(); renderContext(); renderTags(); toast("індекс оновлено"); };
+$("copyOutline").onclick = () => {
+  const items = [...document.querySelectorAll("#outline .outline-item")].map((b) => b.textContent);
+  if (!items.length) { toast("немає заголовків"); return; }
+  navigator.clipboard.writeText(items.map((t) => "- " + t).join("\n")).then(
+    () => toast("заголовки скопійовано"),
+    () => toast("браузер не дав доступ до буфера")
+  );
+};
+$("findNext").onclick = findNext;
+$("findPrev").onclick = findPrev;
+$("replaceOne").onclick = replaceOne;
+$("replaceAll").onclick = replaceAllInNote;
+$("findClose").onclick = closeFind;
+$("findInput").addEventListener("input", runFind);
+$("findInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); e.shiftKey ? findPrev() : findNext(); }
+  if (e.key === "Escape") closeFind();
+});
+$("replaceInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); replaceOne(); }
+  if (e.key === "Escape") closeFind();
+});
 $("navBack").onclick = goBack;
 $("navFwd").onclick = goFwd;
 $("openGraph").onclick = () => setView(state.view === "graph" ? "note" : "graph");

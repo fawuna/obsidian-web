@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=8">
+<link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
 
@@ -85,7 +85,20 @@
     </aside>
 
     <main>
-      <div class="editor-host"><textarea id="editor" spellcheck="false" placeholder="Обери нотатку або створи нову (＋)"></textarea></div>
+      <div class="editor-host">
+        <div class="hl-layer" aria-hidden="true"><pre id="hlCode"></pre></div>
+        <textarea id="editor" spellcheck="false" placeholder="Обери нотатку або створи нову (＋)"></textarea>
+      </div>
+      <div id="findBar" class="find-bar">
+        <input id="findInput" placeholder="Знайти…" autocomplete="off" spellcheck="false">
+        <input id="replaceInput" placeholder="Замінити на…" autocomplete="off" spellcheck="false">
+        <button class="icon-btn" id="findPrev" title="Попереднє">↑</button>
+        <button class="icon-btn" id="findNext" title="Наступне">↓</button>
+        <button class="ghost-border" id="replaceOne">Замінити</button>
+        <button class="ghost-border" id="replaceAll">Все</button>
+        <span id="findCount"></span>
+        <button class="icon-btn" id="findClose" title="Закрити">✕</button>
+      </div>
       <div id="previewHost"><div id="preview"></div></div>
 
       <div id="graphHost">
@@ -114,6 +127,11 @@
     </main>
 
     <aside id="right">
+      <div class="pane-head">
+        <span class="title">Структура</span>
+        <button class="icon-btn" id="copyOutline" title="Скопіювати заголовки">⧉</button>
+      </div>
+      <div class="pane-body" id="outline"></div>
       <div class="pane-head">
         <span class="title">Контекст</span>
         <button class="icon-btn" id="rebuildIndex" title="Перебудувати індекс">⟳</button>
@@ -185,7 +203,7 @@
 <div id="dropHint">Відпусти, щоб вставити картинку</div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=8"></script>
-<script type="module" src="app.js?v=8"></script>
+<script src="vendor/marked.min.js?v=9"></script>
+<script type="module" src="app.js?v=9"></script>
 </body>
 </html>
