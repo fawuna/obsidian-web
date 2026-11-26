@@ -755,12 +755,75 @@ function wrapSelection(editorView, before, after) {
   return true;
 }
 
+function continueList(editorView) {
+  const state = editorView.state;
+  const pos = state.selection.main.head;
+  const line = state.doc.lineAt(pos);
+  const before = line.text.slice(0, pos - line.from);
+  const match = before.match(/^(\s*)(?:([-*+])|(\d+)([.)]))\s+(\[[ xX]\]\s+)?/);
+  if (!match) return false;
+  const prefix = match[0];
+  const content = before.slice(prefix.length);
+  if (!content.trim()) {
+    editorView.dispatch({ changes: { from: line.from, to: pos, insert: "" }, selection: { anchor: line.from } });
+    return true;
+  }
+  const marker = match[2] ? match[2] : String(Number(match[3]) + 1) + match[4];
+  const task = match[5] ? "[ ] " : "";
+  const insert = "\n" + match[1] + marker + " " + task;
+  editorView.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + insert.length }, scrollIntoView: true });
+  return true;
+}
+
+function indentList(editorView, outdent) {
+  const state = editorView.state;
+  const changes = [];
+  for (const range of state.selection.ranges) {
+    const line = state.doc.lineAt(range.from);
+    if (!/^\s*(?:[-*+]|\d+[.)])\s+/.test(line.text)) continue;
+    if (outdent) {
+      const remove = line.text.match(/^(\t| {1,4})/);
+      if (remove) changes.push({ from: line.from, to: line.from + remove[1].length, insert: "" });
+    } else {
+      changes.push({ from: line.from, insert: "  " });
+    }
+  }
+  if (!changes.length) return false;
+  editorView.dispatch({ changes });
+  return true;
+}
+
+const AUTO_PAIRS = { "(": ")", "[": "]", "{": "}" };
+const AUTO_QUOTES = { '"': '"', "'": "'", "`": "`", "*": "*", "_": "_", "$": "$" };
+
+function autoPair(editorView, from, to, text) {
+  if (from !== to) return false;
+  const state = editorView.state;
+  const next = state.sliceDoc(to, to + 1);
+  const prev = state.sliceDoc(Math.max(0, from - 1), from);
+  if (AUTO_QUOTES[text]) {
+    if (next === text) { editorView.dispatch({ selection: { anchor: from + 1 } }); return true; }
+    if (/[\w\u0400-\u04FF]/.test(prev)) return false;
+  } else if (AUTO_PAIRS[text]) {
+    if (next === AUTO_PAIRS[text]) { editorView.dispatch({ selection: { anchor: from + 1 } }); return true; }
+    if (next && !/[\s)\]}>.,;:!?]/.test(next)) return false;
+  } else {
+    return false;
+  }
+  const close = AUTO_QUOTES[text] || AUTO_PAIRS[text];
+  editorView.dispatch({ changes: { from, insert: text + close }, selection: { anchor: from + 1 } });
+  return true;
+}
+
 function makeExtensions(options, instance) {
   return [
     history(),
     drawSelection(),
     EditorView.lineWrapping,
     keymap.of([
+      { key: "Enter", run: continueList },
+      { key: "Tab", run: (v) => indentList(v, false) },
+      { key: "Shift-Tab", run: (v) => indentList(v, true) },
       { key: "Mod-b", run: (v) => wrapSelection(v, "**", "**") },
       { key: "Mod-i", run: (v) => wrapSelection(v, "*", "*") },
       { key: "Mod-k", run: (v) => wrapSelection(v, "[[", "]]") },
@@ -768,6 +831,7 @@ function makeExtensions(options, instance) {
       ...defaultKeymap,
       ...historyKeymap,
     ]),
+    EditorView.inputHandler.of((view, from, to, text) => autoPair(view, from, to, text)),
     makeDecorations(options.imageUrl),
     EditorView.contentAttributes.of({ spellcheck: "false", autocapitalize: "off", autocorrect: "off" }),
     EditorView.domEventHandlers({
