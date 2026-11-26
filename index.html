@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=83">
+<link rel="stylesheet" href="styles.css?v=84">
 </head>
 <body>
 
@@ -195,6 +195,22 @@
           <button class="clickable-icon" id="webClose" title="Закрити">✕</button>
         </div>
         <iframe id="webFrame" title="Web viewer" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+      </div>
+      <div id="pdfHost">
+        <div class="pdf-bar">
+          <span id="pdfTitle">PDF</span>
+          <button class="clickable-icon" id="pdfPrev" title="Попередня сторінка">‹</button>
+          <input id="pdfPage" type="number" min="1" value="1">
+          <span id="pdfCount">/ 0</span>
+          <button class="clickable-icon" id="pdfNext" title="Наступна сторінка">›</button>
+          <button class="clickable-icon" id="pdfZoomOut" title="Зменшити">−</button>
+          <button class="clickable-icon" id="pdfZoomIn" title="Збільшити">+</button>
+          <button class="ghost-border" id="pdfFit">Вписати</button>
+          <div class="spacer"></div>
+          <button class="clickable-icon" id="pdfExternal" title="Відкрити в браузері">↗</button>
+          <button class="clickable-icon" id="pdfClose" title="Закрити">✕</button>
+        </div>
+        <div id="pdfPages" class="pdf-pages"></div>
       </div>
     </main>
 
@@ -442,7 +458,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=83"></script>
-<script type="module" src="app.js?v=83"></script>
+<script src="vendor/marked.min.js?v=84"></script>
+<script type="module" src="app.js?v=84"></script>
 </body>
 </html>

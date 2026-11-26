@@ -1,16 +1,17 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=83";
-import { initCanvas } from "./canvas.js?v=83";
-import { initCollab } from "./collab.js?v=83";
-import { initPlugins } from "./plugins.js?v=83";
-import { exportPdfFile } from "./pdf.js?v=83";
-import { initLive } from "./live.js?v=83";
-import { initDaily } from "./daily.js?v=83";
-import { initRecorder } from "./recorder.js?v=83";
+import { initGraph } from "./graph.js?v=84";
+import { initCanvas } from "./canvas.js?v=84";
+import { initCollab } from "./collab.js?v=84";
+import { initPlugins } from "./plugins.js?v=84";
+import { exportPdfFile } from "./pdf.js?v=84";
+import { initLive } from "./live.js?v=84";
+import { initDaily } from "./daily.js?v=84";
+import { initRecorder } from "./recorder.js?v=84";
+import { initPdfViewer } from "./pdfviewer.js?v=84";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v83";
+const BUILD = "v84";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -126,6 +127,7 @@ const livePaths = [];
 const paneRefs = [];
 let dailyApi = null;
 let recorderApi = null;
+let pdfApi = null;
 let pluginsApi = null;
 
 /* ---------------- events ---------------- */
@@ -692,7 +694,7 @@ async function loadTree() {
     if (p.endsWith("/.gitkeep")) state.folders.add(p.slice(0, -"/.gitkeep".length));
   }
   const remote = all
-    .filter((p) => p.endsWith(".md") || p.endsWith(".canvas") || p.endsWith(".base"))
+    .filter((p) => p.endsWith(".md") || p.endsWith(".canvas") || p.endsWith(".base") || p.endsWith(".pdf"))
     .map((p) => p);
   const remoteSet = new Set(remote);
   for (const p of [...state.pending]) { if (remoteSet.has(p)) state.pending.delete(p); }
@@ -782,8 +784,8 @@ function renderTree() {
         const row = el("div", "file-row" + (full === state.active ? " active" : ""));
         row.style.paddingLeft = 12 + depth * 12 + "px";
         row.draggable = true;
-        row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : full.endsWith(".base") ? "🗃" : "📄"));
-        row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas|base)$/, "")));
+        row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : full.endsWith(".base") ? "🗃" : full.endsWith(".pdf") ? "📕" : "📄"));
+        row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas|base|pdf)$/, "")));
         const starred = state.bookmarks.includes(full);
         const star = el("button", "star-btn" + (starred ? " on" : ""), "★");
         star.title = starred ? "Зняти із закладок" : "У закладки";
@@ -1539,12 +1541,14 @@ function setView(view) {
   document.body.classList.toggle("view-canvas", view === "canvas");
   document.body.classList.toggle("view-base", view === "base");
   document.body.classList.toggle("view-web", view === "web");
+  document.body.classList.toggle("view-pdf", view === "pdf");
   emit("view", view);
 }
 
 async function openNote(path, pushHistory = true) {
   if (path.endsWith(".base")) { openBase(path); return; }
   if (path.endsWith(".canvas")) { openCanvas(path); return; }
+  if (path.endsWith(".pdf")) { if (pdfApi) await pdfApi.open(path); return; }
   const existing = state.open.find((f) => f.path === path);
   if (existing) {
     state.active = path;
@@ -1686,6 +1690,7 @@ function paint() {
   $("stPath").textContent = state.view === "graph" ? "Graph view" :
     state.view === "canvas" ? ($("canvasName").textContent || "Canvas") :
     state.view === "web" ? (webView.url || "Web viewer") :
+    state.view === "pdf" ? (pdfApi?.path || "PDF") :
     (file ? file.path : "—");
   $("stBranch").textContent = state.repo.split("/")[1] + " · " + state.branch + " · " + BUILD;
   document.title = (file ? file.path.split("/").pop().replace(/\.md$/, "") + " · " : "") + "Vault";
@@ -5559,6 +5564,7 @@ async function connect(repo, branch, token, remember) {
     window.__daily = dailyApi;
     recorderApi = await initRecorder(Vault);
     window.__recorder = recorderApi;
+    pdfApi = initPdfViewer(Vault);
     const restored = await restoreWorkspace();
     if (!restored) {
       const first = state.files.find((p) => p.endsWith(".md"));
@@ -5707,4 +5713,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }) };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null) };
