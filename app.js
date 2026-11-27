@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=136";
-import { initCanvas } from "./canvas.js?v=136";
-import { initCollab } from "./collab.js?v=136";
-import { initPlugins } from "./plugins.js?v=136";
-import { exportPdfFile } from "./pdf.js?v=136";
-import { initLive } from "./live.js?v=136";
-import { initDaily } from "./daily.js?v=136";
-import { initRecorder } from "./recorder.js?v=136";
-import { initPdfViewer } from "./pdfviewer.js?v=136";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=136";
+import { initGraph } from "./graph.js?v=137";
+import { initCanvas } from "./canvas.js?v=137";
+import { initCollab } from "./collab.js?v=137";
+import { initPlugins } from "./plugins.js?v=137";
+import { exportPdfFile } from "./pdf.js?v=137";
+import { initLive } from "./live.js?v=137";
+import { initDaily } from "./daily.js?v=137";
+import { initRecorder } from "./recorder.js?v=137";
+import { initPdfViewer } from "./pdfviewer.js?v=137";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=137";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v136";
+const BUILD = "v137";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -193,6 +193,7 @@ let appCfg = {
   showLineNumber: false,
   newLinkFormat: "shortest",
   useMarkdownLinks: false,
+  userIgnoreFilters: [],
   lineWrap: true,
   vimMode: false,
   foldHeading: true,
@@ -2672,6 +2673,7 @@ async function loadAppConfig() {
         showLineNumber: raw.showLineNumber === true,
         newLinkFormat: ["shortest", "relative", "absolute"].includes(raw.newLinkFormat) ? raw.newLinkFormat : "shortest",
         useMarkdownLinks: raw.useMarkdownLinks === true,
+        userIgnoreFilters: Array.isArray(raw.userIgnoreFilters) ? raw.userIgnoreFilters.filter((item) => typeof item === "string" && item.trim()) : [],
         lineWrap: raw.lineWrap !== false,
         vimMode: raw.vimMode === true,
         foldHeading: raw.foldHeading !== false,
@@ -4181,7 +4183,7 @@ function scheduleBacklinkCount() {
     if (!current || current.path !== file.path) return;
     let count = 0;
     for (const [path, text] of state.index) {
-      if (path === file.path || !text) continue;
+      if (path === file.path || !text || isExcludedPath(path)) continue;
       if (wikiLinks(text).some((link) => resolveLinkTarget(link.target) === file.path)) count++;
     }
     if (!currentFile() || currentFile().path !== file.path) return;
@@ -4305,7 +4307,7 @@ function renderEmbeddedBacklinks(host, file) {
   if (!file || store.get("backlinksInDocument", "0") !== "1") { host.style.display = "none"; return; }
   const mentions = [];
   for (const [path, text] of state.index) {
-    if (path === file.path || !text) continue;
+    if (path === file.path || !text || isExcludedPath(path)) continue;
     for (const link of wikiLinks(text)) {
       if (resolveLinkTarget(link.target) !== file.path) continue;
       const info = lineAt(text, link.start);
@@ -4342,7 +4344,7 @@ async function renderBacklinks() {
   const linked = new Map();
   const unlinked = new Map();
   for (const [path, text] of state.index) {
-    if (path === file.path || !text) continue;
+    if (path === file.path || !text || isExcludedPath(path)) continue;
     const linkedHits = [];
     for (const link of wikiLinks(text)) {
       if (resolveLinkTarget(link.target) !== file.path) continue;
@@ -4444,8 +4446,8 @@ function renderTagPanel() {
   if (!host) return;
   const filter = ($("tagFilter")?.value || "").trim().toLowerCase().replace(/^#/, "");
   const counts = new Map();
-  for (const [, text] of state.index) {
-    if (!text) continue;
+  for (const [path, text] of state.index) {
+    if (!text || isExcludedPath(path)) continue;
     for (const tag of noteTags(text)) counts.set(tag, (counts.get(tag) || 0) + 1);
   }
   host.innerHTML = "";
@@ -4478,8 +4480,8 @@ function renderAllProperties() {
   if (!host) return;
   const filter = ($("propFilter")?.value || "").trim().toLowerCase();
   const info = new Map();
-  for (const [, text] of state.index) {
-    if (!text) continue;
+  for (const [path, text] of state.index) {
+    if (!text || isExcludedPath(path)) continue;
     const parsed = parseProps(text);
     if (!parsed) continue;
     for (const [key, value] of parsed.props) {
@@ -4580,8 +4582,8 @@ function renderTags() {
   const host = $("tagsPane");
   host.innerHTML = "";
   const counts = new Map();
-  for (const [, text] of state.index) {
-    if (!text) continue;
+  for (const [path, text] of state.index) {
+    if (!text || isExcludedPath(path)) continue;
     for (const tag of noteTags(text)) counts.set(tag, (counts.get(tag) || 0) + 1);
   }
   if (!counts.size) { host.appendChild(el("div", "empty", "Тегів ще нема. Відкрий кілька нотаток — індекс збереться.")); return; }
@@ -4635,7 +4637,7 @@ async function runSearch() {
   const collapseAll = store.get("searchCollapse", "0") === "1";
   const results = [];
   for (const [path, text] of state.index) {
-    if (!text) continue;
+    if (!text || isExcludedPath(path)) continue;
     const parsed = alternatives.find((query) => searchQueryMatches(query, path, text, query.caseOverride != null ? query.caseOverride : caseSensitive));
     if (!parsed) continue;
     const queryCase = parsed.caseOverride != null ? parsed.caseOverride : caseSensitive;
@@ -5004,7 +5006,7 @@ function saveCurrentWorkspace() {
 }
 
 function openRandomNote() {
-  const notes = state.files.filter((path) => path.endsWith(".md"));
+  const notes = state.files.filter((path) => path.endsWith(".md") && !isExcludedPath(path));
   if (!notes.length) { toast("Немає нотаток"); return; }
   openNote(notes[Math.floor(Math.random() * notes.length)]);
 }
@@ -5335,6 +5337,45 @@ function formatLink(targetPath, label) {
   return "[[" + target + (label ? "|" + label : "") + "]]";
 }
 
+function globToRegExp(pattern) {
+  const clean = String(pattern || "").trim().replace(/\\/g, "/");
+  if (!clean) return null;
+  let source = "";
+  for (let i = 0; i < clean.length; i++) {
+    const char = clean[i];
+    if (char === "*") {
+      if (clean[i + 1] === "*") {
+        source += ".*";
+        i++;
+        if (clean[i + 1] === "/") i++;
+      } else {
+        source += "[^/]*";
+      }
+    } else if (char === "?") {
+      source += "[^/]";
+    } else {
+      source += escapeRegExp(char);
+    }
+  }
+  return new RegExp("^" + source + (clean.endsWith("/") ? ".*" : "(?:/.*)?") + "$");
+}
+
+let ignoreCache = { key: "", list: [] };
+
+function excludedRegexes() {
+  const filters = appCfg.userIgnoreFilters || [];
+  const key = filters.join("\u0000");
+  if (ignoreCache.key === key) return ignoreCache.list;
+  ignoreCache = { key, list: filters.map(globToRegExp).filter(Boolean) };
+  return ignoreCache.list;
+}
+
+function isExcludedPath(path) {
+  const list = excludedRegexes();
+  if (!list.length) return false;
+  return list.some((re) => re.test(String(path || "")));
+}
+
 function chooseSwitcherItem(path) {
   if (!path) return;
   if (path.startsWith("__new__:")) {
@@ -5369,7 +5410,7 @@ function renderSwitcher() {
   const q = $("switcherInput").value.trim().toLowerCase();
   const list = $("switcherList");
   list.innerHTML = "";
-  const source = switcherMode === "template" ? (dailyApi ? dailyApi.templateFiles() : []) : state.files;
+  const source = switcherMode === "template" ? (dailyApi ? dailyApi.templateFiles() : []) : state.files.filter((path) => !isExcludedPath(path));
   const scored = source
     .map((path) => {
       const name = path.split("/").pop().replace(/\.(md|canvas)$/, "").toLowerCase();
@@ -6594,7 +6635,7 @@ export const Vault = {
   state, api, ghGet, ghPut, ghPutRaw, ghDelete, b64encode, b64decode,
   contentsPath, loadAttachment, showCtx, hideCtx, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
-  renderTree, renderTabs, paint, renderPreview, markdownToHtml, renderRightPanels, renderTags, showPane, showSwitcher,
+  renderTree, renderTabs, paint, renderPreview, markdownToHtml, isExcludedPath, renderRightPanels, renderTags, showPane, showSwitcher,
   moveFile, uploadImage, uploadFile, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote, openInSecond, closeSecond,
   exportPdfFile: (opts = {}) => exportPdfFile($("preview"), (currentFile()?.path || "note").split("/").pop().replace(/\.md$/, ""), opts),
   get files() { return state.files; },
@@ -7939,6 +7980,7 @@ function openSettings() {
   $("setAttachmentFolder").value = appCfg.attachmentFolderPath || "";
   $("setLinkFormat").value = appCfg.newLinkFormat || "shortest";
   $("setMarkdownLinks").checked = appCfg.useMarkdownLinks === true;
+  $("setExcluded").value = (appCfg.userIgnoreFilters || []).join("\n");
   const noteCfg = dailyApi && dailyApi.config ? dailyApi.config : null;
   if (noteCfg) {
     $("setDailyFolder").value = noteCfg.daily.folder || "";
@@ -8022,6 +8064,7 @@ $("saveSettings").onclick = async () => {
   appCfg.vimMode = $("setVimMode").checked;
   appCfg.newLinkFormat = $("setLinkFormat").value;
   appCfg.useMarkdownLinks = $("setMarkdownLinks").checked;
+  appCfg.userIgnoreFilters = $("setExcluded").value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
   appCfg.foldHeading = $("setFoldHeading").checked;
   appCfg.foldIndent = $("setFoldIndent").checked;
   appCfg.pasteHtmlAsMarkdown = $("setPasteHtml").checked;
@@ -8064,6 +8107,7 @@ $("saveSettings").onclick = async () => {
     appRaw.vimMode = appCfg.vimMode;
     appRaw.newLinkFormat = appCfg.newLinkFormat;
     appRaw.useMarkdownLinks = appCfg.useMarkdownLinks;
+    appRaw.userIgnoreFilters = appCfg.userIgnoreFilters;
     appRaw.foldHeading = appCfg.foldHeading;
     appRaw.foldIndent = appCfg.foldIndent;
     appRaw.pasteHtmlAsMarkdown = appCfg.pasteHtmlAsMarkdown;
@@ -8389,4 +8433,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink, syncLiveTitles };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink, syncLiveTitles, isExcludedPath };

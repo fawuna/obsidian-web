@@ -71,7 +71,7 @@ function matchesGraphGroup(query, path) {
 }
 
 function buildGraph() {
-  const onlyMd = Vault.files.filter((p) => p.endsWith(".md"));
+  const onlyMd = Vault.files.filter((p) => p.endsWith(".md") && !(Vault.isExcludedPath && Vault.isExcludedPath(p)));
   const active = Vault.state.active;
   const index = Vault.index;
   const local = document.getElementById("graphLocal")?.checked === true && active;
