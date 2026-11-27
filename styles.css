@@ -646,6 +646,9 @@ body.split #previewHost { display: none; }
 .bm-item { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 5px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
 .bm-item:hover { background: var(--bg-3); color: var(--text); }
 .bm-item .star { color: var(--yellow); }
+.bm-icon { flex: 0 0 auto; width: 16px; text-align: center; font-size: 12px; opacity: .85; }
+.bm-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bm-group { color: var(--text); font-weight: 600; }
 .star-btn { padding: 0 3px; font-size: 12px; color: var(--muted); opacity: 0; }
 .file-row:hover .star-btn { opacity: 1; }
 .star-btn.on { opacity: 1; color: var(--yellow); }
