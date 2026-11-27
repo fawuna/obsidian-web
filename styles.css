@@ -832,3 +832,19 @@ body.split #previewHost { display: none; }
 .plugin-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2); }
 .plugin-info { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .plugin-info small { color: var(--muted); font-size: 11.5px; }
+
+/* source line numbers */
+.hl-line { display: block; position: relative; }
+body.show-source-line-numbers #editor,
+body.show-source-line-numbers #editor2,
+body.show-source-line-numbers .pane-editor,
+body.show-source-line-numbers .hl-layer pre { padding-left: 64px; }
+body.show-source-line-numbers.mode-split #editor,
+body.show-source-line-numbers.mode-split .hl-layer pre { padding-left: 52px; }
+@media (max-width: 980px) {
+  body.show-source-line-numbers #editor,
+  body.show-source-line-numbers #editor2,
+  body.show-source-line-numbers .pane-editor,
+  body.show-source-line-numbers .hl-layer pre { padding-left: 52px; }
+}
+body.show-source-line-numbers .hl-line::before { content: attr(data-line); position: absolute; left: -46px; width: 36px; text-align: right; color: var(--muted); font-size: 11px; line-height: inherit; pointer-events: none; }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=137">
+<link rel="stylesheet" href="styles.css?v=139">
 </head>
 <body>
 
@@ -368,6 +368,11 @@
           <label>Токен</label>
           <input id="setToken" type="password">
           <div class="hint" id="settingsVersion" style="margin-top:12px"></div>
+          <div class="hint" id="aboutStats" style="margin-top:12px"></div>
+          <div class="row" style="margin-top:8px">
+            <button class="ghost-border" id="aboutReload">Перезавантажити застосунок</button>
+            <button class="ghost-border" id="aboutCopy">Копіювати діагностику</button>
+          </div>
         </section>
         <section class="settings-section" data-settings="appearance">
           <h3>Appearance</h3>
@@ -555,7 +560,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=137"></script>
-<script type="module" src="app.js?v=137"></script>
+<script src="vendor/marked.min.js?v=139"></script>
+<script type="module" src="app.js?v=139"></script>
 </body>
 </html>

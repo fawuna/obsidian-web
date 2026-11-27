@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=137";
-import { initCanvas } from "./canvas.js?v=137";
-import { initCollab } from "./collab.js?v=137";
-import { initPlugins } from "./plugins.js?v=137";
-import { exportPdfFile } from "./pdf.js?v=137";
-import { initLive } from "./live.js?v=137";
-import { initDaily } from "./daily.js?v=137";
-import { initRecorder } from "./recorder.js?v=137";
-import { initPdfViewer } from "./pdfviewer.js?v=137";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=137";
+import { initGraph } from "./graph.js?v=139";
+import { initCanvas } from "./canvas.js?v=139";
+import { initCollab } from "./collab.js?v=139";
+import { initPlugins } from "./plugins.js?v=139";
+import { exportPdfFile } from "./pdf.js?v=139";
+import { initLive } from "./live.js?v=139";
+import { initDaily } from "./daily.js?v=139";
+import { initRecorder } from "./recorder.js?v=139";
+import { initPdfViewer } from "./pdfviewer.js?v=139";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=139";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v137";
+const BUILD = "v139";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -817,6 +817,7 @@ function applyPrefs() {
   document.documentElement.style.setProperty("--editor-width", store.get("width", "46rem"));
   applyAccent();
   applySpellcheck();
+  syncSourceLineNumbers();
 }
 
 function applySpellcheck() {
@@ -1814,7 +1815,7 @@ function syncHighlight2() {
   const pre = $("hlCode2");
   if (!pre) return;
   const ed = $("editor2");
-  pre.innerHTML = highlightMarkdown(ed.value) + "\n";
+  pre.innerHTML = highlightMarkdown(ed.value);
   pre.style.transform = "translateY(" + -ed.scrollTop + "px)";
 }
 
@@ -1947,7 +1948,7 @@ function syncHighlightPane(index) {
   if (index === 1) { syncHighlight2(); return; }
   const pane = getPane(index);
   if (!pane) return;
-  pane.hl.innerHTML = highlightMarkdown(pane.editor.value) + "\n";
+  pane.hl.innerHTML = highlightMarkdown(pane.editor.value);
   pane.hl.style.transform = "translateY(" + -pane.editor.scrollTop + "px)";
 }
 
@@ -6715,14 +6716,20 @@ function highlightMarkdown(text) {
     }
     out.push(inlineMarkdown(html));
   }
-  return out.join("\n");
+  return out.map((line, index) => '<span class="hl-line" data-line="' + (index + 1) + '">' + (line || "&nbsp;") + "</span>").join("");
+}
+
+function syncSourceLineNumbers() {
+  document.body.classList.toggle("show-source-line-numbers", appCfg.showLineNumber === true);
+  syncHighlight();
+  syncHighlight2();
 }
 
 function syncHighlight() {
   const pre = $("hlCode");
   if (!pre) return;
   const ed = $("editor");
-  pre.innerHTML = highlightMarkdown(ed.value) + "\n";
+  pre.innerHTML = highlightMarkdown(ed.value);
   pre.style.transform = "translateY(" + -ed.scrollTop + "px)";
 }
 
@@ -8003,6 +8010,21 @@ function openSettings() {
   showSettingsSection(store.get("settingsTab", "appearance"));
   const version = $("settingsVersion");
   if (version) version.textContent = "Vault · " + BUILD + " · " + state.repo + " · " + state.branch;
+  const aboutStats = $("aboutStats");
+  if (aboutStats) {
+    aboutStats.textContent = "рахую…";
+    ensureIndex().then(() => {
+      const notes = state.files.filter((path) => path.endsWith(".md")).length;
+      const excluded = state.files.filter((path) => isExcludedPath(path)).length;
+      let words = 0;
+      for (const [, text] of state.index) {
+        if (text) words += text.trim().split(/\s+/).filter(Boolean).length;
+      }
+      const enabledPlugins = CORE_PLUGINS.filter((plugin) => isCoreEnabled(plugin.id)).length;
+      aboutStats.textContent = notes + " нотаток · " + state.files.length + " файлів · " + words + " слів · " +
+        enabledPlugins + "/" + CORE_PLUGINS.length + " плагінів" + (excluded ? " · " + excluded + " виключено" : "");
+    }).catch(() => { aboutStats.textContent = ""; });
+  }
   if (!snippetsLoaded) loadSnippets().catch(() => {});
   else renderSnippets();
   openModal("settings");
@@ -8136,6 +8158,8 @@ $("reloadPlugins").onclick = async () => {
   renderCommunityPlugins();
 };
 $("reloadSnippets").onclick = () => { snippetsLoaded = false; loadSnippets(); };
+$("aboutReload").onclick = () => location.reload();
+$("aboutCopy").onclick = () => copyText("Vault " + BUILD + " · " + state.repo + " · " + state.branch + " · " + navigator.userAgent);
 $("mobLeft").onclick = toggleLeft;
 $("mobBack").onclick = goBack;
 $("mobFwd").onclick = goFwd;
@@ -8183,6 +8207,7 @@ async function connect(repo, branch, token, remember) {
     else dailyApi = await initDaily(Vault);
     window.__daily = dailyApi;
     await loadAppConfig();
+    syncSourceLineNumbers();
     await loadAppearanceConfig();
     await loadPropertyTypes();
     recorderApi = await initRecorder(Vault);
