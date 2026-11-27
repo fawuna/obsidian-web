@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=128";
-import { initCanvas } from "./canvas.js?v=128";
-import { initCollab } from "./collab.js?v=128";
-import { initPlugins } from "./plugins.js?v=128";
-import { exportPdfFile } from "./pdf.js?v=128";
-import { initLive } from "./live.js?v=128";
-import { initDaily } from "./daily.js?v=128";
-import { initRecorder } from "./recorder.js?v=128";
-import { initPdfViewer } from "./pdfviewer.js?v=128";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=128";
+import { initGraph } from "./graph.js?v=129";
+import { initCanvas } from "./canvas.js?v=129";
+import { initCollab } from "./collab.js?v=129";
+import { initPlugins } from "./plugins.js?v=129";
+import { exportPdfFile } from "./pdf.js?v=129";
+import { initLive } from "./live.js?v=129";
+import { initDaily } from "./daily.js?v=129";
+import { initRecorder } from "./recorder.js?v=129";
+import { initPdfViewer } from "./pdfviewer.js?v=129";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=129";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v128";
+const BUILD = "v129";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2305,6 +2305,90 @@ async function extractSelection() {
     state.pending.add(target);
     state.index.set(target, content);
     replaceActiveSelection("[[" + target.replace(/\.md$/, "") + "]]");
+    await loadTree();
+    renderTabs(); paint();
+    emit("create", target);
+    toast("витягнуто у " + target);
+  } catch (error) { toast("Не вийшло: " + error.message); }
+}
+
+function nearestHeadingAbove() {
+  const ctx = selectionLineContext();
+  if (!ctx) return null;
+  const lines = ctx.text.split(/\r?\n/);
+  const lineIndex = ctx.text.slice(0, ctx.from).split("\n").length - 1;
+  for (let i = Math.min(lineIndex, lines.length - 1); i >= 0; i--) {
+    const match = lines[i].match(/^(#{1,6})\s+(.*)$/);
+    if (match) return { level: match[1].length, text: match[2].replace(/[*_`]/g, "").trim(), line: i };
+  }
+  return null;
+}
+
+function copyLinkToHeading() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  const heading = nearestHeadingAbove();
+  if (!heading) { toast("Немає заголовка вище"); return; }
+  copyText("[[" + noteName(file.path) + "#" + heading.text + "]]");
+}
+
+function copyLinkToBlock() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const lineStart = ctx.text.lastIndexOf("\n", ctx.from - 1) + 1;
+  let lineEnd = ctx.text.indexOf("\n", ctx.from);
+  if (lineEnd === -1) lineEnd = ctx.text.length;
+  const line = ctx.text.slice(lineStart, lineEnd);
+  const match = line.match(/\^([A-Za-z0-9-]+)\s*$/);
+  if (!match) { toast("Немає блока ^id у рядку"); return; }
+  copyText("[[" + noteName(file.path) + "#^" + match[1] + "]]");
+}
+
+async function extractHeading() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const lines = ctx.text.split(/\r?\n/);
+  const lineIndex = ctx.text.slice(0, ctx.from).split("\n").length - 1;
+  let start = -1;
+  let level = 0;
+  for (let i = Math.min(lineIndex, lines.length - 1); i >= 0; i--) {
+    const match = lines[i].match(/^(#{1,6})\s+/);
+    if (match) { start = i; level = match[1].length; break; }
+  }
+  if (start < 0) { toast("Немає заголовка вище"); return; }
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    const match = lines[i].match(/^(#{1,6})\s+/);
+    if (match && match[1].length <= level) { end = i; break; }
+  }
+  const section = lines.slice(start, end).join("\n").replace(/\s+$/, "");
+  const headingMatch = lines[start].match(/^#{1,6}\s+(.*)$/);
+  const headingText = (headingMatch ? headingMatch[1] : "Section").replace(/[*_`]/g, "").trim() || "Section";
+  const raw = prompt("Назва нової нотатки:", headingText);
+  if (!raw) return;
+  let target = raw.trim().replace(/^\/+/, "");
+  if (!target) return;
+  if (!target.endsWith(".md")) target += ".md";
+  try {
+    const content = section + "\n";
+    await ghPut(target, content, null, "extract heading " + target);
+    state.pending.add(target);
+    state.index.set(target, content);
+    const eol = ctx.text.includes("\r\n") ? 2 : 1;
+    let startPos = 0;
+    for (let i = 0; i < start; i++) startPos += lines[i].length + eol;
+    let endPos = ctx.text.length;
+    if (end < lines.length) {
+      endPos = startPos;
+      for (let i = start; i < end; i++) endPos += lines[i].length + eol;
+      endPos -= eol;
+    }
+    const link = "[[" + target.replace(/\.md$/, "") + "]]";
+    applyEditorTextChange(startPos, endPos, link, startPos + link.length);
     await loadTree();
     renderTabs(); paint();
     emit("create", target);
@@ -8010,6 +8094,9 @@ registerCommand({ id: "show-properties", label: "Properties: усі власти
 registerCommand({ id: "show-outline", label: "Outline: показати структуру", run: () => openRightTab("outline") });
 registerCommand({ id: "extract", label: "Note composer: витягнути виділене", run: extractSelection });
 registerCommand({ id: "merge", label: "Note composer: обʼєднати з іншою нотаткою", run: () => showSwitcher("merge") });
+registerCommand({ id: "extract-heading", label: "Note composer: витягнути заголовок", run: extractHeading });
+registerCommand({ id: "copy-link-heading", label: "Копіювати посилання на заголовок", run: copyLinkToHeading });
+registerCommand({ id: "copy-link-block", label: "Копіювати посилання на блок", run: copyLinkToBlock });
 registerCommand({ id: "recovery", label: "File recovery: історія версій", run: openRecovery });
 registerCommand({ id: "collab", label: "Спільна робота (real-time)", hint: "👥", run: () => emit("collab:open") });
 registerCommand({ id: "workspaces-save", label: "Workspaces: зберегти поточний", plugin: "workspaces", run: saveCurrentWorkspace });
