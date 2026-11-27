@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=118">
+<link rel="stylesheet" href="styles.css?v=119">
 </head>
 <body>
 
@@ -185,6 +185,7 @@
         <div class="base-bar">
           <span id="baseName">Base</span>
           <select id="baseViewSelect"></select>
+          <button class="clickable-icon" id="baseViewMenu" title="Меню виду">⋯</button>
           <select id="baseGroupBy" title="Групувати за"></select>
           <select id="baseSummary" title="Підсумки">
             <option value="">Без підсумків</option>
@@ -198,6 +199,7 @@
           </select>
           <input id="baseSearch" class="graph-input" placeholder="Пошук…" autocomplete="off">
           <input id="baseFilter" class="graph-input" placeholder='Фільтр: status == "alpha"' autocomplete="off">
+          <button class="ghost-border" id="baseColumns" title="Показати або приховати колонки">Колонки</button>
           <div class="spacer"></div>
           <span id="baseCount" class="base-count"></span>
           <button class="ghost-border" id="baseSave">Зберегти</button>
@@ -530,7 +532,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=118"></script>
-<script type="module" src="app.js?v=118"></script>
+<script src="vendor/marked.min.js?v=119"></script>
+<script type="module" src="app.js?v=119"></script>
 </body>
 </html>

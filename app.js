@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=118";
-import { initCanvas } from "./canvas.js?v=118";
-import { initCollab } from "./collab.js?v=118";
-import { initPlugins } from "./plugins.js?v=118";
-import { exportPdfFile } from "./pdf.js?v=118";
-import { initLive } from "./live.js?v=118";
-import { initDaily } from "./daily.js?v=118";
-import { initRecorder } from "./recorder.js?v=118";
-import { initPdfViewer } from "./pdfviewer.js?v=118";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=118";
+import { initGraph } from "./graph.js?v=119";
+import { initCanvas } from "./canvas.js?v=119";
+import { initCollab } from "./collab.js?v=119";
+import { initPlugins } from "./plugins.js?v=119";
+import { exportPdfFile } from "./pdf.js?v=119";
+import { initLive } from "./live.js?v=119";
+import { initDaily } from "./daily.js?v=119";
+import { initRecorder } from "./recorder.js?v=119";
+import { initPdfViewer } from "./pdfviewer.js?v=119";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=119";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v118";
+const BUILD = "v119";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -5183,6 +5183,7 @@ function openGraph() { setView("graph"); emit("view", "graph"); }
 /* ---------------- bases ---------------- */
 let jsyamlPromise = null;
 let basePath = null;
+let baseSha = null;
 let baseConfig = null;
 let baseViewIndex = 0;
 let baseSort = null;
@@ -5654,6 +5655,22 @@ function renderBaseTable(data) {
       baseSort = { key: column.key, dir: same && baseSort.dir === 1 ? -1 : 1 };
       renderBase();
     };
+    th.oncontextmenu = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const key = baseColumnKey(column);
+      const keys = data.columns.map(baseColumnKey);
+      const at = keys.indexOf(key);
+      showCtx(event.clientX, event.clientY, [
+        { label: "Сортувати за зростанням", run: () => { baseSort = { key: column.key, dir: 1 }; renderBase(); } },
+        { label: "Сортувати за спаданням", run: () => { baseSort = { key: column.key, dir: -1 }; renderBase(); } },
+        { sep: true },
+        { label: "Перемістити ліворуч", disabled: at <= 0, run: () => moveBaseColumn(key, -1) },
+        { label: "Перемістити праворуч", disabled: at >= keys.length - 1, run: () => moveBaseColumn(key, 1) },
+        { sep: true },
+        { label: "Прибрати колонку", danger: true, disabled: keys.length <= 1, run: () => removeBaseColumn(key) },
+      ]);
+    };
     headRow.appendChild(th);
   }
   thead.appendChild(headRow);
@@ -5754,6 +5771,216 @@ function baseColumnKey(column) {
   return column.key;
 }
 
+let baseSaveTimer = null;
+let baseSaveBusy = false;
+let baseSaveAgain = false;
+
+function scheduleBaseSave() {
+  if (!basePath || !baseConfig) return;
+  clearTimeout(baseSaveTimer);
+  baseSaveTimer = setTimeout(() => { flushBaseSave(); }, 700);
+}
+
+async function saveBaseConfig(manual) {
+  if (!basePath || !baseConfig) { if (manual) toast("Немає .base для збереження"); return false; }
+  try {
+    const yaml = await ensureJsYaml();
+    const text = yaml.dump(baseConfig, { lineWidth: 120 });
+    let sha = baseSha;
+    if (!sha) {
+      const got = await ghGet(basePath);
+      sha = got.sha;
+    }
+    let response;
+    try {
+      response = await ghPut(basePath, text, sha, "base: " + basePath);
+    } catch (error) {
+      if (error.status !== 409) throw error;
+      const got = await ghGet(basePath);
+      baseSha = got.sha;
+      response = await ghPut(basePath, text, got.sha, "base: " + basePath);
+    }
+    baseSha = response && response.content && response.content.sha ? response.content.sha : null;
+    state.index.set(basePath, text);
+    if (manual) toast("базу збережено");
+    return true;
+  } catch (error) {
+    if (manual) toast("Не збереглось: " + error.message);
+    return false;
+  }
+}
+
+async function flushBaseSave() {
+  if (baseSaveBusy) { baseSaveAgain = true; return; }
+  baseSaveBusy = true;
+  try {
+    do {
+      baseSaveAgain = false;
+      await saveBaseConfig(false);
+    } while (baseSaveAgain);
+  } finally {
+    baseSaveBusy = false;
+  }
+}
+
+function baseCurrentView() {
+  if (!baseConfig) return null;
+  if (!Array.isArray(baseConfig.views) || !baseConfig.views.length) {
+    baseConfig.views = [{ type: "table", name: "Table", order: [] }];
+  }
+  baseViewIndex = Math.max(0, Math.min(baseViewIndex, baseConfig.views.length - 1));
+  return baseConfig.views[baseViewIndex];
+}
+
+function baseVisibleKeys() {
+  if (!baseConfig) return [];
+  const data = baseBuild(baseConfig, baseDocs());
+  return data.columns.map((column) => baseColumnKey(column));
+}
+
+function baseAllKeys() {
+  const keys = new Set(["file.name", "tags"]);
+  for (const doc of baseDocs()) {
+    const parsed = parseProps(doc.text || "");
+    if (parsed) for (const [key] of parsed.props) keys.add(key);
+    if (noteTags(doc.text || "").length) keys.add("tags");
+  }
+  const views = baseConfig && Array.isArray(baseConfig.views) ? baseConfig.views : [];
+  for (const view of views) {
+    for (const entry of (Array.isArray(view.order) ? view.order : [])) {
+      const property = entry && typeof entry === "object" && entry.property ? entry.property : entry;
+      keys.add(baseColumnKey(baseNormalizeKey(property)));
+    }
+  }
+  return [...keys].sort((a, b) => a.localeCompare(b, "uk", { numeric: true, sensitivity: "base" }));
+}
+
+function baseKeyLabel(key) {
+  const column = baseNormalizeKey(key);
+  if (column.source === "file" && column.key === "name") return "Назва файлу";
+  if (column.source === "file" && column.key === "path") return "Шлях";
+  if (column.source === "tags") return "Теги";
+  if (column.source === "formula") return "Формула: " + column.label;
+  return column.label;
+}
+
+function toggleBaseColumn(key) {
+  const view = baseCurrentView();
+  if (!view) return;
+  const visible = baseVisibleKeys();
+  const at = visible.indexOf(key);
+  if (at >= 0) {
+    if (visible.length <= 1) { toast("Потрібна хоч одна колонка"); return; }
+    visible.splice(at, 1);
+  } else {
+    visible.push(key);
+  }
+  view.order = visible;
+  scheduleBaseSave();
+  renderBase();
+}
+
+function moveBaseColumn(key, dir) {
+  const view = baseCurrentView();
+  if (!view) return;
+  const order = baseVisibleKeys();
+  const at = order.indexOf(key);
+  const to = at + dir;
+  if (at < 0 || to < 0 || to >= order.length) return;
+  const [item] = order.splice(at, 1);
+  order.splice(to, 0, item);
+  view.order = order;
+  scheduleBaseSave();
+  renderBase();
+}
+
+function removeBaseColumn(key) {
+  const view = baseCurrentView();
+  if (!view) return;
+  const order = baseVisibleKeys();
+  if (order.length <= 1) { toast("Потрібна хоч одна колонка"); return; }
+  view.order = order.filter((item) => item !== key);
+  scheduleBaseSave();
+  renderBase();
+}
+
+function openBaseColumnsMenu(anchor) {
+  const visible = new Set(baseVisibleKeys());
+  const items = baseAllKeys().map((key) => ({
+    label: (visible.has(key) ? "✓ " : "    ") + baseKeyLabel(key),
+    run: () => toggleBaseColumn(key),
+  }));
+  const rect = anchor.getBoundingClientRect();
+  showCtx(rect.left, rect.bottom + 4, items.length ? items : [{ label: "Немає властивостей", disabled: true }]);
+}
+
+function addBaseView(type) {
+  if (!baseConfig) return;
+  if (!Array.isArray(baseConfig.views)) baseConfig.views = [];
+  const fallback = type === "cards" ? "Картки" : "Таблиця";
+  const name = prompt("Назва виду:", fallback);
+  if (name == null) return;
+  baseConfig.views.push({ type, name: name.trim() || fallback, order: [] });
+  baseViewIndex = baseConfig.views.length - 1;
+  baseSort = null;
+  scheduleBaseSave();
+  renderBase();
+}
+
+function renameBaseView() {
+  const view = baseCurrentView();
+  if (!view) return;
+  const name = prompt("Назва виду:", view.name || "");
+  if (name == null || !name.trim()) return;
+  view.name = name.trim();
+  scheduleBaseSave();
+  renderBase();
+}
+
+function duplicateBaseView() {
+  if (!baseConfig) return;
+  const view = baseCurrentView();
+  if (!view) return;
+  const copy = JSON.parse(JSON.stringify(view));
+  copy.name = (view.name || "Вид") + " copy";
+  baseConfig.views.splice(baseViewIndex + 1, 0, copy);
+  baseViewIndex += 1;
+  baseSort = null;
+  scheduleBaseSave();
+  renderBase();
+}
+
+function deleteBaseView() {
+  if (!baseConfig || !Array.isArray(baseConfig.views) || baseConfig.views.length <= 1) return;
+  baseConfig.views.splice(baseViewIndex, 1);
+  baseViewIndex = Math.max(0, baseViewIndex - 1);
+  baseSort = null;
+  scheduleBaseSave();
+  renderBase();
+}
+
+function openBaseViewMenu(anchor) {
+  if (!baseConfig) { toast("Спочатку відкрий базу"); return; }
+  const view = baseCurrentView();
+  if (!view) return;
+  const isCards = (view.type || "table") === "cards";
+  const rect = anchor.getBoundingClientRect();
+  showCtx(rect.left, rect.bottom + 4, [
+    { label: "Новий табличний вид", run: () => addBaseView("table") },
+    { label: "Новий вид-картки", run: () => addBaseView("cards") },
+    { sep: true },
+    { label: "Перейменувати вид…", run: renameBaseView },
+    { label: "Дублювати вид", run: duplicateBaseView },
+    { label: isCards ? "Змінити на таблицю" : "Змінити на картки", run: () => {
+        view.type = isCards ? "table" : "cards";
+        scheduleBaseSave();
+        renderBase();
+      } },
+    { sep: true },
+    { label: "Видалити вид", danger: true, disabled: baseConfig.views.length <= 1, run: deleteBaseView },
+  ]);
+}
+
 function renderBaseControls(data) {
   const select = $("baseViewSelect");
   if (select) {
@@ -5823,10 +6050,12 @@ async function renderBase() {
 
 async function openBase(path) {
   let text = state.index.get(path);
+  baseSha = null;
   if (text == null) {
     try {
       const got = await ghGet(path);
       text = got.text;
+      baseSha = got.sha;
       state.index.set(path, text);
     } catch (error) { toast("Не відкрилось: " + error.message); return; }
   }
@@ -6800,6 +7029,8 @@ $("openCanvas").onclick = () => { const c = state.files.find((p) => p.endsWith("
 $("newCanvas").onclick = () => { if (canvasApi) canvasApi.create(); };
 $("openBase").onclick = createBase;
 $("baseViewSelect").onchange = () => { baseViewIndex = Number($("baseViewSelect").value) || 0; baseSort = null; renderBase(); };
+$("baseViewMenu").onclick = (event) => { event.stopPropagation(); openBaseViewMenu(event.currentTarget); };
+$("baseColumns").onclick = (event) => { event.stopPropagation(); openBaseColumnsMenu(event.currentTarget); };
 $("baseGroupBy").onchange = () => {
   if (!baseConfig) return;
   if (!Array.isArray(baseConfig.views) || !baseConfig.views.length) {
@@ -6834,14 +7065,7 @@ $("baseSummary").onchange = () => {
   renderBase();
 };
 $("baseSave").onclick = async () => {
-  if (!basePath || !baseConfig) { toast("Немає .base для збереження"); return; }
-  try {
-    const yaml = await ensureJsYaml();
-    const text = yaml.dump(baseConfig, { lineWidth: 120 });
-    const got = await ghGet(basePath);
-    await ghPut(basePath, text, got.sha, "base: " + basePath);
-    toast("базу збережено");
-  } catch (error) { toast("Не збереглось: " + error.message); }
+  await saveBaseConfig(true);
 };
 $("baseSearch").oninput = () => { clearTimeout($("baseSearch")._t); $("baseSearch")._t = setTimeout(renderBase, 150); };
 $("baseFilter").oninput = () => {
@@ -7526,4 +7750,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }) };
