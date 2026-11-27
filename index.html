@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=142">
+<link rel="stylesheet" href="styles.css?v=143">
 </head>
 <body>
 
@@ -382,6 +382,8 @@
             <div><label>Шрифт редактора</label><select id="setFont"><option value="14">14px</option><option value="15">15px</option><option value="16">16px</option><option value="17">17px</option></select></div>
             <div><label>Ширина</label><select id="setWidth"><option value="46rem">Звичайна</option><option value="56rem">Широка</option><option value="38rem">Вузька</option></select></div>
           </div>
+          <label style="margin-top:18px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setShowRibbon" checked> Показувати стрічку</label>
+          <label style="margin-top:8px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setShowStatusBar" checked> Показувати рядок стану</label>
           <label style="margin-top:18px;display:block">Тема оформлення</label>
           <div class="row">
             <select id="setThemeName"></select>
@@ -571,7 +573,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=142"></script>
-<script type="module" src="app.js?v=142"></script>
+<script src="vendor/marked.min.js?v=143"></script>
+<script type="module" src="app.js?v=143"></script>
 </body>
 </html>

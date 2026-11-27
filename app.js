@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=142";
-import { initCanvas } from "./canvas.js?v=142";
-import { initCollab } from "./collab.js?v=142";
-import { initPlugins } from "./plugins.js?v=142";
-import { exportPdfFile } from "./pdf.js?v=142";
-import { initLive } from "./live.js?v=142";
-import { initDaily } from "./daily.js?v=142";
-import { initRecorder } from "./recorder.js?v=142";
-import { initPdfViewer } from "./pdfviewer.js?v=142";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=142";
+import { initGraph } from "./graph.js?v=143";
+import { initCanvas } from "./canvas.js?v=143";
+import { initCollab } from "./collab.js?v=143";
+import { initPlugins } from "./plugins.js?v=143";
+import { exportPdfFile } from "./pdf.js?v=143";
+import { initLive } from "./live.js?v=143";
+import { initDaily } from "./daily.js?v=143";
+import { initRecorder } from "./recorder.js?v=143";
+import { initPdfViewer } from "./pdfviewer.js?v=143";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=143";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v142";
+const BUILD = "v143";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -715,6 +715,12 @@ if (themeMedia) {
 
 let themeStyleEl = null;
 let installedThemes = [];
+let appearanceCfg = { showRibbon: true, showStatusBar: true };
+
+function applyAppearanceVisibility() {
+  document.body.classList.toggle("no-ribbon", appearanceCfg.showRibbon === false);
+  document.body.classList.toggle("no-statusbar", appearanceCfg.showStatusBar === false);
+}
 let activeThemeName = "";
 
 async function listThemes() {
@@ -760,11 +766,19 @@ async function applyThemeByName(name) {
 async function loadAppearanceConfig() {
   try {
     const raw = JSON.parse((await ghGet(".obsidian/appearance.json")).text);
-    if (raw && typeof raw === "object" && raw.cssTheme) {
-      await listThemes();
-      await applyThemeByName(raw.cssTheme);
+    if (raw && typeof raw === "object") {
+      appearanceCfg.showRibbon = raw.showRibbon !== false;
+      appearanceCfg.showStatusBar = raw.showStatusBar !== false;
+      applyAppearanceVisibility();
+      if (raw.cssTheme) {
+        await listThemes();
+        await applyThemeByName(raw.cssTheme);
+      }
     }
-  } catch { /* no custom theme */ }
+  } catch {
+    appearanceCfg = { showRibbon: true, showStatusBar: true };
+    applyAppearanceVisibility();
+  }
 }
 
 function renderThemeOptions(selected) {
@@ -8319,6 +8333,8 @@ function openSettings() {
   listThemes().then(() => renderThemeOptions(activeThemeName)).catch(() => {});
   $("setFont").value = store.get("font", "15");
   $("setWidth").value = store.get("width", "46rem");
+  $("setShowRibbon").checked = appearanceCfg.showRibbon !== false;
+  $("setShowStatusBar").checked = appearanceCfg.showStatusBar !== false;
   $("setGraphForce").value = store.get("graphForce", "120");
   $("setPagePreview").checked = previewEnabled();
   $("setDefaultMode").value = store.get("defaultMode", "live");
@@ -8427,6 +8443,9 @@ $("saveSettings").onclick = async () => {
   store.set("theme", $("setTheme").value);
   store.set("font", $("setFont").value);
   store.set("width", $("setWidth").value);
+  appearanceCfg.showRibbon = $("setShowRibbon").checked;
+  appearanceCfg.showStatusBar = $("setShowStatusBar").checked;
+  applyAppearanceVisibility();
   store.set("accent", $("setAccent").value);
   store.set("graphForce", $("setGraphForce").value);
   store.set("pagePreview", $("setPagePreview").checked ? "1" : "0");
@@ -8504,6 +8523,8 @@ $("saveSettings").onclick = async () => {
       if (!appearanceRaw || typeof appearanceRaw !== "object" || Array.isArray(appearanceRaw)) appearanceRaw = {};
     } catch { appearanceRaw = {}; }
     appearanceRaw.cssTheme = $("setThemeName").value;
+    appearanceRaw.showRibbon = appearanceCfg.showRibbon !== false;
+    appearanceRaw.showStatusBar = appearanceCfg.showStatusBar !== false;
     await writeVaultJson(".obsidian/appearance.json", appearanceRaw);
   } catch (error) {
     toast("Налаштування нотаток: " + error.message);
@@ -8823,4 +8844,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, openThemeBrowser, fetchThemeRegistry, installCommunityTheme, removeCommunityTheme, themeRegistry: () => themeRegistry.slice(), installedThemeNames: () => installedThemes.map((theme) => theme.name), updateLinksForRename, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink, syncLiveTitles, isExcludedPath };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, appearance: () => ({ ...appearanceCfg }), openThemeBrowser, fetchThemeRegistry, installCommunityTheme, removeCommunityTheme, themeRegistry: () => themeRegistry.slice(), installedThemeNames: () => installedThemes.map((theme) => theme.name), updateLinksForRename, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink, syncLiveTitles, isExcludedPath };

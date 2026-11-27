@@ -868,3 +868,7 @@ body.split-dir-column #pane2,
 body.split-dir-column .pane { border-left: 0; border-top: 1px solid var(--line); }
 body.split-dir-column.mode-live #liveHost { order: -1; }
 body.split-dir-column.mode-split main > .editor-host { flex: 1 1 0; border-right: 0; border-bottom: 1px solid var(--line); }
+
+/* appearance visibility */
+body.no-ribbon #ribbon { display: none; }
+body.no-statusbar .statusbar { display: none; }
