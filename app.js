@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=133";
-import { initCanvas } from "./canvas.js?v=133";
-import { initCollab } from "./collab.js?v=133";
-import { initPlugins } from "./plugins.js?v=133";
-import { exportPdfFile } from "./pdf.js?v=133";
-import { initLive } from "./live.js?v=133";
-import { initDaily } from "./daily.js?v=133";
-import { initRecorder } from "./recorder.js?v=133";
-import { initPdfViewer } from "./pdfviewer.js?v=133";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=133";
+import { initGraph } from "./graph.js?v=134";
+import { initCanvas } from "./canvas.js?v=134";
+import { initCollab } from "./collab.js?v=134";
+import { initPlugins } from "./plugins.js?v=134";
+import { exportPdfFile } from "./pdf.js?v=134";
+import { initLive } from "./live.js?v=134";
+import { initDaily } from "./daily.js?v=134";
+import { initRecorder } from "./recorder.js?v=134";
+import { initPdfViewer } from "./pdfviewer.js?v=134";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=134";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v133";
+const BUILD = "v134";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -3251,9 +3251,9 @@ function renderPreview() {
 
   const footer = el("div", "mod-footer mod-ui");
   const backlinks = el("div", "embedded-backlinks");
-  backlinks.style.display = "none";
   footer.appendChild(backlinks);
   host.appendChild(footer);
+  renderEmbeddedBacklinks(backlinks, file);
   host.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
     heading.setAttribute("dir", "auto");
     heading.setAttribute("data-heading", heading.textContent.trim());
@@ -4297,6 +4297,32 @@ function renderGroupSection(container, sectionKey, label, groups, emptyText) {
   }
   holder.appendChild(children);
   container.append(head, holder);
+}
+
+function renderEmbeddedBacklinks(host, file) {
+  if (!host) return;
+  host.innerHTML = "";
+  if (!file || store.get("backlinksInDocument", "0") !== "1") { host.style.display = "none"; return; }
+  const mentions = [];
+  for (const [path, text] of state.index) {
+    if (path === file.path || !text) continue;
+    for (const link of wikiLinks(text)) {
+      if (resolveLinkTarget(link.target) !== file.path) continue;
+      const info = lineAt(text, link.start);
+      mentions.push({ path, line: info.line, text: info.text.trim() });
+      break;
+    }
+  }
+  if (!mentions.length) { host.style.display = "none"; return; }
+  host.style.display = "";
+  host.appendChild(el("div", "embedded-backlinks-title", mentions.length + " backlinks"));
+  for (const mention of mentions.slice(0, 30)) {
+    const row = el("div", "embedded-backlink");
+    row.appendChild(el("span", "embedded-backlink-name", noteName(mention.path)));
+    if (mention.text) row.appendChild(el("span", "embedded-backlink-context", mention.text.slice(0, 160)));
+    row.onclick = async () => { await openNote(mention.path); jumpToLine(mention.line); };
+    host.appendChild(row);
+  }
 }
 
 async function renderBacklinks() {
@@ -7504,6 +7530,10 @@ $("blCollapse").onclick = () => {
 };
 $("blContext").onclick = () => { backlinkMoreContext = !backlinkMoreContext; renderRightPanels(); };
 $("blSort").onclick = () => { backlinkSort = backlinkSort === "name" ? "count" : "name"; renderRightPanels(); };
+$("blInDocument").onclick = () => {
+  store.set("backlinksInDocument", store.get("backlinksInDocument", "0") === "1" ? "0" : "1");
+  renderPreview();
+};
 $("blFilter").oninput = () => { clearTimeout($("blFilter")._t); $("blFilter")._t = setTimeout(renderBacklinks, 150); };
 $("tagFilter").oninput = () => { clearTimeout($("tagFilter")._t); $("tagFilter")._t = setTimeout(renderTagPanel, 120); };
 $("propFilter").oninput = () => { clearTimeout($("propFilter")._t); $("propFilter")._t = setTimeout(renderAllProperties, 120); };

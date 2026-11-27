@@ -363,6 +363,12 @@ body.view-graph #liveHost, body.view-canvas #liveHost { display: none; }
 #preview .props .v { color: var(--text); }
 #preview .mod-header { margin: 0 0 8px; }
 #preview .inline-title { font-size: 30px; font-weight: 700; line-height: 1.2; margin: 0 0 10px; }
+#preview .embedded-backlinks { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 12px; }
+#preview .embedded-backlinks-title { font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+#preview .embedded-backlink { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+#preview .embedded-backlink:hover { background: var(--bg-3); }
+#preview .embedded-backlink-name { color: var(--accent); font-weight: 600; }
+#preview .embedded-backlink-context { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #preview .metadata-container { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 8px 0 16px; background: var(--bg-2); font-size: 13px; }
 #preview .metadata-properties-heading { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; cursor: pointer; }
 #preview .metadata-properties-heading svg { width: 14px; height: 14px; }
