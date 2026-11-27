@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=130">
+<link rel="stylesheet" href="styles.css?v=131">
 </head>
 <body>
 
@@ -438,6 +438,13 @@
           <label style="margin-top:12px;display:block">Тека для вкладень</label>
           <input id="setAttachmentFolder" placeholder="assets або ./">
           <div class="hint">Порожньо — корінь волту; ./ — тека поточної нотатки.</div>
+          <label style="margin-top:12px;display:block">Формат нових посилань</label>
+          <select id="setLinkFormat">
+            <option value="shortest">Найкоротший шлях</option>
+            <option value="relative">Відносний шлях</option>
+            <option value="absolute">Абсолютний шлях у волті</option>
+          </select>
+          <label style="margin-top:12px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setMarkdownLinks"> Використовувати Markdown-посилання</label>
         </section>
         <section class="settings-section" data-settings="daily">
           <h3>Daily notes</h3>
@@ -544,7 +551,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=130"></script>
-<script type="module" src="app.js?v=130"></script>
+<script src="vendor/marked.min.js?v=131"></script>
+<script type="module" src="app.js?v=131"></script>
 </body>
 </html>

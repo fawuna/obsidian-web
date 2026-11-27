@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=130";
-import { initCanvas } from "./canvas.js?v=130";
-import { initCollab } from "./collab.js?v=130";
-import { initPlugins } from "./plugins.js?v=130";
-import { exportPdfFile } from "./pdf.js?v=130";
-import { initLive } from "./live.js?v=130";
-import { initDaily } from "./daily.js?v=130";
-import { initRecorder } from "./recorder.js?v=130";
-import { initPdfViewer } from "./pdfviewer.js?v=130";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=130";
+import { initGraph } from "./graph.js?v=131";
+import { initCanvas } from "./canvas.js?v=131";
+import { initCollab } from "./collab.js?v=131";
+import { initPlugins } from "./plugins.js?v=131";
+import { exportPdfFile } from "./pdf.js?v=131";
+import { initLive } from "./live.js?v=131";
+import { initDaily } from "./daily.js?v=131";
+import { initRecorder } from "./recorder.js?v=131";
+import { initPdfViewer } from "./pdfviewer.js?v=131";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=131";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v130";
+const BUILD = "v131";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -191,6 +191,8 @@ let appCfg = {
   propertiesInDocument: "visible",
   showInlineTitle: true,
   showLineNumber: false,
+  newLinkFormat: "shortest",
+  useMarkdownLinks: false,
   lineWrap: true,
   vimMode: false,
   foldHeading: true,
@@ -2601,6 +2603,8 @@ async function loadAppConfig() {
         propertiesInDocument: ["visible", "hidden", "source"].includes(raw.propertiesInDocument) ? raw.propertiesInDocument : "visible",
         showInlineTitle: raw.showInlineTitle !== false,
         showLineNumber: raw.showLineNumber === true,
+        newLinkFormat: ["shortest", "relative", "absolute"].includes(raw.newLinkFormat) ? raw.newLinkFormat : "shortest",
+        useMarkdownLinks: raw.useMarkdownLinks === true,
         lineWrap: raw.lineWrap !== false,
         vimMode: raw.vimMode === true,
         foldHeading: raw.foldHeading !== false,
@@ -5208,6 +5212,36 @@ function showSwitcher(mode) {
   openModal("switcher");
   $("switcherInput").focus();
 }
+function relativeVaultPath(fromPath, toPath) {
+  const fromParts = String(fromPath || "").split("/").slice(0, -1);
+  const toParts = String(toPath || "").split("/");
+  let common = 0;
+  while (common < fromParts.length && common < toParts.length - 1 && fromParts[common] === toParts[common]) common++;
+  return [...Array(fromParts.length - common).fill(".."), ...toParts.slice(common)].join("/");
+}
+
+function formatLink(targetPath, label) {
+  const clean = String(targetPath || "").replace(/^\/+/, "");
+  const withoutExt = clean.replace(/\.(md|canvas|base|pdf)$/i, "");
+  const name = noteName(clean);
+  const base = withoutExt.split("/").pop();
+  const duplicate = state.files.some((path) => path !== clean && path.replace(/\.(md|canvas|base|pdf)$/i, "").split("/").pop() === base);
+  if (appCfg.useMarkdownLinks) {
+    let href = clean;
+    if (appCfg.newLinkFormat === "relative" && currentFile()) href = relativeVaultPath(currentFile().path, clean);
+    else if (appCfg.newLinkFormat === "absolute") href = "/" + clean;
+    else if (!duplicate) href = clean.split("/").pop();
+    return "[" + (label || name) + "](" + href + ")";
+  }
+  let target = withoutExt;
+  if (appCfg.newLinkFormat === "relative" && currentFile()) {
+    target = relativeVaultPath(currentFile().path, clean).replace(/\.(md|canvas|base|pdf)$/i, "");
+  } else if (appCfg.newLinkFormat !== "absolute" && !duplicate) {
+    target = base;
+  }
+  return "[[" + target + (label ? "|" + label : "") + "]]";
+}
+
 function chooseSwitcherItem(path) {
   if (!path) return;
   if (path.startsWith("__new__:")) {
@@ -5228,7 +5262,7 @@ function chooseSwitcherItem(path) {
     return;
   }
   if (switcherMode === "link") {
-    const link = "[[" + path.replace(/\.(md|canvas)$/, "") + "]]";
+    const link = formatLink(path);
     const api = linkPane === 2 && live2Api ? live2Api : liveApi;
     if (state.mode === "live" && api && linkPos !== null) api.insertAt(linkPos, link);
     else insertAtCursor(link);
@@ -7786,6 +7820,8 @@ function openSettings() {
   $("setNewFileLocation").value = appCfg.newFileLocation || "root";
   $("setNewFileFolder").value = appCfg.newFileFolderPath || "";
   $("setAttachmentFolder").value = appCfg.attachmentFolderPath || "";
+  $("setLinkFormat").value = appCfg.newLinkFormat || "shortest";
+  $("setMarkdownLinks").checked = appCfg.useMarkdownLinks === true;
   const noteCfg = dailyApi && dailyApi.config ? dailyApi.config : null;
   if (noteCfg) {
     $("setDailyFolder").value = noteCfg.daily.folder || "";
@@ -7867,6 +7903,8 @@ $("saveSettings").onclick = async () => {
   appCfg.showLineNumber = $("setLineNumbers").checked;
   appCfg.lineWrap = $("setLineWrap").checked;
   appCfg.vimMode = $("setVimMode").checked;
+  appCfg.newLinkFormat = $("setLinkFormat").value;
+  appCfg.useMarkdownLinks = $("setMarkdownLinks").checked;
   appCfg.foldHeading = $("setFoldHeading").checked;
   appCfg.foldIndent = $("setFoldIndent").checked;
   appCfg.pasteHtmlAsMarkdown = $("setPasteHtml").checked;
@@ -7907,6 +7945,8 @@ $("saveSettings").onclick = async () => {
     appRaw.showLineNumber = appCfg.showLineNumber;
     appRaw.lineWrap = appCfg.lineWrap;
     appRaw.vimMode = appCfg.vimMode;
+    appRaw.newLinkFormat = appCfg.newLinkFormat;
+    appRaw.useMarkdownLinks = appCfg.useMarkdownLinks;
     appRaw.foldHeading = appCfg.foldHeading;
     appRaw.foldIndent = appCfg.foldIndent;
     appRaw.pasteHtmlAsMarkdown = appCfg.pasteHtmlAsMarkdown;
@@ -8223,4 +8263,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }) };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink };
