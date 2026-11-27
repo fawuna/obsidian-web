@@ -225,6 +225,11 @@ body.mode-split .hl-layer pre { padding: 18px 20px 80px; }
 @media (max-width: 980px) { .hl-layer pre { padding: 16px; } }
 body.view-graph #editor, body.view-graph #previewHost, body.view-canvas #editor, body.view-canvas #previewHost { display: none; }
 #liveHost { flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: none; justify-content: center; }
+.live-column { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; }
+.live-inline-title { flex: 0 0 auto; max-width: var(--editor-width); width: 100%; margin: 22px auto 0; padding: 0 40px; font-size: 2em; font-weight: 700; line-height: 1.25; outline: none; }
+.live-inline-title.is-hidden { display: none; }
+.live-column .cm-host { flex: 1; min-height: 0; height: auto; }
+@media (max-width: 980px) { .live-inline-title { padding: 0 16px; margin-top: 16px; } }
 .cm-host { width: 100%; max-width: none; padding: 0; height: 100%; font: inherit; color: var(--text); }
 .cm-host .cm-editor { height: 100%; background: transparent; }
 .cm-host .cm-editor.cm-focused { outline: none; }

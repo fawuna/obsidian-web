@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=131">
+<link rel="stylesheet" href="styles.css?v=132">
 </head>
 <body>
 
@@ -118,7 +118,7 @@
           <div class="hl-layer" aria-hidden="true"><pre id="hlCode2"></pre></div>
           <textarea id="editor2" class="pane-editor" spellcheck="false" placeholder="Друга панель: перетягни вкладку сюди або правою кнопкою по файлу → «Відкрити в другій панелі»"></textarea>
         </div>
-        <div id="live2Host" class="live-host"><div id="live2" class="cm-host"></div></div>
+        <div id="live2Host" class="live-host"><div class="live-column"><div id="live2Title" class="inline-title live-inline-title" contenteditable="true" spellcheck="true"></div><div id="live2" class="cm-host"></div></div></div>
       </div>
       <div id="findBar" class="find-bar">
         <input id="findInput" placeholder="Знайти…" autocomplete="off" spellcheck="false">
@@ -131,7 +131,7 @@
         <button class="icon-btn" id="findClose" title="Закрити">✕</button>
       </div>
       <div id="previewHost"><div id="preview"></div></div>
-      <div id="liveHost"><div id="live" class="cm-host"></div></div>
+      <div id="liveHost"><div class="live-column"><div id="liveTitle" class="inline-title live-inline-title" contenteditable="true" spellcheck="true"></div><div id="live" class="cm-host"></div></div></div>
 
       <div id="graphHost">
         <div class="graph-bar">
@@ -551,7 +551,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=131"></script>
-<script type="module" src="app.js?v=131"></script>
+<script src="vendor/marked.min.js?v=132"></script>
+<script type="module" src="app.js?v=132"></script>
 </body>
 </html>
