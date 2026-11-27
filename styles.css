@@ -858,3 +858,13 @@ body.show-source-line-numbers .hl-line::before { content: attr(data-line); posit
 .theme-actions button { font-size: 12px; padding: 3px 8px; }
 .theme-actions button:disabled { opacity: .45; cursor: default; }
 .theme-badge { font-size: 10.5px; font-weight: 500; color: var(--accent-2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; }
+
+/* vertical split direction */
+body.split-dir-column main { flex-direction: column; }
+body.split-dir-column #splitter,
+body.split-dir-column .pane-splitter { flex: 0 0 6px; cursor: row-resize; }
+body.split-dir-column #splitter { width: auto; height: 6px; }
+body.split-dir-column #pane2,
+body.split-dir-column .pane { border-left: 0; border-top: 1px solid var(--line); }
+body.split-dir-column.mode-live #liveHost { order: -1; }
+body.split-dir-column.mode-split main > .editor-host { flex: 1 1 0; border-right: 0; border-bottom: 1px solid var(--line); }

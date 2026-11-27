@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=140";
-import { initCanvas } from "./canvas.js?v=140";
-import { initCollab } from "./collab.js?v=140";
-import { initPlugins } from "./plugins.js?v=140";
-import { exportPdfFile } from "./pdf.js?v=140";
-import { initLive } from "./live.js?v=140";
-import { initDaily } from "./daily.js?v=140";
-import { initRecorder } from "./recorder.js?v=140";
-import { initPdfViewer } from "./pdfviewer.js?v=140";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=140";
+import { initGraph } from "./graph.js?v=141";
+import { initCanvas } from "./canvas.js?v=141";
+import { initCollab } from "./collab.js?v=141";
+import { initPlugins } from "./plugins.js?v=141";
+import { exportPdfFile } from "./pdf.js?v=141";
+import { initLive } from "./live.js?v=141";
+import { initDaily } from "./daily.js?v=141";
+import { initRecorder } from "./recorder.js?v=141";
+import { initPdfViewer } from "./pdfviewer.js?v=141";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=141";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v140";
+const BUILD = "v141";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -43,6 +43,7 @@ const state = {
   folders: new Set(),
   second: null,
   groups: [{ tabs: [], active: null }],
+  splitDir: "row",
   mobileGroup: (() => { const value = Number(store.get("mobileGroup", "1")); return Number.isFinite(value) && value >= 1 ? Math.floor(value) : 1; })(),
 };
 
@@ -556,6 +557,7 @@ function saveWorkspace() {
     groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active, stacked: !!group.stacked })),
     pane2Width: widths[1],
     widths,
+    splitDir: state.splitDir,
   };
   store.set("workspace", JSON.stringify(data));
 }
@@ -595,6 +597,7 @@ async function restoreWorkspace() {
   if (!groups.length) return false;
   state.groups = groups;
   state.active = groups[0].active;
+  setSplitDir(data.splitDir === "column" ? "column" : "row", true);
   syncSecond();
   destroyExtraPanes();
   for (let at = 2; at < groups.length; at++) getPane(at);
@@ -1846,8 +1849,47 @@ function updateSplitButtons() {
   const btn = $("splitBtn");
   if (btn) {
     btn.textContent = "▢";
-    btn.title = "Додати панель";
+    btn.title = "Панель праворуч";
   }
+  const down = $("splitDownBtn");
+  if (down) {
+    down.textContent = "⬓";
+    down.title = "Панель вниз";
+  }
+}
+
+function setSplitDir(dir, keepSizes = false) {
+  const next = dir === "column" ? "column" : "row";
+  const changed = state.splitDir !== next;
+  state.splitDir = next;
+  document.body.classList.toggle("split-dir-column", next === "column");
+  document.body.classList.toggle("split-dir-row", next === "row");
+  const splitter = $("splitter");
+  if (splitter) splitter.title = next === "column" ? "Потягни, щоб змінити висоту" : "Потягни, щоб змінити ширину";
+  for (const pane of Object.values(paneRefs)) {
+    if (pane && pane.splitter && splitter) pane.splitter.title = splitter.title;
+  }
+  if (changed && !keepSizes) {
+    if ($("pane2")) $("pane2").style.flex = "";
+    for (const key of Object.keys(paneRefs)) {
+      const pane = paneRefs[key];
+      if (Number(key) >= 2 && pane && pane.wrapper) pane.wrapper.style.flex = "";
+    }
+  }
+}
+
+function splitRight() {
+  if (!state.active) { toast("Відкрий нотатку"); return; }
+  addPane(state.active);
+  setSplitDir("row");
+  scheduleWorkspaceSave();
+}
+
+function splitDown() {
+  if (!state.active) { toast("Відкрий нотатку"); return; }
+  addPane(state.active);
+  setSplitDir("column");
+  scheduleWorkspaceSave();
 }
 
 function parseGroupSource(source) {
@@ -2028,12 +2070,21 @@ function createPane(index) {
   splitter.addEventListener("mousedown", (event) => {
     event.preventDefault();
     const main = document.querySelector("main");
+    const column = state.splitDir === "column";
     const startX = event.clientX;
+    const startY = event.clientY;
     const startWidth = wrapper.getBoundingClientRect().width;
+    const startHeight = wrapper.getBoundingClientRect().height;
     const maxWidth = Math.max(200, main.getBoundingClientRect().width * 0.75);
+    const maxHeight = Math.max(200, main.getBoundingClientRect().height * 0.75);
     const move = (ev) => {
-      const width = Math.max(160, Math.min(maxWidth, startWidth + (startX - ev.clientX)));
-      wrapper.style.flex = "0 0 " + Math.round(width) + "px";
+      if (column) {
+        const height = Math.max(160, Math.min(maxHeight, startHeight + (startY - ev.clientY)));
+        wrapper.style.flex = "0 0 " + Math.round(height) + "px";
+      } else {
+        const width = Math.max(160, Math.min(maxWidth, startWidth + (startX - ev.clientX)));
+        wrapper.style.flex = "0 0 " + Math.round(width) + "px";
+      }
     };
     const up = () => {
       window.removeEventListener("mousemove", move);
@@ -5080,6 +5131,7 @@ function snapshotWorkspace() {
     groups: state.groups.map((group) => ({ tabs: group.tabs.slice(), active: group.active, stacked: !!group.stacked })),
     pane2Width: widths[1],
     widths,
+    splitDir: state.splitDir,
     mode: state.mode,
     leftTab: store.get("leftTab", "files"),
     rightTab: store.get("rightTab", "backlink"),
@@ -5100,7 +5152,7 @@ function saveWorkspaceNamed(name) {
 
 async function applyWorkspaceLayout(layout) {
   if (!layout || !Array.isArray(layout.groups)) return false;
-  store.set("workspace", JSON.stringify({ v: 1, groups: layout.groups, pane2Width: layout.pane2Width, widths: layout.widths }));
+  store.set("workspace", JSON.stringify({ v: 1, groups: layout.groups, pane2Width: layout.pane2Width, widths: layout.widths, splitDir: layout.splitDir || "row" }));
   const restored = await restoreWorkspace();
   if (!restored) return false;
   if (layout.mode) setMode(layout.mode);
@@ -7566,11 +7618,18 @@ $("editor2").addEventListener("keydown", (e) => {
 $("splitter").addEventListener("mousedown", (e) => {
   e.preventDefault();
   const main = document.querySelector("main");
+  const column = state.splitDir === "column";
   const move = (ev) => {
     const rect = main.getBoundingClientRect();
-    const ratio = Math.min(0.85, Math.max(0.15, (ev.clientX - rect.left) / rect.width));
-    const right = Math.round(rect.width * (1 - ratio)) - 3;
-    $("pane2").style.flex = "0 0 " + Math.max(120, right) + "px";
+    if (column) {
+      const ratio = Math.min(0.85, Math.max(0.15, (ev.clientY - rect.top) / rect.height));
+      const bottom = Math.round(rect.height * (1 - ratio)) - 3;
+      $("pane2").style.flex = "0 0 " + Math.max(120, bottom) + "px";
+    } else {
+      const ratio = Math.min(0.85, Math.max(0.15, (ev.clientX - rect.left) / rect.width));
+      const right = Math.round(rect.width * (1 - ratio)) - 3;
+      $("pane2").style.flex = "0 0 " + Math.max(120, right) + "px";
+    }
   };
   const up = () => {
     window.removeEventListener("mousemove", move);
@@ -7721,8 +7780,10 @@ document.addEventListener("wheel", (event) => {
 }, { passive: false });
 $("newNote").onclick = newNote;
 $("splitBtn").onclick = () => {
-  if (state.active) addPane(state.active);
-  else toast("відкрий нотатку");
+  splitRight();
+};
+$("splitDownBtn").onclick = () => {
+  splitDown();
 };
 document.querySelectorAll("#mobileSwitch button").forEach((btn) => {
   btn.onclick = () => setMobileGroup(Number(btn.dataset.group));
@@ -8372,6 +8433,7 @@ async function connect(repo, branch, token, remember) {
     pdfApi = initPdfViewer(Vault);
     mediaApi = initMediaViewer(Vault);
     const restored = await restoreWorkspace();
+    setSplitDir(state.splitDir, true);
     if (!restored) {
       const first = state.files.find((p) => p.endsWith(".md"));
       if (first) await openNote(first);
@@ -8450,7 +8512,8 @@ registerCommand({ id: "copy-path", label: "Копіювати шлях у вол
 registerCommand({ id: "copy-url", label: "Копіювати URL файлу", hint: "Copy URL", run: copyActiveUrl });
 registerCommand({ id: "copy-note-url", label: "Копіювати URL нотатки", run: () => { const file = currentFile(); if (!file) { toast("Спочатку відкрий нотатку"); return; } copyText(appUrlFor(file.path)); } });
 registerCommand({ id: "open-browser-tab", label: "Відкрити нотатку в новій вкладці браузера", run: () => { const file = currentFile(); if (!file) { toast("Спочатку відкрий нотатку"); return; } window.open(appUrlFor(file.path), "_blank", "noopener"); } });
-registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.active) addPane(state.active); else toast("відкрий нотатку"); } });
+registerCommand({ id: "split", label: "Панель праворуч (розділити екран)", run: () => splitRight() });
+registerCommand({ id: "split-down", label: "Панель вниз (розділити екран)", run: () => splitDown() });
 registerCommand({ id: "new-folder", label: "Нова тека", run: newFolder });
 registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
 registerCommand({ id: "bold", label: "Жирний", hint: "Ctrl+B", run: () => { wrapSelection("**"); } });
