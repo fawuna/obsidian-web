@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=115";
-import { initCanvas } from "./canvas.js?v=115";
-import { initCollab } from "./collab.js?v=115";
-import { initPlugins } from "./plugins.js?v=115";
-import { exportPdfFile } from "./pdf.js?v=115";
-import { initLive } from "./live.js?v=115";
-import { initDaily } from "./daily.js?v=115";
-import { initRecorder } from "./recorder.js?v=115";
-import { initPdfViewer } from "./pdfviewer.js?v=115";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=115";
+import { initGraph } from "./graph.js?v=116";
+import { initCanvas } from "./canvas.js?v=116";
+import { initCollab } from "./collab.js?v=116";
+import { initPlugins } from "./plugins.js?v=116";
+import { exportPdfFile } from "./pdf.js?v=116";
+import { initLive } from "./live.js?v=116";
+import { initDaily } from "./daily.js?v=116";
+import { initRecorder } from "./recorder.js?v=116";
+import { initPdfViewer } from "./pdfviewer.js?v=116";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=116";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v115";
+const BUILD = "v116";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -4171,6 +4171,47 @@ function renderAllProperties() {
   }
 }
 
+let tagSort = store.get("tagSort", "name");
+let tagCollapsed = new Set();
+try {
+  const savedTagCollapsed = JSON.parse(store.get("tagCollapsed", "[]"));
+  if (Array.isArray(savedTagCollapsed)) tagCollapsed = new Set(savedTagCollapsed);
+} catch { tagCollapsed = new Set(); }
+
+function renderTagChildren(node, host, depth) {
+  const children = [...node.children.values()].sort((a, b) => {
+    if (tagSort === "count") return b.total - a.total || a.label.localeCompare(b.label, "uk", { numeric: true });
+    return a.label.localeCompare(b.label, "uk", { numeric: true });
+  });
+  for (const child of children) {
+    const hasChildren = child.children.size > 0;
+    const collapsed = tagCollapsed.has(child.tag);
+    const row = el("div", "tag-row");
+    row.style.paddingLeft = 6 + depth * 12 + "px";
+    const chev = el("span", "tag-chev" + (hasChildren ? "" : " is-empty"), hasChildren ? (collapsed ? "▸" : "▾") : "");
+    if (hasChildren) {
+      chev.onclick = (event) => {
+        event.stopPropagation();
+        if (tagCollapsed.has(child.tag)) tagCollapsed.delete(child.tag);
+        else tagCollapsed.add(child.tag);
+        store.set("tagCollapsed", JSON.stringify([...tagCollapsed]));
+        renderTags();
+      };
+    }
+    const label = el("a", "tag tag-pane-tag", "#" + child.label);
+    const count = el("span", "tag-count", String(child.total));
+    row.append(chev, label, count);
+    row.title = "#" + child.tag;
+    row.onclick = () => {
+      $("searchInput").value = "tag:#" + child.tag;
+      showPane("search");
+      runSearch();
+    };
+    host.appendChild(row);
+    if (hasChildren && !collapsed) renderTagChildren(child, host, depth + 1);
+  }
+}
+
 function renderTags() {
   const host = $("tagsPane");
   host.innerHTML = "";
@@ -4180,11 +4221,39 @@ function renderTags() {
     for (const tag of noteTags(text)) counts.set(tag, (counts.get(tag) || 0) + 1);
   }
   if (!counts.size) { host.appendChild(el("div", "empty", "Тегів ще нема. Відкрий кілька нотаток — індекс збереться.")); return; }
-  [...counts.entries()].sort((a, b) => b[1] - a[1]).forEach(([tag, n]) => {
-    const chip = el("span", "tag-chip", "#" + tag + " · " + n);
-    chip.onclick = () => { $("searchInput").value = "tag:#" + tag; runSearch(); showPane("search"); };
-    host.appendChild(chip);
-  });
+  const root = { children: new Map(), own: 0, total: 0 };
+  for (const [tag, count] of counts) {
+    const parts = tag.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length; i++) {
+      const full = parts.slice(0, i + 1).join("/");
+      if (!node.children.has(full)) node.children.set(full, { tag: full, label: parts[i], children: new Map(), own: 0, total: 0 });
+      node = node.children.get(full);
+    }
+    node.own += count;
+  }
+  const total = (node) => {
+    let sum = node.own;
+    for (const child of node.children.values()) sum += total(child);
+    node.total = sum;
+    return sum;
+  };
+  total(root);
+  const head = el("div", "tag-head");
+  head.appendChild(el("span", "tag-summary", counts.size + " тегів"));
+  const sortBtn = el("button", "clickable-icon", "⇅");
+  sortBtn.title = "Сортування тегів";
+  sortBtn.onclick = (event) => {
+    event.stopPropagation();
+    const rect = sortBtn.getBoundingClientRect();
+    showCtx(rect.left, rect.bottom + 4, [
+      { label: (tagSort === "name" ? "✓ " : "") + "За назвою", run: () => { tagSort = "name"; store.set("tagSort", tagSort); renderTags(); } },
+      { label: (tagSort === "count" ? "✓ " : "") + "За кількістю", run: () => { tagSort = "count"; store.set("tagSort", tagSort); renderTags(); } },
+    ]);
+  };
+  head.appendChild(sortBtn);
+  host.appendChild(head);
+  renderTagChildren(root, host, 0);
 }
 
 async function runSearch() {
