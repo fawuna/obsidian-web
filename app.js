@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=121";
-import { initCanvas } from "./canvas.js?v=121";
-import { initCollab } from "./collab.js?v=121";
-import { initPlugins } from "./plugins.js?v=121";
-import { exportPdfFile } from "./pdf.js?v=121";
-import { initLive } from "./live.js?v=121";
-import { initDaily } from "./daily.js?v=121";
-import { initRecorder } from "./recorder.js?v=121";
-import { initPdfViewer } from "./pdfviewer.js?v=121";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=121";
+import { initGraph } from "./graph.js?v=122";
+import { initCanvas } from "./canvas.js?v=122";
+import { initCollab } from "./collab.js?v=122";
+import { initPlugins } from "./plugins.js?v=122";
+import { exportPdfFile } from "./pdf.js?v=122";
+import { initLive } from "./live.js?v=122";
+import { initDaily } from "./daily.js?v=122";
+import { initRecorder } from "./recorder.js?v=122";
+import { initPdfViewer } from "./pdfviewer.js?v=122";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=122";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v121";
+const BUILD = "v122";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2632,13 +2632,37 @@ function propertyIsList(raw, key) {
 
 function inferPropertyType(key, value) {
   const override = propertyTypes[String(key || "")];
-  if (override && ["text", "number", "checkbox", "date", "datetime"].includes(override)) return override;
+  if (override && ["text", "number", "checkbox", "date", "datetime", "tags"].includes(override)) return override;
   const text = String(value == null ? "" : value).trim();
   if (/^(true|false)$/i.test(text)) return "checkbox";
   if (/^-?\d+(?:\.\d+)?$/.test(text)) return "number";
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return "date";
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)) return "datetime";
   return "text";
+}
+
+const PROPERTY_TYPE_ICONS = {
+  tags: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-tags"><path d="M13.172 2a2 2 0 0 1 1.414.586l6.71 6.71a2.4 2.4 0 0 1 0 3.408l-4.592 4.592a2.4 2.4 0 0 1-3.408 0l-6.71-6.71A2 2 0 0 1 5 9.172V4a2 2 0 0 1 2-2z"></path><path d="M7 7h.01"></path></svg>',
+  checkbox: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-check-square"><path d="m9 11 3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>',
+  number: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-hash"><line x1="4" x2="20" y1="9" y2="9"></line><line x1="4" x2="20" y1="15" y2="15"></line><line x1="10" x2="8" y1="3" y2="21"></line><line x1="16" x2="14" y1="3" y2="21"></line></svg>',
+  date: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path></svg>',
+  datetime: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path></svg>',
+  text: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-text"><path d="M21 5H3"></path><path d="M15 12H3"></path><path d="M17 19H3"></path></svg>',
+};
+
+function propertyViewType(key, values) {
+  if (key === "tags" || key === "aliases") return "tags";
+  const override = propertyTypes[String(key || "")];
+  if (override && PROPERTY_TYPE_ICONS[override]) return override;
+  for (const value of values) {
+    const type = inferPropertyType(key, value);
+    if (type !== "text") return type;
+  }
+  return "text";
+}
+
+function propertyTypeIcon(type) {
+  return PROPERTY_TYPE_ICONS[type] || PROPERTY_TYPE_ICONS.text;
 }
 
 function yamlScalar(value) {
@@ -2667,6 +2691,7 @@ function applyFrontmatterEdit(file, nextText, prevText) {
 async function setPropertyType(key, type) {
   if (type) propertyTypes[key] = type; else delete propertyTypes[key];
   renderPreview();
+  renderAllProperties();
   try {
     let raw = {};
     try {
@@ -4166,34 +4191,58 @@ function renderAllProperties() {
   const host = $("allProps");
   if (!host) return;
   const filter = ($("propFilter")?.value || "").trim().toLowerCase();
-  const counts = new Map();
+  const info = new Map();
   for (const [, text] of state.index) {
     if (!text) continue;
     const parsed = parseProps(text);
     if (!parsed) continue;
-    for (const [key] of parsed.props) counts.set(key, (counts.get(key) || 0) + 1);
+    for (const [key, value] of parsed.props) {
+      if (!info.has(key)) info.set(key, { count: 0, values: [] });
+      const entry = info.get(key);
+      entry.count += 1;
+      if (entry.values.length < 8) entry.values.push(value);
+    }
   }
   host.innerHTML = "";
-  const rows = [...counts.entries()].filter(([key]) => !filter || key.toLowerCase().includes(filter)).sort((a, b) => a[0].localeCompare(b[0]));
-  if (!rows.length) { host.appendChild(el("div", "empty", counts.size ? "Нічого не знайдено" : "Немає властивостей")); return; }
-  for (const [key, count] of rows) {
+  const rows = [...info.entries()].filter(([key]) => !filter || key.toLowerCase().includes(filter)).sort((a, b) => a[0].localeCompare(b[0]));
+  if (!rows.length) { host.appendChild(el("div", "empty", info.size ? "Нічого не знайдено" : "Немає властивостей")); return; }
+  for (const [key, entry] of rows) {
+    const type = propertyViewType(key, entry.values);
     const item = el("div", "tree-item");
     const self = el("div", "tree-item-self tappable is-clickable");
+    self.title = key + " · " + type;
     const icon = el("div", "tree-item-icon");
-    icon.innerHTML = /date|time|created|updated/i.test(key)
-      ? '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon lucide-calendar"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path></svg>'
-      : key === "tags" || key === "aliases"
-        ? RIGHT_ICONS.tag
-        : RIGHT_ICONS["all-properties"];
+    icon.innerHTML = propertyTypeIcon(type);
     const inner = el("div", "tree-item-inner");
     inner.appendChild(el("div", "tree-item-inner-text", key));
     const flair = el("div", "tree-item-flair-outer");
-    flair.appendChild(el("span", "tree-item-flair", String(count)));
+    flair.appendChild(el("span", "tree-item-flair", String(entry.count)));
     self.append(icon, inner, flair);
-    self.onclick = () => {
+    const search = () => {
       $("searchInput").value = '["' + key + '"]';
       runSearch();
       showPane("search");
+    };
+    self.onclick = search;
+    self.oncontextmenu = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const types = [
+        ["text", "Текст"],
+        ["number", "Число"],
+        ["checkbox", "Чекбокс"],
+        ["date", "Дата"],
+        ["datetime", "Дата й час"],
+        ["tags", "Список"],
+      ];
+      showCtx(event.clientX, event.clientY, [
+        ...types.map(([value, label]) => ({
+          label: (type === value ? "✓ " : "") + label,
+          run: () => { setPropertyType(key, value); },
+        })),
+        { sep: true },
+        { label: "Знайти нотатки з властивістю", run: search },
+      ]);
     };
     item.appendChild(self);
     host.appendChild(item);
