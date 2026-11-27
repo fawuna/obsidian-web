@@ -12,6 +12,11 @@ import {
   defaultKeymap,
   indentWithTab,
   StateField,
+  Compartment,
+  lineNumbers,
+  indentUnit,
+  vim,
+  getCM,
 } from "./vendor/cm6.js";
 
 const IMAGE_RE = /\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i;
@@ -1089,13 +1094,22 @@ function tagCancel(view) {
   return true;
 }
 
+function settingsExtensions(options) {
+  const list = [];
+  if (options.lineNumbers) list.push(lineNumbers());
+  if (options.lineWrap !== false) list.push(EditorView.lineWrapping);
+  if (options.vim) list.push(vim());
+  list.push(indentUnit.of(options.indentUnit || "  "));
+  return list;
+}
+
 function makeExtensions(options, instance) {
   const smartLists = options.smartLists !== false;
   const autoPairs = options.autoPairs !== false;
   return [
     history(),
     drawSelection(),
-    EditorView.lineWrapping,
+    instance.settings.of(settingsExtensions(options)),
     keymap.of([
       { key: "ArrowDown", run: (v) => tagMove(v, 1) },
       { key: "ArrowUp", run: (v) => tagMove(v, -1) },
@@ -1178,6 +1192,7 @@ export function initLive(options) {
   if (!host) return null;
 
   const instance = { view: null, lastText: "", suppress: false, linkPending: false };
+  instance.settings = new Compartment();
   const state = EditorState.create({
     doc: options.getText(),
     extensions: makeExtensions(options, instance),
@@ -1267,6 +1282,12 @@ export function initLive(options) {
       });
       return start + String(insert).length;
     },
+    setSettings(next) {
+      Object.assign(options, next);
+      view.dispatch({ effects: instance.settings.reconfigure(settingsExtensions(options)) });
+      return true;
+    },
+    vimActive() { return !!getCM(view); },
     replaceAll(query, replacement) {
       if (!query) return 0;
       const text = view.state.doc.toString();

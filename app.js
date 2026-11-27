@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=119";
-import { initCanvas } from "./canvas.js?v=119";
-import { initCollab } from "./collab.js?v=119";
-import { initPlugins } from "./plugins.js?v=119";
-import { exportPdfFile } from "./pdf.js?v=119";
-import { initLive } from "./live.js?v=119";
-import { initDaily } from "./daily.js?v=119";
-import { initRecorder } from "./recorder.js?v=119";
-import { initPdfViewer } from "./pdfviewer.js?v=119";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=119";
+import { initGraph } from "./graph.js?v=120";
+import { initCanvas } from "./canvas.js?v=120";
+import { initCollab } from "./collab.js?v=120";
+import { initPlugins } from "./plugins.js?v=120";
+import { exportPdfFile } from "./pdf.js?v=120";
+import { initLive } from "./live.js?v=120";
+import { initDaily } from "./daily.js?v=120";
+import { initRecorder } from "./recorder.js?v=120";
+import { initPdfViewer } from "./pdfviewer.js?v=120";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=120";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v119";
+const BUILD = "v120";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -167,6 +167,9 @@ let appCfg = {
   tabSize: 4,
   strictLineBreaks: false,
   propertiesInDocument: "visible",
+  showLineNumber: false,
+  lineWrap: true,
+  vimMode: false,
 };
 let propertyTypes = {};
 
@@ -2453,6 +2456,9 @@ async function loadAppConfig() {
         tabSize: Number(raw.tabSize) > 0 ? Number(raw.tabSize) : 4,
         strictLineBreaks: raw.strictLineBreaks === true,
         propertiesInDocument: ["visible", "hidden", "source"].includes(raw.propertiesInDocument) ? raw.propertiesInDocument : "visible",
+        showLineNumber: raw.showLineNumber === true,
+        lineWrap: raw.lineWrap !== false,
+        vimMode: raw.vimMode === true,
       };
     }
   } catch { /* defaults */ }
@@ -7364,6 +7370,9 @@ function openSettings() {
   $("setWebLinks").checked = store.get("webLinks", "0") === "1";
   $("setAutoPairs").checked = store.get("autoPairs", "1") !== "0";
   $("setSmartLists").checked = store.get("smartLists", "1") !== "0";
+  $("setLineNumbers").checked = appCfg.showLineNumber === true;
+  $("setLineWrap").checked = appCfg.lineWrap !== false;
+  $("setVimMode").checked = appCfg.vimMode === true;
   $("setStrictBreaks").checked = appCfg.strictLineBreaks === true;
   $("setUseTabs").checked = appCfg.useTab === true;
   $("setTabSize").value = String(appCfg.tabSize || 4);
@@ -7448,6 +7457,9 @@ $("saveSettings").onclick = async () => {
   appCfg.useTab = $("setUseTabs").checked;
   appCfg.tabSize = Number($("setTabSize").value) || 4;
   appCfg.propertiesInDocument = $("setPropertiesInDocument").value;
+  appCfg.showLineNumber = $("setLineNumbers").checked;
+  appCfg.lineWrap = $("setLineWrap").checked;
+  appCfg.vimMode = $("setVimMode").checked;
   store.set("hotkeys", JSON.stringify(hotkeys));
   try {
     await writeVaultJson(".obsidian/daily-notes.json", {
@@ -7481,6 +7493,9 @@ $("saveSettings").onclick = async () => {
     appRaw.useTab = appCfg.useTab;
     appRaw.tabSize = appCfg.tabSize;
     appRaw.propertiesInDocument = appCfg.propertiesInDocument;
+    appRaw.showLineNumber = appCfg.showLineNumber;
+    appRaw.lineWrap = appCfg.lineWrap;
+    appRaw.vimMode = appCfg.vimMode;
     await writeVaultJson(".obsidian/app.json", appRaw);
     let appearanceRaw = {};
     try {
@@ -7697,6 +7712,9 @@ liveApi = initLive({
   autoPairs: store.get("autoPairs", "1") !== "0",
   smartLists: store.get("smartLists", "1") !== "0",
   indentUnit: editorIndentUnit(),
+  lineNumbers: appCfg.showLineNumber === true,
+  lineWrap: appCfg.lineWrap !== false,
+  vim: appCfg.vimMode === true,
   onLinkTrigger: (pos) => { linkPane = 1; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 1; },
   onFollowLink: followLinkUnderCursor,
@@ -7732,6 +7750,9 @@ live2Api = initLive({
   autoPairs: store.get("autoPairs", "1") !== "0",
   smartLists: store.get("smartLists", "1") !== "0",
   indentUnit: editorIndentUnit(),
+  lineNumbers: appCfg.showLineNumber === true,
+  lineWrap: appCfg.lineWrap !== false,
+  vim: appCfg.vimMode === true,
   onLinkTrigger: (pos) => { linkPane = 2; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 2; },
 });
