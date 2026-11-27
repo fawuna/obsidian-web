@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=117";
-import { initCanvas } from "./canvas.js?v=117";
-import { initCollab } from "./collab.js?v=117";
-import { initPlugins } from "./plugins.js?v=117";
-import { exportPdfFile } from "./pdf.js?v=117";
-import { initLive } from "./live.js?v=117";
-import { initDaily } from "./daily.js?v=117";
-import { initRecorder } from "./recorder.js?v=117";
-import { initPdfViewer } from "./pdfviewer.js?v=117";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=117";
+import { initGraph } from "./graph.js?v=118";
+import { initCanvas } from "./canvas.js?v=118";
+import { initCollab } from "./collab.js?v=118";
+import { initPlugins } from "./plugins.js?v=118";
+import { exportPdfFile } from "./pdf.js?v=118";
+import { initLive } from "./live.js?v=118";
+import { initDaily } from "./daily.js?v=118";
+import { initRecorder } from "./recorder.js?v=118";
+import { initPdfViewer } from "./pdfviewer.js?v=118";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=118";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v117";
+const BUILD = "v118";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -54,6 +54,22 @@ try {
 if (!bookmarkItems.length && Array.isArray(state.bookmarks) && state.bookmarks.length) {
   bookmarkItems = state.bookmarks.map((path) => ({ type: "file", path, title: String(path).split("/").pop().replace(/\.md$/i, ""), ctime: Date.now() }));
   store.set("bookmarkItems", JSON.stringify(bookmarkItems));
+}
+
+let recentFiles = [];
+try {
+  const savedRecent = JSON.parse(store.get("recentFiles", "[]"));
+  if (Array.isArray(savedRecent)) recentFiles = savedRecent.filter((path) => typeof path === "string");
+} catch { recentFiles = []; }
+
+function recordRecent(path) {
+  if (!path) return;
+  recentFiles = [path, ...recentFiles.filter((item) => item !== path)].slice(0, 80);
+  store.set("recentFiles", JSON.stringify(recentFiles));
+}
+
+function githubFileUrl(path) {
+  return "https://github.com/" + state.repo + "/blob/" + state.branch + "/" + encodeURI(String(path || "").replace(/^\/+/, ""));
 }
 
 /* ---------------- core plugins ---------------- */
@@ -948,6 +964,7 @@ function renderTree() {
         const row = el("div", "file-row" + (full === state.active ? " active" : ""));
         row.style.paddingLeft = 12 + depth * 12 + "px";
         row.draggable = true;
+        row.dataset.path = full;
         row.appendChild(el("span", null, full.endsWith(".canvas") ? "🎨" : full.endsWith(".base") ? "🗃" : full.endsWith(".pdf") ? "📕" : /\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i.test(full) ? "🖼" : /\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i.test(full) ? "🎵" : /\.(mp4|webm|ogv|mov|mkv|m4v)$/i.test(full) ? "🎬" : "📄"));
         row.appendChild(el("span", "label", leaf.replace(/\.(md|canvas|base|pdf|svg|png|jpe?g|gif|webp|bmp|avif|mp3|wav|ogg|m4a|flac|aac|opus|mp4|webm|ogv|mov|mkv|m4v)$/i, "")));
         const starred = state.bookmarks.includes(full);
@@ -1977,6 +1994,7 @@ async function openNote(path, pushHistory = true) {
     addTab(group1(), path);
     setView("note");
     if (pushHistory) pushHistoryState(path);
+    recordRecent(path);
     renderTabs(); renderTree(); paint();
     return;
   }
@@ -1997,6 +2015,7 @@ async function openNote(path, pushHistory = true) {
     addTab(group1(), path);
     setView("note");
     if (pushHistory) pushHistoryState(path);
+    recordRecent(path);
     renderTabs(); renderTree(); paint();
     setState("", "");
     if (window.matchMedia("(max-width: 980px)").matches) $("left").classList.remove("open");
@@ -4993,12 +5012,23 @@ function renderSwitcher() {
     })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
-  switcherItems = scored.map((s) => s.path);
+  let entries = scored;
+  let showRecentHeading = false;
+  if (!q && switcherMode === "open" && recentFiles.length) {
+    const order = new Map(recentFiles.map((path, index) => [path, index]));
+    const recent = scored.filter((entry) => order.has(entry.path)).sort((a, b) => order.get(a.path) - order.get(b.path));
+    if (recent.length) {
+      entries = recent;
+      showRecentHeading = true;
+    }
+  }
+  switcherItems = entries.map((s) => s.path);
   const createName = switcherMode === "open" ? q : "";
   if (createName && !switcherItems.some((path) => path.split("/").pop().replace(/\.md$/i, "").toLowerCase() === createName)) {
     switcherItems.push("__new__:" + createName);
   }
   switcherActive = Math.min(switcherActive, Math.max(0, switcherItems.length - 1));
+  if (showRecentHeading) list.appendChild(el("div", "switcher-heading", "Нещодавні"));
   switcherItems.slice(0, 80).forEach((path, i) => {
     const item = el("div", "item" + (i === switcherActive ? " active" : ""));
     if (path.startsWith("__new__:")) {
@@ -5009,6 +5039,10 @@ function renderSwitcher() {
       item.appendChild(el("span", null, switcherMode === "template" ? path.replace(/\.md$/, "") : path.replace(/\.(md|canvas)$/, "")));
       const info = scored.find((entry) => entry.path === path);
       if (info && info.aliasHit) item.appendChild(el("span", "hint", info.aliasHit));
+      else {
+        const folder = path.split("/").slice(0, -1).join("/");
+        if (folder) item.appendChild(el("span", "hint", folder));
+      }
     }
     item.onclick = () => {
       chooseSwitcherItem(path);
@@ -5016,6 +5050,43 @@ function renderSwitcher() {
     list.appendChild(item);
   });
   if (!switcherItems.length) list.appendChild(el("div", "empty", switcherMode === "template" ? "нема шаблонів у теці" : "нічого не знайдено"));
+}
+
+function revealActiveFile() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  const folder = file.path.split("/").slice(0, -1).join("/");
+  let collapsed = [];
+  try { collapsed = JSON.parse(store.get("collapsed", "[]")); } catch { collapsed = []; }
+  const open = new Set(Array.isArray(collapsed) ? collapsed : []);
+  const parts = folder.split("/").filter(Boolean);
+  let prefix = "";
+  for (const part of parts) {
+    prefix = prefix ? prefix + "/" + part : part;
+    open.delete(prefix);
+  }
+  store.set("collapsed", JSON.stringify([...open]));
+  showPane("files");
+  renderTree();
+  requestAnimationFrame(() => {
+    const row = [...document.querySelectorAll("#tree .file-row")].find((node) => node.dataset.path === file.path);
+    if (!row) return;
+    row.scrollIntoView({ block: "center" });
+    row.classList.add("reveal-flash");
+    setTimeout(() => row.classList.remove("reveal-flash"), 1200);
+  });
+}
+
+function copyActivePath() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  copyText(file.path);
+}
+
+function copyActiveUrl() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return; }
+  copyText(githubFileUrl(file.path));
 }
 
 /* ---------------- panes / modes ---------------- */
@@ -7317,6 +7388,9 @@ registerCommand({ id: "bookmark", label: "Додати/зняти закладк
 registerCommand({ id: "bookmark-heading", label: "Bookmarks: додати поточний заголовок", plugin: "bookmarks", run: bookmarkCurrentHeading });
 registerCommand({ id: "bookmark-search", label: "Bookmarks: додати поточний пошук", plugin: "bookmarks", run: bookmarkCurrentSearch });
 registerCommand({ id: "bookmark-group", label: "Bookmarks: нова група", plugin: "bookmarks", run: createBookmarkGroup });
+registerCommand({ id: "reveal-active", label: "Показати активний файл у навігації", run: revealActiveFile });
+registerCommand({ id: "copy-path", label: "Копіювати шлях у волті", hint: "Copy path", run: copyActivePath });
+registerCommand({ id: "copy-url", label: "Копіювати URL файлу", hint: "Copy URL", run: copyActiveUrl });
 registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.active) addPane(state.active); else toast("відкрий нотатку"); } });
 registerCommand({ id: "new-folder", label: "Нова тека", run: newFolder });
 registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
@@ -7452,4 +7526,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl };
