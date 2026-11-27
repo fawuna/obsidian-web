@@ -1195,6 +1195,21 @@ function makeExtensions(options, instance) {
         return false;
       },
       paste(event, viewer) {
+        const files = event.clipboardData && event.clipboardData.files ? [...event.clipboardData.files] : [];
+        const image = files.find((file) => file.type && file.type.startsWith("image/"));
+        if (image && options.onUploadImage) {
+          event.preventDefault();
+          options.onUploadImage(image).then((name) => {
+            if (!name) return;
+            const main = viewer.state.selection.main;
+            const insert = "![[" + name + "]]\n";
+            viewer.dispatch({
+              changes: { from: main.from, to: main.to, insert },
+              selection: { anchor: main.from + insert.length },
+            });
+          }).catch(() => {});
+          return true;
+        }
         if (options.pasteHtmlAsMarkdown !== true) return false;
         const html = event.clipboardData && event.clipboardData.getData("text/html");
         if (!html) return false;
@@ -1215,6 +1230,22 @@ function makeExtensions(options, instance) {
         } else {
           insert(html);
         }
+        return true;
+      },
+      drop(event, viewer) {
+        const files = event.dataTransfer && event.dataTransfer.files ? [...event.dataTransfer.files] : [];
+        const image = files.find((file) => file.type && file.type.startsWith("image/"));
+        if (!image || !options.onUploadImage) return false;
+        event.preventDefault();
+        options.onUploadImage(image).then((name) => {
+          if (!name) return;
+          const main = viewer.state.selection.main;
+          const insert = "![[" + name + "]]";
+          viewer.dispatch({
+            changes: { from: main.from, to: main.to, insert },
+            selection: { anchor: main.from + insert.length },
+          });
+        }).catch(() => {});
         return true;
       },
     }),

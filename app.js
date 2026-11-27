@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=134";
-import { initCanvas } from "./canvas.js?v=134";
-import { initCollab } from "./collab.js?v=134";
-import { initPlugins } from "./plugins.js?v=134";
-import { exportPdfFile } from "./pdf.js?v=134";
-import { initLive } from "./live.js?v=134";
-import { initDaily } from "./daily.js?v=134";
-import { initRecorder } from "./recorder.js?v=134";
-import { initPdfViewer } from "./pdfviewer.js?v=134";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=134";
+import { initGraph } from "./graph.js?v=135";
+import { initCanvas } from "./canvas.js?v=135";
+import { initCollab } from "./collab.js?v=135";
+import { initPlugins } from "./plugins.js?v=135";
+import { exportPdfFile } from "./pdf.js?v=135";
+import { initLive } from "./live.js?v=135";
+import { initDaily } from "./daily.js?v=135";
+import { initRecorder } from "./recorder.js?v=135";
+import { initPdfViewer } from "./pdfviewer.js?v=135";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=135";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v134";
+const BUILD = "v135";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -7297,22 +7297,42 @@ $("editor").addEventListener("scroll", () => syncHighlight());
 $("editor").addEventListener("focus", () => { activePane = 1; });
 $("editor2").addEventListener("focus", () => { activePane = 2; });
 
+function insertSourceText(editor, text) {
+  const start = editor.selectionStart || 0;
+  const end = editor.selectionEnd || start;
+  editor.value = editor.value.slice(0, start) + text + editor.value.slice(end);
+  editor.selectionStart = editor.selectionEnd = start + text.length;
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function handleSourcePaste(event, editor) {
+  const files = event.clipboardData && event.clipboardData.files ? [...event.clipboardData.files] : [];
+  const image = files.find((file) => file.type && file.type.startsWith("image/"));
+  if (image) {
+    event.preventDefault();
+    uploadFile(image).then((name) => { if (name) insertSourceText(editor, "![[" + name + "]]"); }).catch(() => {});
+    return;
+  }
   if (appCfg.pasteHtmlAsMarkdown !== true) return;
   const html = event.clipboardData && event.clipboardData.getData("text/html");
   if (!html) return;
   event.preventDefault();
   htmlToMarkdown(html).then((markdown) => {
-    if (!markdown) return;
-    const start = editor.selectionStart || 0;
-    const end = editor.selectionEnd || start;
-    editor.value = editor.value.slice(0, start) + markdown + editor.value.slice(end);
-    editor.selectionStart = editor.selectionEnd = start + markdown.length;
-    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    if (markdown) insertSourceText(editor, markdown);
   }).catch(() => {});
+}
+
+function handleSourceDrop(event, editor) {
+  const files = event.dataTransfer && event.dataTransfer.files ? [...event.dataTransfer.files] : [];
+  const image = files.find((file) => file.type && file.type.startsWith("image/"));
+  if (!image) return;
+  event.preventDefault();
+  uploadFile(image).then((name) => { if (name) insertSourceText(editor, "![[" + name + "]]"); }).catch(() => {});
 }
 $("editor").addEventListener("paste", (event) => handleSourcePaste(event, $("editor")));
 $("editor2").addEventListener("paste", (event) => handleSourcePaste(event, $("editor2")));
+$("editor").addEventListener("drop", (event) => handleSourceDrop(event, $("editor")));
+$("editor2").addEventListener("drop", (event) => handleSourceDrop(event, $("editor2")));
 
 $("editor2").addEventListener("input", () => {
   const file = groupFile(state.groups[1]);
@@ -8302,6 +8322,7 @@ liveApi = initLive({
   foldIndent: appCfg.foldIndent === true,
   pasteHtmlAsMarkdown: appCfg.pasteHtmlAsMarkdown === true,
   htmlToMarkdown,
+  onUploadImage: uploadFile,
   onLinkTrigger: (pos) => { linkPane = 1; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 1; },
   onFollowLink: followLinkUnderCursor,
@@ -8346,6 +8367,7 @@ live2Api = initLive({
   foldIndent: appCfg.foldIndent === true,
   pasteHtmlAsMarkdown: appCfg.pasteHtmlAsMarkdown === true,
   htmlToMarkdown,
+  onUploadImage: uploadFile,
   onLinkTrigger: (pos) => { linkPane = 2; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 2; },
 });
