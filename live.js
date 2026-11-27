@@ -17,6 +17,13 @@ import {
   indentUnit,
   vim,
   getCM,
+  codeFolding,
+  foldService,
+  foldGutter,
+  foldCode,
+  unfoldCode,
+  foldAll,
+  unfoldAll,
 } from "./vendor/cm6.js";
 
 const IMAGE_RE = /\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i;
@@ -1094,12 +1101,45 @@ function tagCancel(view) {
   return true;
 }
 
+function markdownFoldService(options) {
+  return foldService.of((state, lineStart) => {
+    const line = state.doc.lineAt(lineStart);
+    const heading = line.text.match(/^(#{1,6})\s+/);
+    if (heading && options.foldHeading !== false) {
+      const level = heading[1].length;
+      let end = line.to;
+      for (let n = line.number + 1; n <= state.doc.lines; n++) {
+        const next = state.doc.line(n);
+        const nextHeading = next.text.match(/^(#{1,6})\s+/);
+        if (nextHeading && nextHeading[1].length <= level) break;
+        end = next.to;
+      }
+      if (end > line.to) return { from: line.to, to: end };
+    }
+    if (options.foldIndent === true) {
+      const indent = line.text.match(/^\s*/)[0].length;
+      let end = line.to;
+      for (let n = line.number + 1; n <= state.doc.lines; n++) {
+        const next = state.doc.line(n);
+        if (!next.text.trim()) { end = next.to; continue; }
+        const nextIndent = next.text.match(/^\s*/)[0].length;
+        if (nextIndent <= indent) break;
+        end = next.to;
+      }
+      if (end > line.to) return { from: line.to, to: end };
+    }
+    return null;
+  });
+}
+
 function settingsExtensions(options) {
   const list = [];
-  if (options.lineNumbers) list.push(lineNumbers());
+  if (options.lineNumbers) list.push(lineNumbers(), foldGutter());
   if (options.lineWrap !== false) list.push(EditorView.lineWrapping);
   if (options.vim) list.push(vim());
   list.push(indentUnit.of(options.indentUnit || "  "));
+  list.push(codeFolding());
+  list.push(markdownFoldService(options));
   return list;
 }
 
@@ -1288,6 +1328,10 @@ export function initLive(options) {
       return true;
     },
     vimActive() { return !!getCM(view); },
+    foldAtCursor() { return foldCode(view); },
+    unfoldAtCursor() { return unfoldCode(view); },
+    foldAllFolds() { return foldAll(view); },
+    unfoldAllFolds() { return unfoldAll(view); },
     replaceAll(query, replacement) {
       if (!query) return 0;
       const text = view.state.doc.toString();

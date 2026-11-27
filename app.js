@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=120";
-import { initCanvas } from "./canvas.js?v=120";
-import { initCollab } from "./collab.js?v=120";
-import { initPlugins } from "./plugins.js?v=120";
-import { exportPdfFile } from "./pdf.js?v=120";
-import { initLive } from "./live.js?v=120";
-import { initDaily } from "./daily.js?v=120";
-import { initRecorder } from "./recorder.js?v=120";
-import { initPdfViewer } from "./pdfviewer.js?v=120";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=120";
+import { initGraph } from "./graph.js?v=121";
+import { initCanvas } from "./canvas.js?v=121";
+import { initCollab } from "./collab.js?v=121";
+import { initPlugins } from "./plugins.js?v=121";
+import { exportPdfFile } from "./pdf.js?v=121";
+import { initLive } from "./live.js?v=121";
+import { initDaily } from "./daily.js?v=121";
+import { initRecorder } from "./recorder.js?v=121";
+import { initPdfViewer } from "./pdfviewer.js?v=121";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=121";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v120";
+const BUILD = "v121";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -170,6 +170,8 @@ let appCfg = {
   showLineNumber: false,
   lineWrap: true,
   vimMode: false,
+  foldHeading: true,
+  foldIndent: false,
 };
 let propertyTypes = {};
 
@@ -2459,6 +2461,8 @@ async function loadAppConfig() {
         showLineNumber: raw.showLineNumber === true,
         lineWrap: raw.lineWrap !== false,
         vimMode: raw.vimMode === true,
+        foldHeading: raw.foldHeading !== false,
+        foldIndent: raw.foldIndent === true,
       };
     }
   } catch { /* defaults */ }
@@ -7373,6 +7377,8 @@ function openSettings() {
   $("setLineNumbers").checked = appCfg.showLineNumber === true;
   $("setLineWrap").checked = appCfg.lineWrap !== false;
   $("setVimMode").checked = appCfg.vimMode === true;
+  $("setFoldHeading").checked = appCfg.foldHeading !== false;
+  $("setFoldIndent").checked = appCfg.foldIndent === true;
   $("setStrictBreaks").checked = appCfg.strictLineBreaks === true;
   $("setUseTabs").checked = appCfg.useTab === true;
   $("setTabSize").value = String(appCfg.tabSize || 4);
@@ -7460,6 +7466,8 @@ $("saveSettings").onclick = async () => {
   appCfg.showLineNumber = $("setLineNumbers").checked;
   appCfg.lineWrap = $("setLineWrap").checked;
   appCfg.vimMode = $("setVimMode").checked;
+  appCfg.foldHeading = $("setFoldHeading").checked;
+  appCfg.foldIndent = $("setFoldIndent").checked;
   store.set("hotkeys", JSON.stringify(hotkeys));
   try {
     await writeVaultJson(".obsidian/daily-notes.json", {
@@ -7496,6 +7504,8 @@ $("saveSettings").onclick = async () => {
     appRaw.showLineNumber = appCfg.showLineNumber;
     appRaw.lineWrap = appCfg.lineWrap;
     appRaw.vimMode = appCfg.vimMode;
+    appRaw.foldHeading = appCfg.foldHeading;
+    appRaw.foldIndent = appCfg.foldIndent;
     await writeVaultJson(".obsidian/app.json", appRaw);
     let appearanceRaw = {};
     try {
@@ -7662,6 +7672,10 @@ registerCommand({ id: "line-duplicate", label: "Рядок: дублювати",
 registerCommand({ id: "line-move-up", label: "Рядок: перемістити вгору", run: () => moveLines(-1) });
 registerCommand({ id: "line-move-down", label: "Рядок: перемістити вниз", run: () => moveLines(1) });
 registerCommand({ id: "follow-link", label: "Перейти за посиланням під курсором", hint: "Alt+Enter", run: followLinkUnderCursor });
+registerCommand({ id: "fold-cursor", label: "Згорнути блок під курсором", run: () => { if (state.mode === "live" && liveApi) liveApi.foldAtCursor(); else toast("Доступно в live preview"); } });
+registerCommand({ id: "unfold-cursor", label: "Розгорнути блок під курсором", run: () => { if (state.mode === "live" && liveApi) liveApi.unfoldAtCursor(); else toast("Доступно в live preview"); } });
+registerCommand({ id: "fold-all", label: "Згорнути все", run: () => { if (state.mode === "live" && liveApi) liveApi.foldAllFolds(); else toast("Доступно в live preview"); } });
+registerCommand({ id: "unfold-all", label: "Розгорнути все", run: () => { if (state.mode === "live" && liveApi) liveApi.unfoldAllFolds(); else toast("Доступно в live preview"); } });
 registerCommand({ id: "find", label: "Знайти в нотатці", hint: "Ctrl+F", run: openFind });
 registerCommand({ id: "replace", label: "Замінити в нотатці", hint: "Ctrl+H", run: () => { openFind(); $("replaceInput").focus(); } });
 registerCommand({ id: "link-note", label: "Вставити [[посилання]]", hint: "[[", run: () => showSwitcher("link") });
@@ -7715,6 +7729,8 @@ liveApi = initLive({
   lineNumbers: appCfg.showLineNumber === true,
   lineWrap: appCfg.lineWrap !== false,
   vim: appCfg.vimMode === true,
+  foldHeading: appCfg.foldHeading !== false,
+  foldIndent: appCfg.foldIndent === true,
   onLinkTrigger: (pos) => { linkPane = 1; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 1; },
   onFollowLink: followLinkUnderCursor,
@@ -7753,6 +7769,8 @@ live2Api = initLive({
   lineNumbers: appCfg.showLineNumber === true,
   lineWrap: appCfg.lineWrap !== false,
   vim: appCfg.vimMode === true,
+  foldHeading: appCfg.foldHeading !== false,
+  foldIndent: appCfg.foldIndent === true,
   onLinkTrigger: (pos) => { linkPane = 2; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 2; },
 });
