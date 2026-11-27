@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=112";
-import { initCanvas } from "./canvas.js?v=112";
-import { initCollab } from "./collab.js?v=112";
-import { initPlugins } from "./plugins.js?v=112";
-import { exportPdfFile } from "./pdf.js?v=112";
-import { initLive } from "./live.js?v=112";
-import { initDaily } from "./daily.js?v=112";
-import { initRecorder } from "./recorder.js?v=112";
-import { initPdfViewer } from "./pdfviewer.js?v=112";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=112";
+import { initGraph } from "./graph.js?v=113";
+import { initCanvas } from "./canvas.js?v=113";
+import { initCollab } from "./collab.js?v=113";
+import { initPlugins } from "./plugins.js?v=113";
+import { exportPdfFile } from "./pdf.js?v=113";
+import { initLive } from "./live.js?v=113";
+import { initDaily } from "./daily.js?v=113";
+import { initRecorder } from "./recorder.js?v=113";
+import { initPdfViewer } from "./pdfviewer.js?v=113";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=113";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v112";
+const BUILD = "v113";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -5728,6 +5728,11 @@ $("editor").addEventListener("keydown", (e) => {
     ed.dispatchEvent(new Event("input"));
     return;
   }
+  if (e.altKey && e.key === "Enter") {
+    e.preventDefault();
+    followLinkUnderCursor();
+    return;
+  }
   if (e.key === "Enter" && !e.shiftKey && !mod) {
     const s = ed.selectionStart;
     const before = ed.value.slice(0, s);
@@ -5765,6 +5770,311 @@ function wrapSelection(marker) {
   ed.selectionStart = s + marker.length;
   ed.selectionEnd = t + marker.length;
   ed.dispatchEvent(new Event("input"));
+}
+
+function editorLiveActive() {
+  const file = currentFile();
+  return !!(file && state.mode === "live" && liveApi && livePath === file.path);
+}
+
+function currentEditorText() {
+  if (editorLiveActive()) return liveApi.getText();
+  return $("editor").value;
+}
+
+function applyEditorTextChange(from, to, insert, selFrom, selTo) {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return false; }
+  if (editorLiveActive()) {
+    liveApi.replaceRange(from, to, insert);
+    if (Number.isFinite(selFrom)) liveApi.select(selFrom, Number.isFinite(selTo) ? selTo : selFrom);
+    return true;
+  }
+  const ed = $("editor");
+  const text = ed.value;
+  ed.value = text.slice(0, from) + insert + text.slice(to);
+  const anchor = Number.isFinite(selFrom) ? selFrom : from + insert.length;
+  const head = Number.isFinite(selTo) ? selTo : anchor;
+  ed.selectionStart = Math.min(anchor, head);
+  ed.selectionEnd = Math.max(anchor, head);
+  ed.dispatchEvent(new Event("input", { bubbles: true }));
+  ed.focus();
+  return true;
+}
+
+function selectionLineContext() {
+  const file = currentFile();
+  if (!file) { toast("Спочатку відкрий нотатку"); return null; }
+  if (editorLiveActive()) {
+    const sel = liveApi.selection();
+    const text = liveApi.getText();
+    const start = sel.from === 0 ? 0 : text.lastIndexOf("\n", sel.from - 1) + 1;
+    let endIndex = text.indexOf("\n", sel.to);
+    let end = endIndex === -1 ? text.length : endIndex;
+    if (sel.to > sel.from && text[sel.to - 1] === "\n" && sel.to - 1 >= start) end = sel.to - 1;
+    return { text, from: sel.from, to: sel.to, start, end };
+  }
+  const ed = $("editor");
+  const text = ed.value;
+  const start = ed.selectionStart === 0 ? 0 : text.lastIndexOf("\n", ed.selectionStart - 1) + 1;
+  let endIndex = text.indexOf("\n", ed.selectionEnd);
+  let end = endIndex === -1 ? text.length : endIndex;
+  if (ed.selectionEnd > ed.selectionStart && text[ed.selectionEnd - 1] === "\n" && ed.selectionEnd - 1 >= start) end = ed.selectionEnd - 1;
+  return { text, from: ed.selectionStart, to: ed.selectionEnd, start, end };
+}
+
+function transformSelectedLines(transform) {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const block = ctx.text.slice(ctx.start, ctx.end);
+  const lines = block.split("\n");
+  const next = transform(lines);
+  if (!next) return;
+  const insert = next.join("\n");
+  if (insert === block) return;
+  const multi = lines.length > 1;
+  const fullLines = ctx.from === ctx.start && ctx.to === ctx.end;
+  let anchor;
+  let head;
+  if (multi || fullLines) {
+    anchor = ctx.start;
+    head = ctx.start + insert.length;
+  } else {
+    const delta = insert.length - block.length;
+    anchor = Math.max(ctx.start, Math.min(ctx.start + insert.length, ctx.from + delta));
+    head = Math.max(anchor, Math.min(ctx.start + insert.length, ctx.to + delta));
+  }
+  applyEditorTextChange(ctx.start, ctx.end, insert, anchor, head);
+}
+
+function stripListPrefix(line) {
+  return line.replace(/^(\s*)(?:[-*+]|\d+[.)])\s+(?:\[.\]\s+)?/, "$1");
+}
+
+function toggleHeading(level) {
+  if (!level) {
+    transformSelectedLines((lines) => {
+      const filled = lines.filter((line) => line.trim());
+      if (!filled.length) return null;
+      return lines.map((line) => (line.trim() ? line.replace(/^#{1,6}\s+/, "") : line));
+    });
+    return;
+  }
+  transformSelectedLines((lines) => {
+    const filled = lines.filter((line) => line.trim());
+    if (!filled.length) return null;
+    const active = filled.every((line) => new RegExp("^#{" + level + "}\\s+").test(line));
+    return lines.map((line) => {
+      if (!line.trim()) return line;
+      const bare = line.replace(/^#{1,6}\s+/, "");
+      return active ? bare : "#".repeat(level) + " " + bare;
+    });
+  });
+}
+
+function toggleList(kind) {
+  const patterns = {
+    bullet: /^(\s*)([-*+])\s+(?!\[.\]\s)/,
+    numbered: /^(\s*)\d+[.)]\s+/,
+    task: /^(\s*)([-*+])\s+\[.\]\s+/,
+  };
+  const pattern = patterns[kind];
+  transformSelectedLines((lines) => {
+    const filled = lines.filter((line) => line.trim());
+    if (!filled.length) return null;
+    const all = filled.every((line) => pattern.test(line));
+    let counter = 1;
+    return lines.map((line) => {
+      if (!line.trim()) return line;
+      const indent = (line.match(/^\s*/) || [""])[0];
+      const body = stripListPrefix(line).slice(indent.length);
+      if (all) return indent + body;
+      if (kind === "bullet") return indent + "- " + body;
+      if (kind === "numbered") return indent + (counter++) + ". " + body;
+      return indent + "- [ ] " + body;
+    });
+  });
+}
+
+function toggleQuote() {
+  transformSelectedLines((lines) => {
+    const filled = lines.filter((line) => line.trim());
+    if (!filled.length) return null;
+    const all = filled.every((line) => /^>\s?/.test(line));
+    return lines.map((line) => {
+      if (!line.trim()) return line;
+      return all ? line.replace(/^>\s?/, "") : "> " + line;
+    });
+  });
+}
+
+function insertCallout() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const selected = ctx.text.slice(ctx.from, ctx.to);
+  if (selected) {
+    const insert = "> [!note]\n> " + selected.replace(/\n/g, "\n> ");
+    applyEditorTextChange(ctx.from, ctx.to, insert, ctx.from + 3);
+    return;
+  }
+  const prefix = ctx.from > 0 && ctx.text[ctx.from - 1] !== "\n" ? "\n" : "";
+  const insert = prefix + "> [!note]\n> ";
+  applyEditorTextChange(ctx.from, ctx.from, insert, ctx.from + insert.length);
+}
+
+function toggleCodeBlock() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const selected = ctx.text.slice(ctx.from, ctx.to);
+  if (!selected) {
+    const prefix = ctx.from > 0 && ctx.text[ctx.from - 1] !== "\n" ? "\n" : "";
+    const insert = prefix + "```\n\n```";
+    applyEditorTextChange(ctx.from, ctx.from, insert, ctx.from + prefix.length + 4, ctx.from + prefix.length + 4);
+    return;
+  }
+  const stripped = selected.replace(/^```[^\n]*\n?/, "").replace(/\n?```\s*$/, "");
+  if (stripped !== selected) {
+    applyEditorTextChange(ctx.from, ctx.to, stripped, ctx.from, ctx.from + stripped.length);
+    return;
+  }
+  const insert = "```\n" + selected + "\n```";
+  applyEditorTextChange(ctx.from, ctx.to, insert, ctx.from + 4, ctx.from + 4 + selected.length);
+}
+
+function toggleMathBlock() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const selected = ctx.text.slice(ctx.from, ctx.to);
+  if (!selected) {
+    const prefix = ctx.from > 0 && ctx.text[ctx.from - 1] !== "\n" ? "\n" : "";
+    const insert = prefix + "$$\n\n$$";
+    applyEditorTextChange(ctx.from, ctx.from, insert, ctx.from + prefix.length + 3, ctx.from + prefix.length + 3);
+    return;
+  }
+  const stripped = selected.replace(/^\$\$\n?/, "").replace(/\n?\$\$\s*$/, "");
+  if (stripped !== selected) {
+    applyEditorTextChange(ctx.from, ctx.to, stripped, ctx.from, ctx.from + stripped.length);
+    return;
+  }
+  const insert = "$$\n" + selected + "\n$$";
+  applyEditorTextChange(ctx.from, ctx.to, insert, ctx.from + 3, ctx.from + 3 + selected.length);
+}
+
+function toggleInline(marker) {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const { text, from, to } = ctx;
+  if (from === to) {
+    applyEditorTextChange(from, from, marker + marker, from + marker.length, from + marker.length);
+    return;
+  }
+  const selected = text.slice(from, to);
+  const before = text.slice(Math.max(0, from - marker.length), from);
+  const after = text.slice(to, to + marker.length);
+  if (selected.length >= marker.length * 2 && selected.startsWith(marker) && selected.endsWith(marker)) {
+    const inner = selected.slice(marker.length, selected.length - marker.length);
+    applyEditorTextChange(from, to, inner, from, from + inner.length);
+  } else if (before === marker && after === marker) {
+    applyEditorTextChange(from - marker.length, to + marker.length, selected, from - marker.length, to - marker.length);
+  } else {
+    applyEditorTextChange(from, to, marker + selected + marker, from + marker.length, to + marker.length);
+  }
+}
+
+function insertHorizontalRule() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const prefix = ctx.from > 0 && ctx.text[ctx.from - 1] !== "\n" ? "\n" : "";
+  const insert = prefix + "---\n";
+  applyEditorTextChange(ctx.from, ctx.from, insert, ctx.from + insert.length);
+}
+
+function insertTable() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const prefix = ctx.from > 0 && ctx.text[ctx.from - 1] !== "\n" ? "\n" : "";
+  const table = "| Колонка 1 | Колонка 2 |\n| --- | --- |\n|  |  |";
+  const insert = prefix + table + "\n";
+  const firstCell = ctx.from + prefix.length + 2;
+  applyEditorTextChange(ctx.from, ctx.from, insert, firstCell, firstCell + "Колонка 1".length);
+}
+
+function insertFootnote() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const used = [...ctx.text.matchAll(/\[\^(\d+)\]/g)].map((match) => Number(match[1]));
+  const number = used.length ? Math.max(...used) + 1 : 1;
+  const selected = ctx.text.slice(ctx.from, ctx.to);
+  const ref = "[^" + number + "]" + (selected ? " " + selected : "");
+  applyEditorTextChange(ctx.from, ctx.to, ref, ctx.from + ref.length);
+  const text = currentEditorText();
+  const suffix = (text.endsWith("\n") ? "" : "\n") + "\n[^" + number + "]: ";
+  applyEditorTextChange(text.length, text.length, suffix, text.length + suffix.length);
+}
+
+function duplicateLines() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const block = ctx.text.slice(ctx.start, ctx.end);
+  const insert = "\n" + block;
+  applyEditorTextChange(ctx.end, ctx.end, insert, ctx.end + 1, ctx.end + 1 + block.length);
+}
+
+function moveLines(direction) {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const text = ctx.text;
+  const block = text.slice(ctx.start, ctx.end);
+  if (direction < 0) {
+    if (ctx.start === 0) return;
+    const prevStart = text.lastIndexOf("\n", ctx.start - 2) + 1;
+    const prev = text.slice(prevStart, ctx.start - 1);
+    const insert = block + "\n" + prev;
+    applyEditorTextChange(prevStart, ctx.end, insert, prevStart, prevStart + block.length);
+    return;
+  }
+  if (ctx.end >= text.length) return;
+  const nextEndNl = text.indexOf("\n", ctx.end + 1);
+  const nextEnd = nextEndNl === -1 ? text.length : nextEndNl;
+  const next = text.slice(ctx.end + 1, nextEnd);
+  const insert = next + "\n" + block;
+  const base = ctx.start + next.length + 1;
+  applyEditorTextChange(ctx.start, nextEnd, insert, base, base + block.length);
+}
+
+function clearFormatting() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const selected = ctx.text.slice(ctx.from, ctx.to);
+  if (!selected) return;
+  const cleaned = selected
+    .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+    .replace(/__([^_\n]+)__/g, "$1")
+    .replace(/~~([^~\n]+)~~/g, "$1")
+    .replace(/==([^=\n]+)==/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/\$([^$\n]+)\$/g, "$1")
+    .replace(/\*([^*\n]+)\*/g, "$1")
+    .replace(/_([^_\n]+)_/g, "$1");
+  applyEditorTextChange(ctx.from, ctx.to, cleaned, ctx.from, ctx.from + cleaned.length);
+}
+
+function followLinkUnderCursor() {
+  const ctx = selectionLineContext();
+  if (!ctx) return;
+  const text = ctx.text;
+  const pos = ctx.from;
+  const re = /\[\[([^\]]+)\]\]/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    if (pos < match.index || pos > match.index + match[0].length) continue;
+    const target = match[1].split("|")[0].trim();
+    const path = resolveLinkTarget(target);
+    if (path) openNote(path);
+    else toast("Не знайдено: " + target);
+    return;
+  }
+  toast("Курсор не на посиланні");
 }
 
 $("editor").addEventListener("scroll", () => syncHighlight());
@@ -6587,6 +6897,33 @@ registerCommand({ id: "new-folder", label: "Нова тека", run: newFolder }
 registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
 registerCommand({ id: "bold", label: "Жирний", hint: "Ctrl+B", run: () => { wrapSelection("**"); } });
 registerCommand({ id: "italic", label: "Курсив", hint: "Ctrl+I", run: () => { wrapSelection("*"); } });
+registerCommand({ id: "fmt-heading-1", label: "Форматування: заголовок 1", run: () => toggleHeading(1) });
+registerCommand({ id: "fmt-heading-2", label: "Форматування: заголовок 2", run: () => toggleHeading(2) });
+registerCommand({ id: "fmt-heading-3", label: "Форматування: заголовок 3", run: () => toggleHeading(3) });
+registerCommand({ id: "fmt-heading-4", label: "Форматування: заголовок 4", run: () => toggleHeading(4) });
+registerCommand({ id: "fmt-heading-5", label: "Форматування: заголовок 5", run: () => toggleHeading(5) });
+registerCommand({ id: "fmt-heading-6", label: "Форматування: заголовок 6", run: () => toggleHeading(6) });
+registerCommand({ id: "fmt-heading-none", label: "Форматування: прибрати заголовок", run: () => toggleHeading(0) });
+registerCommand({ id: "fmt-list-bullet", label: "Форматування: маркований список", run: () => toggleList("bullet") });
+registerCommand({ id: "fmt-list-number", label: "Форматування: нумерований список", run: () => toggleList("numbered") });
+registerCommand({ id: "fmt-list-task", label: "Форматування: список завдань", run: () => toggleList("task") });
+registerCommand({ id: "fmt-quote", label: "Форматування: цитата", run: toggleQuote });
+registerCommand({ id: "fmt-callout", label: "Форматування: вставити виноску-блок", run: insertCallout });
+registerCommand({ id: "fmt-code-block", label: "Форматування: блок коду", run: toggleCodeBlock });
+registerCommand({ id: "fmt-math-block", label: "Форматування: блок формул", run: toggleMathBlock });
+registerCommand({ id: "fmt-inline-code", label: "Форматування: код у рядку", hint: "`", run: () => toggleInline("`") });
+registerCommand({ id: "fmt-strike", label: "Форматування: закреслений", run: () => toggleInline("~~") });
+registerCommand({ id: "fmt-highlight", label: "Форматування: виділений", run: () => toggleInline("==") });
+registerCommand({ id: "fmt-math", label: "Форматування: формула в рядку", run: () => toggleInline("$") });
+registerCommand({ id: "fmt-comment", label: "Форматування: коментар", run: () => toggleInline("%%") });
+registerCommand({ id: "fmt-hr", label: "Форматування: горизонтальна лінія", run: insertHorizontalRule });
+registerCommand({ id: "fmt-table", label: "Форматування: вставити таблицю", run: insertTable });
+registerCommand({ id: "fmt-footnote", label: "Форматування: вставити виноску", run: insertFootnote });
+registerCommand({ id: "fmt-clear", label: "Форматування: очистити форматування", run: clearFormatting });
+registerCommand({ id: "line-duplicate", label: "Рядок: дублювати", run: duplicateLines });
+registerCommand({ id: "line-move-up", label: "Рядок: перемістити вгору", run: () => moveLines(-1) });
+registerCommand({ id: "line-move-down", label: "Рядок: перемістити вниз", run: () => moveLines(1) });
+registerCommand({ id: "follow-link", label: "Перейти за посиланням під курсором", hint: "Alt+Enter", run: followLinkUnderCursor });
 registerCommand({ id: "find", label: "Знайти в нотатці", hint: "Ctrl+F", run: openFind });
 registerCommand({ id: "replace", label: "Замінити в нотатці", hint: "Ctrl+H", run: () => { openFind(); $("replaceInput").focus(); } });
 registerCommand({ id: "link-note", label: "Вставити [[посилання]]", hint: "[[", run: () => showSwitcher("link") });
@@ -6638,6 +6975,7 @@ liveApi = initLive({
   smartLists: store.get("smartLists", "1") !== "0",
   onLinkTrigger: (pos) => { linkPane = 1; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 1; },
+  onFollowLink: followLinkUnderCursor,
 });
 
 live2Api = initLive({

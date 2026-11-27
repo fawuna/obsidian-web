@@ -1106,6 +1106,7 @@ function makeExtensions(options, instance) {
       { key: "Mod-b", run: (v) => wrapSelection(v, "**", "**") },
       { key: "Mod-i", run: (v) => wrapSelection(v, "*", "*") },
       { key: "Mod-k", run: (v) => wrapSelection(v, "[[", "]]") },
+      { key: "Alt-Enter", run: () => { if (options.onFollowLink) options.onFollowLink(); return true; } },
       indentWithTab,
       ...defaultKeymap,
       ...historyKeymap,
@@ -1242,6 +1243,16 @@ export function initLive(options) {
     replaceSelection(text) {
       const main = view.state.selection.main;
       view.dispatch({ changes: { from: main.from, to: main.to, insert: text }, selection: { anchor: main.from + text.length } });
+    },
+    replaceRange(from, to, insert) {
+      const start = Math.max(0, Math.min(from, view.state.doc.length));
+      const end = Math.max(start, Math.min(to, view.state.doc.length));
+      view.dispatch({
+        changes: { from: start, to: end, insert },
+        selection: { anchor: start + String(insert).length },
+        scrollIntoView: true,
+      });
+      return start + String(insert).length;
     },
     replaceAll(query, replacement) {
       if (!query) return 0;
