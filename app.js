@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=135";
-import { initCanvas } from "./canvas.js?v=135";
-import { initCollab } from "./collab.js?v=135";
-import { initPlugins } from "./plugins.js?v=135";
-import { exportPdfFile } from "./pdf.js?v=135";
-import { initLive } from "./live.js?v=135";
-import { initDaily } from "./daily.js?v=135";
-import { initRecorder } from "./recorder.js?v=135";
-import { initPdfViewer } from "./pdfviewer.js?v=135";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=135";
+import { initGraph } from "./graph.js?v=136";
+import { initCanvas } from "./canvas.js?v=136";
+import { initCollab } from "./collab.js?v=136";
+import { initPlugins } from "./plugins.js?v=136";
+import { exportPdfFile } from "./pdf.js?v=136";
+import { initLive } from "./live.js?v=136";
+import { initDaily } from "./daily.js?v=136";
+import { initRecorder } from "./recorder.js?v=136";
+import { initPdfViewer } from "./pdfviewer.js?v=136";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=136";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v135";
+const BUILD = "v136";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -6594,7 +6594,7 @@ export const Vault = {
   state, api, ghGet, ghPut, ghPutRaw, ghDelete, b64encode, b64decode,
   contentsPath, loadAttachment, showCtx, hideCtx, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
-  renderTree, renderTabs, paint, renderPreview, renderRightPanels, renderTags, showPane, showSwitcher,
+  renderTree, renderTabs, paint, renderPreview, markdownToHtml, renderRightPanels, renderTags, showPane, showSwitcher,
   moveFile, uploadImage, uploadFile, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote, openInSecond, closeSecond,
   exportPdfFile: (opts = {}) => exportPdfFile($("preview"), (currentFile()?.path || "note").split("/").pop().replace(/\.md$/, ""), opts),
   get files() { return state.files; },

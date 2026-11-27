@@ -512,7 +512,11 @@ function render() {
         const text = excerpts.get(file);
         if (text === undefined) {
           body.textContent = "завантажую…";
-          Vault.ghGet(file).then(({ text }) => { excerpts.set(file, text.slice(0, 600)); render(); }).catch(() => { excerpts.set(file, ""); render(); });
+          Vault.ghGet(file).then(({ text }) => { excerpts.set(file, text.slice(0, 1800)); render(); }).catch(() => { excerpts.set(file, ""); render(); });
+        } else if (Vault.markdownToHtml) {
+          const cleaned = text.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, "").slice(0, 1600);
+          body.classList.add("cv-markdown");
+          body.innerHTML = Vault.markdownToHtml(cleaned);
         } else {
           body.textContent = text.slice(0, 600) || "(порожньо)";
         }
