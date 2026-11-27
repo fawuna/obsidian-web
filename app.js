@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=129";
-import { initCanvas } from "./canvas.js?v=129";
-import { initCollab } from "./collab.js?v=129";
-import { initPlugins } from "./plugins.js?v=129";
-import { exportPdfFile } from "./pdf.js?v=129";
-import { initLive } from "./live.js?v=129";
-import { initDaily } from "./daily.js?v=129";
-import { initRecorder } from "./recorder.js?v=129";
-import { initPdfViewer } from "./pdfviewer.js?v=129";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=129";
+import { initGraph } from "./graph.js?v=130";
+import { initCanvas } from "./canvas.js?v=130";
+import { initCollab } from "./collab.js?v=130";
+import { initPlugins } from "./plugins.js?v=130";
+import { exportPdfFile } from "./pdf.js?v=130";
+import { initLive } from "./live.js?v=130";
+import { initDaily } from "./daily.js?v=130";
+import { initRecorder } from "./recorder.js?v=130";
+import { initPdfViewer } from "./pdfviewer.js?v=130";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=130";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v129";
+const BUILD = "v130";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -189,6 +189,7 @@ let appCfg = {
   tabSize: 4,
   strictLineBreaks: false,
   propertiesInDocument: "visible",
+  showInlineTitle: true,
   showLineNumber: false,
   lineWrap: true,
   vimMode: false,
@@ -1737,6 +1738,10 @@ function renderGroupTabsInto(index, bar) {
   document.body.classList.toggle("has-stacked-tabs", state.groups.some((item) => item && item.stacked));
   if (!group) return;
   for (const path of group.tabs) makeGroupTab(index, path, bar);
+  const add = el("button", "icon-btn tab-add", "＋");
+  add.title = "Нова вкладка";
+  add.onclick = (event) => { event.stopPropagation(); showSwitcher("open"); };
+  bar.appendChild(add);
   if (index > 0) {
     const close = el("button", "icon-btn pane-close", "✕");
     close.title = "Закрити панель";
@@ -2594,6 +2599,7 @@ async function loadAppConfig() {
         tabSize: Number(raw.tabSize) > 0 ? Number(raw.tabSize) : 4,
         strictLineBreaks: raw.strictLineBreaks === true,
         propertiesInDocument: ["visible", "hidden", "source"].includes(raw.propertiesInDocument) ? raw.propertiesInDocument : "visible",
+        showInlineTitle: raw.showInlineTitle !== false,
         showLineNumber: raw.showLineNumber === true,
         lineWrap: raw.lineWrap !== false,
         vimMode: raw.vimMode === true,
@@ -2925,24 +2931,26 @@ function highlightYaml(raw) {
 
 function buildReadingHeader(file, parsed) {
   const header = el("div", "mod-header mod-ui");
-  const title = el("div", "inline-title", file.path.split("/").pop().replace(/\.md$/, ""));
-  title.contentEditable = "true";
-  title.spellcheck = true;
-  title.tabIndex = 0;
-  const titleName = () => String(file.path || "").split("/").pop().replace(/\.(md|canvas|base)$/i, "");
-  title.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") { event.preventDefault(); title.blur(); }
-    if (event.key === "Escape") { event.preventDefault(); title.textContent = titleName(); title.blur(); }
-  });
-  title.addEventListener("blur", async () => {
-    const current = titleName();
-    const next = title.textContent.replace(/\s+/g, " ").trim();
-    if (!next || next === current) { title.textContent = current; return; }
-    const folder = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/") + 1) : "";
-    const ok = await renameNoteTo(file.path, folder + next);
-    if (!ok) title.textContent = current;
-  });
-  header.appendChild(title);
+  if (appCfg.showInlineTitle !== false) {
+    const title = el("div", "inline-title", file.path.split("/").pop().replace(/\.md$/, ""));
+    title.contentEditable = "true";
+    title.spellcheck = true;
+    title.tabIndex = 0;
+    const titleName = () => String(file.path || "").split("/").pop().replace(/\.(md|canvas|base)$/i, "");
+    title.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); title.blur(); }
+      if (event.key === "Escape") { event.preventDefault(); title.textContent = titleName(); title.blur(); }
+    });
+    title.addEventListener("blur", async () => {
+      const current = titleName();
+      const next = title.textContent.replace(/\s+/g, " ").trim();
+      if (!next || next === current) { title.textContent = current; return; }
+      const folder = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/") + 1) : "";
+      const ok = await renameNoteTo(file.path, folder + next);
+      if (!ok) title.textContent = current;
+    });
+    header.appendChild(title);
+  }
   if (appCfg.propertiesInDocument === "hidden") return header;
   if (!parsed) return header;
   if (appCfg.propertiesInDocument === "source") {
@@ -7333,6 +7341,16 @@ $("modeEdit").onclick = () => setMode("edit");
 $("modeLive").onclick = () => setMode("live");
 $("modeSplit").onclick = () => setMode("split");
 $("modeRead").onclick = () => setMode("read");
+$("stMode").onclick = (event) => {
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  showCtx(rect.left, rect.top - 6, [
+    { label: (state.mode === "live" ? "✓ " : "") + "Live preview", run: () => setMode("live") },
+    { label: (state.mode === "edit" ? "✓ " : "") + "Редактор", run: () => setMode("edit") },
+    { label: (state.mode === "split" ? "✓ " : "") + "Редактор + читання", run: () => setMode("split") },
+    { label: (state.mode === "read" ? "✓ " : "") + "Читання", run: () => setMode("read") },
+  ]);
+};
 $("toggleLeft").onclick = toggleLeft;
 $("toggleRight").onclick = toggleRight;
 $("themeBtn").onclick = toggleTheme;
@@ -7763,6 +7781,7 @@ function openSettings() {
   $("setUseTabs").checked = appCfg.useTab === true;
   $("setTabSize").value = String(appCfg.tabSize || 4);
   $("setPropertiesInDocument").value = appCfg.propertiesInDocument || "visible";
+  $("setInlineTitle").checked = appCfg.showInlineTitle !== false;
   $("setRecorderFolder").value = recorderApi && recorderApi.config ? recorderApi.config.folder || "" : "";
   $("setNewFileLocation").value = appCfg.newFileLocation || "root";
   $("setNewFileFolder").value = appCfg.newFileFolderPath || "";
@@ -7844,6 +7863,7 @@ $("saveSettings").onclick = async () => {
   appCfg.useTab = $("setUseTabs").checked;
   appCfg.tabSize = Number($("setTabSize").value) || 4;
   appCfg.propertiesInDocument = $("setPropertiesInDocument").value;
+  appCfg.showInlineTitle = $("setInlineTitle").checked;
   appCfg.showLineNumber = $("setLineNumbers").checked;
   appCfg.lineWrap = $("setLineWrap").checked;
   appCfg.vimMode = $("setVimMode").checked;
@@ -7883,6 +7903,7 @@ $("saveSettings").onclick = async () => {
     appRaw.useTab = appCfg.useTab;
     appRaw.tabSize = appCfg.tabSize;
     appRaw.propertiesInDocument = appCfg.propertiesInDocument;
+    appRaw.showInlineTitle = appCfg.showInlineTitle;
     appRaw.showLineNumber = appCfg.showLineNumber;
     appRaw.lineWrap = appCfg.lineWrap;
     appRaw.vimMode = appCfg.vimMode;

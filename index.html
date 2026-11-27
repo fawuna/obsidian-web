@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=129">
+<link rel="stylesheet" href="styles.css?v=130">
 </head>
 <body>
 
@@ -421,6 +421,7 @@
             <option value="hidden">Приховати</option>
             <option value="source">Як джерело YAML</option>
           </select>
+          <label style="margin-top:8px;display:flex;align-items:center;gap:8px"><input type="checkbox" id="setInlineTitle" checked> Показувати назву нотатки</label>
           <label style="margin-top:18px;display:block">Graph view: сила відштовхування</label>
           <input id="setGraphForce" type="range" min="40" max="220" step="10">
         </section>
@@ -543,7 +544,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=129"></script>
-<script type="module" src="app.js?v=129"></script>
+<script src="vendor/marked.min.js?v=130"></script>
+<script type="module" src="app.js?v=130"></script>
 </body>
 </html>

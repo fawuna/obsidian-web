@@ -55,6 +55,7 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c4c4c4; }
 .titlebar { display: flex; align-items: center; height: 40px; background: var(--bg-2); border-bottom: 1px solid var(--line); padding: 0 6px; gap: 4px; }
 .titlebar .nav { display: flex; gap: 2px; align-items: center; }
 .tabs { display: flex; gap: 2px; flex: 1; overflow-x: auto; height: 100%; align-items: flex-end; padding-top: 4px; }
+.tab-add { align-self: center; margin: 0 2px; flex: 0 0 auto; }
 body.has-stacked-tabs .titlebar { height: auto; min-height: 40px; align-items: flex-start; padding-top: 4px; padding-bottom: 4px; }
 .tabs.stacked { flex-direction: column; align-items: stretch; overflow-x: hidden; overflow-y: auto; max-height: 180px; height: auto; }
 .tabs.stacked .tab { max-width: none; width: 100%; border-radius: 6px; border-bottom: 1px solid var(--line); }
