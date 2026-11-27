@@ -1191,6 +1191,29 @@ function makeExtensions(options, instance) {
         }
         return false;
       },
+      paste(event, viewer) {
+        if (options.pasteHtmlAsMarkdown !== true) return false;
+        const html = event.clipboardData && event.clipboardData.getData("text/html");
+        if (!html) return false;
+        event.preventDefault();
+        const insert = (markdown) => {
+          if (!markdown) return;
+          const main = viewer.state.selection.main;
+          viewer.dispatch({
+            changes: { from: main.from, to: main.to, insert: markdown },
+            selection: { anchor: main.from + markdown.length },
+          });
+        };
+        if (options.htmlToMarkdown) {
+          options.htmlToMarkdown(html).then(insert).catch(() => {
+            const plain = event.clipboardData.getData("text/plain");
+            if (plain) insert(plain);
+          });
+        } else {
+          insert(html);
+        }
+        return true;
+      },
     }),
     EditorView.updateListener.of((update) => {
       if (update.docChanged && !instance.suppress) {

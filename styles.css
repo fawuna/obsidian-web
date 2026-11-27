@@ -198,6 +198,7 @@ html[data-theme="light"] .hl-t { color: #c2410c; }
 #outline { max-height: 34%; }
 .outline-item { display: block; width: 100%; text-align: left; padding: 3px 8px; border-radius: 5px; font-size: 13px; color: var(--text-dim); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .outline-item:hover { background: var(--bg-3); color: var(--text); }
+.outline-item.is-active { background: var(--bg-3); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
 .outline-item.l1 { font-weight: 600; color: var(--text); }
 .outline-item.l2 { padding-left: 20px; }
 .outline-item.l3 { padding-left: 32px; font-size: 12.5px; }

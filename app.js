@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=122";
-import { initCanvas } from "./canvas.js?v=122";
-import { initCollab } from "./collab.js?v=122";
-import { initPlugins } from "./plugins.js?v=122";
-import { exportPdfFile } from "./pdf.js?v=122";
-import { initLive } from "./live.js?v=122";
-import { initDaily } from "./daily.js?v=122";
-import { initRecorder } from "./recorder.js?v=122";
-import { initPdfViewer } from "./pdfviewer.js?v=122";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=122";
+import { initGraph } from "./graph.js?v=123";
+import { initCanvas } from "./canvas.js?v=123";
+import { initCollab } from "./collab.js?v=123";
+import { initPlugins } from "./plugins.js?v=123";
+import { exportPdfFile } from "./pdf.js?v=123";
+import { initLive } from "./live.js?v=123";
+import { initDaily } from "./daily.js?v=123";
+import { initRecorder } from "./recorder.js?v=123";
+import { initPdfViewer } from "./pdfviewer.js?v=123";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=123";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v122";
+const BUILD = "v123";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -172,6 +172,7 @@ let appCfg = {
   vimMode: false,
   foldHeading: true,
   foldIndent: false,
+  pasteHtmlAsMarkdown: false,
 };
 let propertyTypes = {};
 
@@ -1848,6 +1849,7 @@ function createPane(index) {
     onCursor: (line, ch) => {
       const node = $("stCursor");
       if (node) node.textContent = line + ":" + ch;
+      if (activePane === index + 1) updateOutlineActive(line - 1);
     },
     onOpenNote: openTargetNote,
     imageUrl: imageUrlFor,
@@ -2463,6 +2465,7 @@ async function loadAppConfig() {
         vimMode: raw.vimMode === true,
         foldHeading: raw.foldHeading !== false,
         foldIndent: raw.foldIndent === true,
+        pasteHtmlAsMarkdown: raw.pasteHtmlAsMarkdown === true,
       };
     }
   } catch { /* defaults */ }
@@ -6261,6 +6264,26 @@ function syncHighlight() {
   pre.style.transform = "translateY(" + -ed.scrollTop + "px)";
 }
 
+function currentCursorLine() {
+  if (state.mode === "live" && liveApi) return liveApi.caret().line - 1;
+  const ed = $("editor");
+  const before = ed.value.slice(0, ed.selectionStart || 0);
+  return before.split("\n").length - 1;
+}
+
+function updateOutlineActive(line) {
+  const rows = [...document.querySelectorAll("#outline .outline-item")];
+  if (!rows.length) return;
+  let active = -1;
+  for (const row of rows) {
+    const at = Number(row.dataset.line);
+    if (Number.isFinite(at) && at <= line) active = at;
+  }
+  for (const row of rows) row.classList.toggle("is-active", Number(row.dataset.line) === active);
+  const node = rows.find((row) => Number(row.dataset.line) === active);
+  if (node && node.scrollIntoView) node.scrollIntoView({ block: "nearest" });
+}
+
 function renderOutline() {
   const host = $("outline");
   if (!host) return;
@@ -6282,6 +6305,7 @@ function renderOutline() {
     const row = el("div", "tree-item");
     const btn = el("div", "tree-item-self is-clickable outline-item l" + item.level);
     btn.style.paddingInlineStart = 6 + (item.level - 1) * 14 + "px";
+    btn.dataset.line = String(item.line);
     const inner = el("div", "tree-item-inner", item.text);
     btn.appendChild(inner);
     btn.title = "рядок " + (item.line + 1);
@@ -6289,6 +6313,7 @@ function renderOutline() {
     row.appendChild(btn);
     host.appendChild(row);
   }
+  updateOutlineActive(currentCursorLine());
 }
 
 function jumpToLine(line) {
@@ -6433,6 +6458,7 @@ function updateCursorPos() {
   const ch = pos - before.lastIndexOf("\n");
   const el2 = $("stCursor");
   if (el2) el2.textContent = line + ":" + ch;
+  if (activePane === 1) updateOutlineActive(line - 1);
 }
 $("editor").addEventListener("click", updateCursorPos);
 $("editor").addEventListener("keyup", updateCursorPos);
@@ -6849,6 +6875,23 @@ function followLinkUnderCursor() {
 $("editor").addEventListener("scroll", () => syncHighlight());
 $("editor").addEventListener("focus", () => { activePane = 1; });
 $("editor2").addEventListener("focus", () => { activePane = 2; });
+
+function handleSourcePaste(event, editor) {
+  if (appCfg.pasteHtmlAsMarkdown !== true) return;
+  const html = event.clipboardData && event.clipboardData.getData("text/html");
+  if (!html) return;
+  event.preventDefault();
+  htmlToMarkdown(html).then((markdown) => {
+    if (!markdown) return;
+    const start = editor.selectionStart || 0;
+    const end = editor.selectionEnd || start;
+    editor.value = editor.value.slice(0, start) + markdown + editor.value.slice(end);
+    editor.selectionStart = editor.selectionEnd = start + markdown.length;
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+  }).catch(() => {});
+}
+$("editor").addEventListener("paste", (event) => handleSourcePaste(event, $("editor")));
+$("editor2").addEventListener("paste", (event) => handleSourcePaste(event, $("editor2")));
 
 $("editor2").addEventListener("input", () => {
   const file = groupFile(state.groups[1]);
@@ -7428,6 +7471,7 @@ function openSettings() {
   $("setVimMode").checked = appCfg.vimMode === true;
   $("setFoldHeading").checked = appCfg.foldHeading !== false;
   $("setFoldIndent").checked = appCfg.foldIndent === true;
+  $("setPasteHtml").checked = appCfg.pasteHtmlAsMarkdown === true;
   $("setStrictBreaks").checked = appCfg.strictLineBreaks === true;
   $("setUseTabs").checked = appCfg.useTab === true;
   $("setTabSize").value = String(appCfg.tabSize || 4);
@@ -7517,6 +7561,7 @@ $("saveSettings").onclick = async () => {
   appCfg.vimMode = $("setVimMode").checked;
   appCfg.foldHeading = $("setFoldHeading").checked;
   appCfg.foldIndent = $("setFoldIndent").checked;
+  appCfg.pasteHtmlAsMarkdown = $("setPasteHtml").checked;
   store.set("hotkeys", JSON.stringify(hotkeys));
   try {
     await writeVaultJson(".obsidian/daily-notes.json", {
@@ -7555,6 +7600,7 @@ $("saveSettings").onclick = async () => {
     appRaw.vimMode = appCfg.vimMode;
     appRaw.foldHeading = appCfg.foldHeading;
     appRaw.foldIndent = appCfg.foldIndent;
+    appRaw.pasteHtmlAsMarkdown = appCfg.pasteHtmlAsMarkdown;
     await writeVaultJson(".obsidian/app.json", appRaw);
     let appearanceRaw = {};
     try {
@@ -7765,6 +7811,7 @@ liveApi = initLive({
   onCursor: (line, ch) => {
     const node = $("stCursor");
     if (node) node.textContent = line + ":" + ch;
+    if (activePane === 1) updateOutlineActive(line - 1);
   },
   onOpenNote: (target) => {
     const name = String(target || "").replace(/^#/, "");
@@ -7780,6 +7827,8 @@ liveApi = initLive({
   vim: appCfg.vimMode === true,
   foldHeading: appCfg.foldHeading !== false,
   foldIndent: appCfg.foldIndent === true,
+  pasteHtmlAsMarkdown: appCfg.pasteHtmlAsMarkdown === true,
+  htmlToMarkdown,
   onLinkTrigger: (pos) => { linkPane = 1; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 1; },
   onFollowLink: followLinkUnderCursor,
@@ -7809,6 +7858,7 @@ live2Api = initLive({
   onCursor: (line, ch) => {
     const node = $("stCursor");
     if (node) node.textContent = line + ":" + ch;
+    if (activePane === 2) updateOutlineActive(line - 1);
   },
   onOpenNote: openTargetNote,
   imageUrl: imageUrlFor,
@@ -7820,6 +7870,8 @@ live2Api = initLive({
   vim: appCfg.vimMode === true,
   foldHeading: appCfg.foldHeading !== false,
   foldIndent: appCfg.foldIndent === true,
+  pasteHtmlAsMarkdown: appCfg.pasteHtmlAsMarkdown === true,
+  htmlToMarkdown,
   onLinkTrigger: (pos) => { linkPane = 2; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 2; },
 });
