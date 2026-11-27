@@ -413,6 +413,12 @@ body.view-graph #liveHost, body.view-canvas #liveHost { display: none; }
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; z-index: 60; }
 .overlay.show { display: block; }
 .modal { position: fixed; left: 50%; top: 12vh; transform: translateX(-50%); width: min(720px, 94vw); background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); display: none; z-index: 61; overflow: hidden; }
+.tab-switcher { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); width: min(620px, 92vw); max-height: 60vh; overflow: auto; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.45); z-index: 70; padding: 6px; }
+.tab-switcher-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 7px; cursor: pointer; font-size: 13.5px; color: var(--text-dim); }
+.tab-switcher-item.active, .tab-switcher-item:hover { background: var(--bg-3); color: var(--text); }
+.tab-switcher-item .ts-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-switcher-item .ts-path { margin-left: auto; color: var(--muted); font-size: 11.5px; }
+.tab-switcher-item .ts-group { font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; }
 .modal.show { display: block; }
 .modal input.search { width: 100%; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 14px 16px; font-size: 15px; outline: 0; }
 .modal .list { max-height: 46vh; overflow: auto; padding: 6px; }

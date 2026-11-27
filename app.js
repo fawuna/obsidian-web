@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=126";
-import { initCanvas } from "./canvas.js?v=126";
-import { initCollab } from "./collab.js?v=126";
-import { initPlugins } from "./plugins.js?v=126";
-import { exportPdfFile } from "./pdf.js?v=126";
-import { initLive } from "./live.js?v=126";
-import { initDaily } from "./daily.js?v=126";
-import { initRecorder } from "./recorder.js?v=126";
-import { initPdfViewer } from "./pdfviewer.js?v=126";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=126";
+import { initGraph } from "./graph.js?v=127";
+import { initCanvas } from "./canvas.js?v=127";
+import { initCollab } from "./collab.js?v=127";
+import { initPlugins } from "./plugins.js?v=127";
+import { exportPdfFile } from "./pdf.js?v=127";
+import { initLive } from "./live.js?v=127";
+import { initDaily } from "./daily.js?v=127";
+import { initRecorder } from "./recorder.js?v=127";
+import { initPdfViewer } from "./pdfviewer.js?v=127";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=127";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v126";
+const BUILD = "v127";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -63,6 +63,14 @@ try {
 } catch { recentFiles = []; }
 
 const pathRenames = new Map();
+
+let tabMRU = [];
+
+function recordTabUse(groupIndex, path) {
+  if (!path) return;
+  const key = groupIndex + "|" + path;
+  tabMRU = [key, ...tabMRU.filter((item) => item !== key)].slice(0, 60);
+}
 
 function recordRecent(path) {
   if (!path) return;
@@ -1673,6 +1681,7 @@ function makeGroupTab(index, path, bar) {
   tab.appendChild(close);
   tab.onclick = () => {
     group.active = path;
+    recordTabUse(index, path);
     if (index === 0) {
       state.active = path;
       setView("note");
@@ -2025,6 +2034,7 @@ async function openNote(path, pushHistory = true) {
     setView("note");
     if (pushHistory) pushHistoryState(path);
     recordRecent(path);
+    recordTabUse(0, path);
     renderTabs(); renderTree(); paint();
     return;
   }
@@ -2046,6 +2056,7 @@ async function openNote(path, pushHistory = true) {
     setView("note");
     if (pushHistory) pushHistoryState(path);
     recordRecent(path);
+    recordTabUse(0, path);
     renderTabs(); renderTree(); paint();
     setState("", "");
     if (window.matchMedia("(max-width: 980px)").matches) $("left").classList.remove("open");
@@ -5184,6 +5195,112 @@ function renderSwitcher() {
   if (!switcherItems.length) list.appendChild(el("div", "empty", switcherMode === "template" ? "нема шаблонів у теці" : "нічого не знайдено"));
 }
 
+let tabSwitcherItems = [];
+let tabSwitcherIndex = 0;
+
+function collectTabSwitcherItems() {
+  const items = [];
+  const seen = new Set();
+  for (const key of tabMRU) {
+    const separator = key.indexOf("|");
+    if (separator < 0) continue;
+    const groupIndex = Number(key.slice(0, separator));
+    const path = key.slice(separator + 1);
+    const group = state.groups[groupIndex];
+    if (!group || !group.tabs.includes(path)) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ group: groupIndex, path });
+  }
+  for (let g = 0; g < state.groups.length; g++) {
+    for (const path of state.groups[g].tabs) {
+      const key = g + "|" + path;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push({ group: g, path });
+    }
+  }
+  return items;
+}
+
+function renderTabSwitcher() {
+  const host = $("tabSwitcher");
+  if (!host) return;
+  host.innerHTML = "";
+  tabSwitcherItems.forEach((item, index) => {
+    const row = el("div", "tab-switcher-item" + (index === tabSwitcherIndex ? " active" : ""));
+    row.appendChild(el("span", null, "📄"));
+    row.appendChild(el("span", "ts-title", noteName(item.path)));
+    const folder = item.path.split("/").slice(0, -1).join("/");
+    if (folder) row.appendChild(el("span", "ts-path", folder));
+    if (item.group > 0) row.appendChild(el("span", "ts-group", "панель " + (item.group + 1)));
+    row.onmousedown = (event) => { event.preventDefault(); tabSwitcherIndex = index; commitTabSwitcher(); };
+    host.appendChild(row);
+  });
+  const active = host.children[tabSwitcherIndex];
+  if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest" });
+}
+
+function openTabSwitcher() {
+  const host = $("tabSwitcher");
+  if (!host) return;
+  tabSwitcherItems = collectTabSwitcherItems();
+  if (!tabSwitcherItems.length) { toast("Немає відкритих вкладок"); return; }
+  tabSwitcherIndex = 0;
+  host.style.display = "";
+  renderTabSwitcher();
+}
+
+function moveTabSwitcher(delta) {
+  if (!tabSwitcherItems.length) return;
+  tabSwitcherIndex = (tabSwitcherIndex + delta + tabSwitcherItems.length) % tabSwitcherItems.length;
+  renderTabSwitcher();
+}
+
+function commitTabSwitcher() {
+  const host = $("tabSwitcher");
+  if (!host || host.style.display === "none") return;
+  const item = tabSwitcherItems[tabSwitcherIndex];
+  host.style.display = "none";
+  if (!item) return;
+  const group = state.groups[item.group];
+  if (!group) return;
+  group.active = item.path;
+  recordTabUse(item.group, item.path);
+  if (item.group === 0) {
+    state.active = item.path;
+    setView("note");
+    pushHistoryState(item.path);
+    renderTabs(); renderTree(); paint();
+  } else {
+    activePane = item.group + 1;
+    if (item.group === 1) syncSecond();
+    paintGroup(item.group);
+    renderTabs();
+  }
+}
+
+function closeTabSwitcher() {
+  const host = $("tabSwitcher");
+  if (host) host.style.display = "none";
+}
+
+document.addEventListener("keydown", (event) => {
+  const host = $("tabSwitcher");
+  if (!host || host.style.display === "none") return;
+  if (event.key === "Escape") { event.preventDefault(); closeTabSwitcher(); return; }
+  if (event.key === "ArrowDown") { event.preventDefault(); moveTabSwitcher(1); return; }
+  if (event.key === "ArrowUp") { event.preventDefault(); moveTabSwitcher(-1); return; }
+  if (event.key === "Enter") { event.preventDefault(); commitTabSwitcher(); return; }
+});
+
+document.addEventListener("mousedown", (event) => {
+  const host = $("tabSwitcher");
+  if (!host || host.style.display === "none") return;
+  if (host.contains(event.target)) return;
+  closeTabSwitcher();
+});
+
 function revealActiveFile() {
   const file = currentFile();
   if (!file) { toast("Спочатку відкрий нотатку"); return; }
@@ -7804,6 +7921,7 @@ registerCommand({ id: "format-html-md", label: "Форматування: HTML �
 registerCommand({ id: "format-md-html", label: "Форматування: Markdown → HTML", plugin: "format-converter", run: convertMarkdownToHtml });
 registerCommand({ id: "import-files", label: "Імпортувати файли", plugin: "importer", run: openImportPicker });
 registerCommand({ id: "stack-tabs", label: "Скласти / розкласти вкладки", hint: "Stack tabs", run: () => toggleStackedTabs() });
+registerCommand({ id: "tab-switcher", label: "Перемикач вкладок", run: openTabSwitcher });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", plugin: "graph", run: () => {
   const localToggle = $("graphLocal");
   if (state.view === "graph") { setView("note"); return; }
@@ -7984,4 +8102,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }) };
