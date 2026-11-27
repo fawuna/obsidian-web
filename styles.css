@@ -848,3 +848,13 @@ body.show-source-line-numbers.mode-split .hl-layer pre { padding-left: 52px; }
   body.show-source-line-numbers .hl-layer pre { padding-left: 52px; }
 }
 body.show-source-line-numbers .hl-line::before { content: attr(data-line); position: absolute; left: -46px; width: 36px; text-align: right; color: var(--muted); font-size: 11px; line-height: inherit; pointer-events: none; }
+
+/* community theme browser */
+.theme-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); margin-bottom: 8px; }
+.theme-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.theme-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.theme-meta { font-size: 11.5px; color: var(--muted); }
+.theme-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.theme-actions button { font-size: 12px; padding: 3px 8px; }
+.theme-actions button:disabled { opacity: .45; cursor: default; }
+.theme-badge { font-size: 10.5px; font-weight: 500; color: var(--accent-2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; }

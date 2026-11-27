@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=139";
-import { initCanvas } from "./canvas.js?v=139";
-import { initCollab } from "./collab.js?v=139";
-import { initPlugins } from "./plugins.js?v=139";
-import { exportPdfFile } from "./pdf.js?v=139";
-import { initLive } from "./live.js?v=139";
-import { initDaily } from "./daily.js?v=139";
-import { initRecorder } from "./recorder.js?v=139";
-import { initPdfViewer } from "./pdfviewer.js?v=139";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=139";
+import { initGraph } from "./graph.js?v=140";
+import { initCanvas } from "./canvas.js?v=140";
+import { initCollab } from "./collab.js?v=140";
+import { initPlugins } from "./plugins.js?v=140";
+import { exportPdfFile } from "./pdf.js?v=140";
+import { initLive } from "./live.js?v=140";
+import { initDaily } from "./daily.js?v=140";
+import { initRecorder } from "./recorder.js?v=140";
+import { initPdfViewer } from "./pdfviewer.js?v=140";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=140";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v139";
+const BUILD = "v140";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -778,6 +778,161 @@ function renderThemeOptions(selected) {
     select.appendChild(option);
   }
   select.value = selected != null ? selected : activeThemeName;
+}
+
+const THEME_REGISTRY_URL = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-css-themes.json";
+let themeRegistry = [];
+let themeRegistryLoaded = false;
+const themeBusy = new Set();
+
+function themeDirName(name) {
+  return String(name || "").replace(/[\\/:*?"<>|]/g, "-").replace(/^\.+/, "").trim() || "theme";
+}
+
+async function fetchThemeRegistry() {
+  if (themeRegistryLoaded && themeRegistry.length) return themeRegistry;
+  const res = await fetch(THEME_REGISTRY_URL, { cache: "no-cache" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  themeRegistry = Array.isArray(data) ? data.filter((entry) => entry && entry.name && entry.repo) : [];
+  themeRegistryLoaded = true;
+  return themeRegistry;
+}
+
+function renderThemeBrowser(query = "") {
+  const host = $("themeBrowserList");
+  const foot = $("themeBrowserFoot");
+  if (!host) return;
+  const needle = String(query || "").trim().toLowerCase();
+  const rows = themeRegistry.filter((entry) => !needle ||
+    entry.name.toLowerCase().includes(needle) ||
+    String(entry.author || "").toLowerCase().includes(needle));
+  host.innerHTML = "";
+  if (!rows.length) host.appendChild(el("div", "hint", themeRegistry.length ? "Нічого не знайдено." : "Каталог порожній."));
+  for (const entry of rows) {
+    const installed = installedThemes.some((item) => item.name === entry.name);
+    const row = el("div", "theme-row");
+    const info = el("div", "theme-info");
+    const title = el("div", "theme-name");
+    title.appendChild(document.createTextNode(entry.name));
+    if (installed) title.appendChild(el("span", "theme-badge", "встановлено"));
+    const modes = Array.isArray(entry.modes) ? entry.modes.join(" / ") : "";
+    info.append(title, el("div", "theme-meta",
+      (entry.author || "невідомий") + (modes ? " · " + modes : "") + (entry.legacy ? " · legacy" : "")));
+    const actions = el("div", "theme-actions");
+    if (installed) {
+      const apply = el("button", "ghost-border", activeThemeName === entry.name ? "Активна" : "Увімкнути");
+      apply.disabled = activeThemeName === entry.name;
+      apply.onclick = () => applyThemeByName(entry.name);
+      const update = el("button", "ghost-border", "Оновити");
+      update.disabled = themeBusy.has(entry.name);
+      update.onclick = () => installCommunityTheme(entry, true);
+      const remove = el("button", "ghost-border", "Видалити");
+      remove.disabled = themeBusy.has(entry.name);
+      remove.onclick = () => removeCommunityTheme(entry.name);
+      actions.append(apply, update, remove);
+    } else {
+      const install = el("button", "primary", themeBusy.has(entry.name) ? "Встановлення…" : "Встановити");
+      install.disabled = themeBusy.has(entry.name);
+      install.onclick = () => installCommunityTheme(entry, false);
+      actions.appendChild(install);
+    }
+    row.append(info, actions);
+    host.appendChild(row);
+  }
+  if (foot) foot.textContent = rows.length + " із " + themeRegistry.length + " тем · джерело: obsidian-releases";
+}
+
+async function saveAppearanceTheme(name) {
+  let raw = {};
+  try {
+    const got = await ghGet(".obsidian/appearance.json");
+    raw = JSON.parse(got.text) || {};
+  } catch { raw = {}; }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) raw = {};
+  raw.cssTheme = name || "";
+  await writeVaultJson(".obsidian/appearance.json", raw);
+}
+
+async function installCommunityTheme(entry, isUpdate) {
+  if (!entry || !entry.name || !entry.repo) return { ok: false, error: "bad entry" };
+  if (themeBusy.has(entry.name)) return { ok: false, error: "busy" };
+  themeBusy.add(entry.name);
+  renderThemeBrowser($("themeSearch")?.value || "");
+  try {
+    const res = await fetch("https://raw.githubusercontent.com/" + entry.repo + "/HEAD/theme.css", { cache: "no-cache" });
+    if (!res.ok) throw new Error("theme.css HTTP " + res.status);
+    const css = await res.text();
+    if (!css || css.length < 20) throw new Error("порожній theme.css");
+    const path = ".obsidian/themes/" + themeDirName(entry.name) + "/theme.css";
+    let sha = null;
+    try { sha = (await ghGet(path)).sha; } catch { sha = null; }
+    await ghPut(path, css, sha, (isUpdate ? "update theme " : "install theme ") + entry.name);
+    const item = { name: entry.name, css };
+    const at = installedThemes.findIndex((theme) => theme.name === entry.name);
+    if (at >= 0) installedThemes[at] = item;
+    else installedThemes.push(item);
+    applyThemeCss(entry.name, css);
+    renderThemeOptions(entry.name);
+    await saveAppearanceTheme(entry.name);
+    toast((isUpdate ? "тему оновлено: " : "тему встановлено: ") + entry.name);
+    return { ok: true, name: entry.name, bytes: css.length };
+  } catch (error) {
+    toast("Тема: " + error.message);
+    return { ok: false, error: error.message };
+  } finally {
+    themeBusy.delete(entry.name);
+    renderThemeBrowser($("themeSearch")?.value || "");
+  }
+}
+
+async function removeCommunityTheme(name) {
+  if (!name) return { ok: false, error: "bad name" };
+  themeBusy.add(name);
+  renderThemeBrowser($("themeSearch")?.value || "");
+  try {
+    const dir = ".obsidian/themes/" + themeDirName(name);
+    let items = [];
+    try { items = await api(contentsPath(dir) + "?ref=" + encodeURIComponent(state.branch)); } catch { items = []; }
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        if (item && item.type === "file" && item.path && item.sha) await ghDelete(item.path, item.sha);
+      }
+    }
+    installedThemes = installedThemes.filter((theme) => theme.name !== name);
+    if (activeThemeName === name) {
+      applyThemeCss("", "");
+      await saveAppearanceTheme("");
+    }
+    renderThemeOptions(activeThemeName);
+    toast("тему видалено: " + name);
+    return { ok: true };
+  } catch (error) {
+    toast("Тема: " + error.message);
+    return { ok: false, error: error.message };
+  } finally {
+    themeBusy.delete(name);
+    renderThemeBrowser($("themeSearch")?.value || "");
+  }
+}
+
+async function openThemeBrowser() {
+  const list = $("themeBrowserList");
+  const foot = $("themeBrowserFoot");
+  if (list) list.innerHTML = "";
+  if (foot) foot.textContent = "Завантаження каталогу…";
+  if ($("themeSearch")) $("themeSearch").value = "";
+  openModal("themeBrowserModal");
+  try {
+    await fetchThemeRegistry();
+    renderThemeBrowser("");
+  } catch (error) {
+    if (list) {
+      list.innerHTML = "";
+      list.appendChild(el("div", "hint", "Не вдалося завантажити каталог: " + error.message));
+    }
+    if (foot) foot.textContent = "";
+  }
 }
 
 const ACCENT_PRESETS = ["#a882ff", "#5d9cff", "#52c98a", "#e0b458", "#e5686c", "#ff7ac6", "#7ad7d7", "#9a9a9a"];
@@ -5218,7 +5373,7 @@ function initSlides() {
 let paletteItems = [], paletteActive = 0, switcherItems = [], switcherActive = 0;
 
 function openModal(id) { $("overlay").classList.add("show"); $(id).classList.add("show"); }
-function closeModals() { $("overlay").classList.remove("show"); ["palette", "switcher", "settings", "collabModal", "recoveryModal", "workspacesModal"].forEach((id) => $(id).classList.remove("show")); }
+function closeModals() { $("overlay").classList.remove("show"); ["palette", "switcher", "settings", "collabModal", "recoveryModal", "workspacesModal", "themeBrowserModal"].forEach((id) => $(id).classList.remove("show")); }
 
 function showPalette() {
   $("paletteInput").value = "";
@@ -8051,6 +8206,8 @@ $("reloadThemes").onclick = async () => {
   renderThemeOptions(activeThemeName);
   toast("знайдено тем: " + themes.length);
 };
+$("browseThemes").onclick = () => openThemeBrowser();
+$("themeSearch").addEventListener("input", () => renderThemeBrowser($("themeSearch").value));
 async function writeVaultJson(path, data) {
   let sha = null;
   try {
@@ -8349,6 +8506,7 @@ registerCommand({ id: "extract-heading", label: "Note composer: витягнут
 registerCommand({ id: "copy-link-heading", label: "Копіювати посилання на заголовок", run: copyLinkToHeading });
 registerCommand({ id: "copy-link-block", label: "Копіювати посилання на блок", run: copyLinkToBlock });
 registerCommand({ id: "recovery", label: "File recovery: історія версій", run: openRecovery });
+registerCommand({ id: "theme-browser", label: "Теми: огляд спільнотних тем", run: openThemeBrowser });
 registerCommand({ id: "collab", label: "Спільна робота (real-time)", hint: "👥", run: () => emit("collab:open") });
 registerCommand({ id: "workspaces-save", label: "Workspaces: зберегти поточний", plugin: "workspaces", run: saveCurrentWorkspace });
 registerCommand({ id: "workspaces-open", label: "Workspaces: відкрити", plugin: "workspaces", run: openWorkspacesModal });
@@ -8458,4 +8616,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink, syncLiveTitles, isExcludedPath };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, openThemeBrowser, fetchThemeRegistry, installCommunityTheme, removeCommunityTheme, themeRegistry: () => themeRegistry.slice(), installedThemeNames: () => installedThemes.map((theme) => theme.name), bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink, syncLiveTitles, isExcludedPath };

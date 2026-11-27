@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vault</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
-<link rel="stylesheet" href="styles.css?v=139">
+<link rel="stylesheet" href="styles.css?v=140">
 </head>
 <body>
 
@@ -385,6 +385,7 @@
           <div class="row">
             <select id="setThemeName"></select>
             <button class="ghost-border" id="reloadThemes">Оновити теми</button>
+            <button class="ghost-border" id="browseThemes">Огляд тем</button>
           </div>
           <label style="margin-top:18px">Акцентний колір</label>
           <div class="accent-row">
@@ -545,6 +546,13 @@
   </div>
 </div>
 
+<div class="modal" id="themeBrowserModal">
+  <div class="pane-head"><span class="title">Спільнотні теми</span></div>
+  <input class="search" id="themeSearch" placeholder="Пошук тем…">
+  <div class="body" id="themeBrowserList" style="max-height:440px;overflow:auto;padding:10px"></div>
+  <div class="foot" id="themeBrowserFoot">Завантаження каталогу…</div>
+</div>
+
 <div id="slidesHost" aria-hidden="true">
   <div id="slidesStage" class="slides-stage"></div>
   <button class="slides-nav prev" id="slidesPrev" title="Попередній слайд">‹</button>
@@ -560,7 +568,7 @@
 <div id="ctxMenu" class="ctx-menu"></div>
 <div id="toast"></div>
 
-<script src="vendor/marked.min.js?v=139"></script>
-<script type="module" src="app.js?v=139"></script>
+<script src="vendor/marked.min.js?v=140"></script>
+<script type="module" src="app.js?v=140"></script>
 </body>
 </html>
