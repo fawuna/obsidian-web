@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=141";
-import { initCanvas } from "./canvas.js?v=141";
-import { initCollab } from "./collab.js?v=141";
-import { initPlugins } from "./plugins.js?v=141";
-import { exportPdfFile } from "./pdf.js?v=141";
-import { initLive } from "./live.js?v=141";
-import { initDaily } from "./daily.js?v=141";
-import { initRecorder } from "./recorder.js?v=141";
-import { initPdfViewer } from "./pdfviewer.js?v=141";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=141";
+import { initGraph } from "./graph.js?v=142";
+import { initCanvas } from "./canvas.js?v=142";
+import { initCollab } from "./collab.js?v=142";
+import { initPlugins } from "./plugins.js?v=142";
+import { exportPdfFile } from "./pdf.js?v=142";
+import { initLive } from "./live.js?v=142";
+import { initDaily } from "./daily.js?v=142";
+import { initRecorder } from "./recorder.js?v=142";
+import { initPdfViewer } from "./pdfviewer.js?v=142";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=142";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v141";
+const BUILD = "v142";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -201,6 +201,7 @@ let appCfg = {
   foldIndent: false,
   pasteHtmlAsMarkdown: false,
   autoPairMarkdown: true,
+  alwaysUpdateLinks: true,
 };
 let propertyTypes = {};
 
@@ -1214,6 +1215,7 @@ async function moveFile(path, folder) {
     pathRenames.set(path, target);
     state.pending.delete(path);
     await loadTree();
+    await updateLinksForRename(path, target);
     renderTabs(); paint();
     setState("переміщено", "ok");
     emit("rename", { from: path, to: target });
@@ -2813,6 +2815,7 @@ async function renameNoteTo(path, next) {
     syncSecond();
     await loadTree();
     if (!state.files.includes(target)) state.files.push(target);
+    await updateLinksForRename(path, target);
     renderTabs(); paint();
     renameBookmarkPath(path, target);
     emit("rename", { from: path, to: target });
@@ -2887,6 +2890,7 @@ async function loadAppConfig() {
         foldIndent: raw.foldIndent === true,
         pasteHtmlAsMarkdown: raw.pasteHtmlAsMarkdown === true,
         autoPairMarkdown: raw.autoPairMarkdown !== false,
+        alwaysUpdateLinks: raw.alwaysUpdateLinks !== false,
       };
     }
   } catch { /* defaults */ }
@@ -5543,6 +5547,143 @@ function formatLink(targetPath, label) {
     target = base;
   }
   return "[[" + target + (label ? "|" + label : "") + "]]";
+}
+
+function pathNoExt(path) {
+  return String(path || "").replace(/\.(md|canvas|base|pdf)$/i, "");
+}
+
+function normalizeVaultPath(path) {
+  const parts = [];
+  for (const part of String(path || "").split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") { if (parts.length) parts.pop(); continue; }
+    parts.push(part);
+  }
+  return parts.join("/");
+}
+
+function sourceDir(path) {
+  const clean = String(path || "");
+  const at = clean.lastIndexOf("/");
+  return at > 0 ? clean.slice(0, at) : "";
+}
+
+function protectCode(text) {
+  const saved = [];
+  const mark = (match) => {
+    saved.push(match);
+    return "\u0000C" + (saved.length - 1) + "\u0000";
+  };
+  let out = String(text || "").replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, mark);
+  out = out.replace(/(`+)([^`]*?)\1/g, mark);
+  return {
+    text: out,
+    restore: (value) => String(value).replace(/\u0000C(\d+)\u0000/g, (match, index) => saved[Number(index)] ?? match),
+  };
+}
+
+function wikiTargetFor(sourcePath, targetPath) {
+  const clean = String(targetPath || "").replace(/^\/+/, "");
+  const noExt = pathNoExt(clean);
+  const base = noExt.split("/").pop();
+  const duplicate = state.files.some((path) => path !== clean && pathNoExt(path).split("/").pop().toLowerCase() === base.toLowerCase());
+  if (appCfg.newLinkFormat === "relative") return relativeVaultPath(sourcePath, clean).replace(/\.(md|canvas|base|pdf)$/i, "");
+  if (appCfg.newLinkFormat === "absolute") return noExt;
+  return duplicate ? noExt : base;
+}
+
+function markdownHrefFor(sourcePath, targetPath) {
+  const clean = String(targetPath || "").replace(/^\/+/, "");
+  const base = clean.split("/").pop();
+  const noExtBase = pathNoExt(clean).split("/").pop();
+  const duplicate = state.files.some((path) => path !== clean && pathNoExt(path).split("/").pop().toLowerCase() === noExtBase.toLowerCase());
+  if (appCfg.newLinkFormat === "relative") return relativeVaultPath(sourcePath, clean);
+  if (appCfg.newLinkFormat === "absolute") return "/" + clean;
+  return duplicate ? clean : base;
+}
+
+async function updateLinksForRename(oldPath, newPath) {
+  if (appCfg.alwaysUpdateLinks === false) return 0;
+  if (!oldPath || !newPath || oldPath === newPath) return 0;
+  const oldNoExt = pathNoExt(oldPath).toLowerCase();
+  const oldBase = oldNoExt.split("/").pop();
+  const duplicateBase = state.files.some((path) => path !== oldPath && pathNoExt(path).split("/").pop().toLowerCase() === oldBase);
+  const matchesTarget = (fromPath, rawTarget) => {
+    let clean = String(rawTarget || "").trim().replace(/^<|>$/g, "");
+    if (!clean || /^[a-z][a-z0-9+.-]*:/i.test(clean) || clean.startsWith("//")) return false;
+    const absolute = clean.startsWith("/");
+    const relative = clean.startsWith("./") || clean.startsWith("../");
+    clean = clean.replace(/^\/+/, "").replace(/\.(md|canvas|base|pdf)$/i, "").replace(/\/+$/, "");
+    if (!clean) return false;
+    const lower = clean.toLowerCase();
+    if (absolute) return lower === oldNoExt;
+    if (relative) return normalizeVaultPath(sourceDir(fromPath) + "/" + clean).toLowerCase() === oldNoExt;
+    if (lower === oldNoExt) return true;
+    if (lower === oldBase) return !duplicateBase;
+    if (!oldNoExt.endsWith("/" + lower)) return false;
+    const claimed = state.files.some((path) => {
+      const noExt = pathNoExt(path).toLowerCase();
+      return noExt === lower || noExt.endsWith("/" + lower);
+    });
+    return !claimed;
+  };
+  let changed = 0;
+  const targets = [...state.index.keys()].filter((path) => path.endsWith(".md") && path !== newPath && !isExcludedPath(path));
+  for (const path of targets) {
+    const original = state.index.get(path);
+    if (!original) continue;
+    const guard = protectCode(original);
+    let next = guard.text;
+    next = next.replace(/(!?)\[\[([^\]\n]+)\]\]/g, (match, bang, inner) => {
+      const pipeAt = inner.indexOf("|");
+      const linkPart = pipeAt >= 0 ? inner.slice(0, pipeAt) : inner;
+      const aliasPart = pipeAt >= 0 ? inner.slice(pipeAt) : "";
+      const anchorAt = linkPart.search(/[#^]/);
+      const target = (anchorAt >= 0 ? linkPart.slice(0, anchorAt) : linkPart).trim();
+      const anchor = anchorAt >= 0 ? linkPart.slice(anchorAt) : "";
+      if (!target || !matchesTarget(path, target)) return match;
+      return bang + "[[" + wikiTargetFor(path, newPath) + anchor + aliasPart + "]]";
+    });
+    next = next.replace(/(!?)\[([^\]\n]*)\]\(([^)\n]+)\)/g, (match, bang, label, rawHref) => {
+      const titleMatch = String(rawHref).match(/^(\S+)(\s+["'][^"']*["'])$/);
+      const href = titleMatch ? titleMatch[1] : String(rawHref).trim();
+      const title = titleMatch ? titleMatch[2] : "";
+      if (!href) return match;
+      const hashAt = href.indexOf("#");
+      const anchor = hashAt >= 0 ? href.slice(hashAt) : "";
+      const pathPart = hashAt >= 0 ? href.slice(0, hashAt) : href;
+      let decoded = pathPart;
+      try { decoded = decodeURIComponent(pathPart); } catch { decoded = pathPart; }
+      if (!decoded || !matchesTarget(path, decoded)) return match;
+      return bang + "[" + label + "](" + markdownHrefFor(path, newPath) + anchor + title + ")";
+    });
+    next = guard.restore(next);
+    if (next === original) continue;
+    try {
+      const openFile = state.open.find((file) => file.path === path);
+      if (openFile && openFile.dirty) {
+        openFile.text = next;
+        state.index.set(path, next);
+        changed++;
+        continue;
+      }
+      const sha = openFile ? openFile.sha : (await ghGet(path)).sha;
+      const result = await ghPut(path, next, sha, "update links for " + newPath);
+      state.index.set(path, next);
+      if (openFile) {
+        openFile.text = next;
+        openFile.sha = (result && result.content && result.content.sha) || openFile.sha;
+      }
+      changed++;
+    } catch { /* keep going */ }
+  }
+  if (changed) {
+    renderRightPanels();
+    renderTags();
+    toast("Оновлено посилання у файлах: " + changed);
+  }
+  return changed;
 }
 
 function globToRegExp(pattern) {
@@ -8203,6 +8344,7 @@ function openSettings() {
   $("setAttachmentFolder").value = appCfg.attachmentFolderPath || "";
   $("setLinkFormat").value = appCfg.newLinkFormat || "shortest";
   $("setMarkdownLinks").checked = appCfg.useMarkdownLinks === true;
+  $("setUpdateLinks").checked = appCfg.alwaysUpdateLinks !== false;
   $("setExcluded").value = (appCfg.userIgnoreFilters || []).join("\n");
   const noteCfg = dailyApi && dailyApi.config ? dailyApi.config : null;
   if (noteCfg) {
@@ -8304,6 +8446,7 @@ $("saveSettings").onclick = async () => {
   appCfg.vimMode = $("setVimMode").checked;
   appCfg.newLinkFormat = $("setLinkFormat").value;
   appCfg.useMarkdownLinks = $("setMarkdownLinks").checked;
+  appCfg.alwaysUpdateLinks = $("setUpdateLinks").checked;
   appCfg.userIgnoreFilters = $("setExcluded").value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
   appCfg.foldHeading = $("setFoldHeading").checked;
   appCfg.foldIndent = $("setFoldIndent").checked;
@@ -8347,6 +8490,7 @@ $("saveSettings").onclick = async () => {
     appRaw.vimMode = appCfg.vimMode;
     appRaw.newLinkFormat = appCfg.newLinkFormat;
     appRaw.useMarkdownLinks = appCfg.useMarkdownLinks;
+    appRaw.alwaysUpdateLinks = appCfg.alwaysUpdateLinks;
     appRaw.userIgnoreFilters = appCfg.userIgnoreFilters;
     appRaw.foldHeading = appCfg.foldHeading;
     appRaw.foldIndent = appCfg.foldIndent;
@@ -8679,4 +8823,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, openThemeBrowser, fetchThemeRegistry, installCommunityTheme, removeCommunityTheme, themeRegistry: () => themeRegistry.slice(), installedThemeNames: () => installedThemes.map((theme) => theme.name), bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink, syncLiveTitles, isExcludedPath };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, openThemeBrowser, fetchThemeRegistry, installCommunityTheme, removeCommunityTheme, themeRegistry: () => themeRegistry.slice(), installedThemeNames: () => installedThemes.map((theme) => theme.name), updateLinksForRename, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo, openTabSwitcher, tabSwitcherState: () => ({ open: ($("tabSwitcher")?.style.display || "") !== "none", index: tabSwitcherIndex, items: tabSwitcherItems.map((item) => ({ group: item.group, path: item.path })) }), formatLink, syncLiveTitles, isExcludedPath };
