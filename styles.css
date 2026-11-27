@@ -340,8 +340,10 @@ body.view-graph #liveHost, body.view-canvas #liveHost { display: none; }
 #preview li.task-list-item input[type="checkbox"], #preview li > input[type="checkbox"]:first-child { margin-right: 8px; cursor: pointer; accent-color: var(--accent); transform: translateY(1px); }
 #preview li.task-list-item.is-checked, #preview li.is-checked { color: var(--muted); text-decoration: line-through; }
 #preview code { background: var(--bg-3); padding: 1.5px 5px; border-radius: 4px; font-family: var(--font-mono); font-size: .9em; }
-#preview pre { background: var(--bg-2); border: 1px solid var(--line); padding: 12px 14px; border-radius: 8px; overflow: auto; }
+#preview pre { position: relative; background: var(--bg-2); border: 1px solid var(--line); padding: 12px 14px; border-radius: 8px; overflow: auto; }
 #preview pre code { background: none; padding: 0; }
+#preview .copy-code-button { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .15s; font-size: 11px; padding: 2px 8px; border-radius: 5px; background: var(--bg-3); color: var(--text-dim); border: 1px solid var(--line); cursor: pointer; }
+#preview pre:hover .copy-code-button { opacity: 1; }
 #preview blockquote { border-left: 3px solid var(--accent-2); margin: 12px 0; padding: 2px 14px; color: var(--text-dim); }
 #preview img { max-width: 100%; border-radius: 6px; }
 #preview a { color: var(--accent); text-decoration: none; }

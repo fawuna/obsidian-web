@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=124";
-import { initCanvas } from "./canvas.js?v=124";
-import { initCollab } from "./collab.js?v=124";
-import { initPlugins } from "./plugins.js?v=124";
-import { exportPdfFile } from "./pdf.js?v=124";
-import { initLive } from "./live.js?v=124";
-import { initDaily } from "./daily.js?v=124";
-import { initRecorder } from "./recorder.js?v=124";
-import { initPdfViewer } from "./pdfviewer.js?v=124";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=124";
+import { initGraph } from "./graph.js?v=125";
+import { initCanvas } from "./canvas.js?v=125";
+import { initCollab } from "./collab.js?v=125";
+import { initPlugins } from "./plugins.js?v=125";
+import { exportPdfFile } from "./pdf.js?v=125";
+import { initLive } from "./live.js?v=125";
+import { initDaily } from "./daily.js?v=125";
+import { initRecorder } from "./recorder.js?v=125";
+import { initPdfViewer } from "./pdfviewer.js?v=125";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=125";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v124";
+const BUILD = "v125";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -185,6 +185,7 @@ let appCfg = {
   foldHeading: true,
   foldIndent: false,
   pasteHtmlAsMarkdown: false,
+  autoPairMarkdown: true,
 };
 let propertyTypes = {};
 
@@ -1870,6 +1871,7 @@ function createPane(index) {
     onOpenNote: openTargetNote,
     imageUrl: imageUrlFor,
     autoPairs: store.get("autoPairs", "1") !== "0",
+    autoPairMarkdown: appCfg.autoPairMarkdown !== false,
     smartLists: store.get("smartLists", "1") !== "0",
     onLinkTrigger: (pos) => {
       activePane = index + 1;
@@ -2483,6 +2485,7 @@ async function loadAppConfig() {
         foldHeading: raw.foldHeading !== false,
         foldIndent: raw.foldIndent === true,
         pasteHtmlAsMarkdown: raw.pasteHtmlAsMarkdown === true,
+        autoPairMarkdown: raw.autoPairMarkdown !== false,
       };
     }
   } catch { /* defaults */ }
@@ -3541,6 +3544,23 @@ function wireRendered(root, sourceText, lineOffset = 0) {
       const collapsed = li.classList.toggle("is-collapsed");
       indicator.classList.toggle("is-collapsed", collapsed);
     };
+  });
+
+  root.querySelectorAll("pre").forEach((pre) => {
+    if (pre.closest(".frontmatter")) return;
+    if (pre.querySelector(".copy-code-button")) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy-code-button";
+    button.textContent = "Копіювати";
+    button.title = "Скопіювати код";
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const code = pre.querySelector("code");
+      copyText((code ? code.textContent : pre.textContent) || "");
+    };
+    pre.appendChild(button);
   });
 
   root.querySelectorAll(".internal-link[data-target]").forEach((a) => {
@@ -5219,6 +5239,8 @@ function setMode(mode) {
   document.body.classList.remove("mode-edit", "mode-live", "mode-split", "mode-read");
   document.body.classList.add("mode-" + mode);
   store.set("mode", mode);
+  const modeLabel = $("stMode");
+  if (modeLabel) modeLabel.textContent = mode === "live" ? "Live preview" : mode === "edit" ? "Редактор" : mode === "split" ? "Редактор + читання" : "Читання";
   for (const m of MODES) {
     const btn = $("mode" + m.charAt(0).toUpperCase() + m.slice(1));
     if (btn) btn.style.background = m === mode ? "var(--bg-4)" : "";
@@ -7482,6 +7504,7 @@ function openSettings() {
   $("setSpellcheck").checked = store.get("spellcheck", "1") !== "0";
   $("setWebLinks").checked = store.get("webLinks", "0") === "1";
   $("setAutoPairs").checked = store.get("autoPairs", "1") !== "0";
+  $("setAutoPairMarkdown").checked = appCfg.autoPairMarkdown !== false;
   $("setSmartLists").checked = store.get("smartLists", "1") !== "0";
   $("setLineNumbers").checked = appCfg.showLineNumber === true;
   $("setLineWrap").checked = appCfg.lineWrap !== false;
@@ -7568,6 +7591,7 @@ $("saveSettings").onclick = async () => {
   store.set("spellcheck", $("setSpellcheck").checked ? "1" : "0");
   store.set("webLinks", $("setWebLinks").checked ? "1" : "0");
   store.set("autoPairs", $("setAutoPairs").checked ? "1" : "0");
+  appCfg.autoPairMarkdown = $("setAutoPairMarkdown").checked;
   store.set("smartLists", $("setSmartLists").checked ? "1" : "0");
   appCfg.strictLineBreaks = $("setStrictBreaks").checked;
   appCfg.useTab = $("setUseTabs").checked;
@@ -7618,6 +7642,7 @@ $("saveSettings").onclick = async () => {
     appRaw.foldHeading = appCfg.foldHeading;
     appRaw.foldIndent = appCfg.foldIndent;
     appRaw.pasteHtmlAsMarkdown = appCfg.pasteHtmlAsMarkdown;
+    appRaw.autoPairMarkdown = appCfg.autoPairMarkdown;
     await writeVaultJson(".obsidian/app.json", appRaw);
     let appearanceRaw = {};
     try {
@@ -7845,6 +7870,7 @@ liveApi = initLive({
   },
   imageUrl: (name) => "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.replace(/^\.?\//, "")),
   autoPairs: store.get("autoPairs", "1") !== "0",
+  autoPairMarkdown: appCfg.autoPairMarkdown !== false,
   smartLists: store.get("smartLists", "1") !== "0",
   indentUnit: editorIndentUnit(),
   lineNumbers: appCfg.showLineNumber === true,
@@ -7888,6 +7914,7 @@ live2Api = initLive({
   onOpenNote: openTargetNote,
   imageUrl: imageUrlFor,
   autoPairs: store.get("autoPairs", "1") !== "0",
+  autoPairMarkdown: appCfg.autoPairMarkdown !== false,
   smartLists: store.get("smartLists", "1") !== "0",
   indentUnit: editorIndentUnit(),
   lineNumbers: appCfg.showLineNumber === true,

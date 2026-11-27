@@ -817,14 +817,17 @@ function insertIndentAtCursor(editorView, unit) {
 }
 
 const AUTO_PAIRS = { "(": ")", "[": "]", "{": "}" };
-const AUTO_QUOTES = { '"': '"', "'": "'", "`": "`", "*": "*", "_": "_", "$": "$" };
+const AUTO_QUOTES = { '"': '"', "'": "'" };
+const AUTO_MARKDOWN = { "`": "`", "*": "*", "_": "_", "$": "$" };
 
-function autoPair(editorView, from, to, text) {
+function autoPair(editorView, from, to, text, options) {
   if (from !== to) return false;
+  const isMarkdown = !!AUTO_MARKDOWN[text];
+  if (isMarkdown && options && options.autoPairMarkdown === false) return false;
   const state = editorView.state;
   const next = state.sliceDoc(to, to + 1);
   const prev = state.sliceDoc(Math.max(0, from - 1), from);
-  if (AUTO_QUOTES[text]) {
+  if (AUTO_QUOTES[text] || isMarkdown) {
     if (next === text) { editorView.dispatch({ selection: { anchor: from + 1 } }); return true; }
     if (/[\w\u0400-\u04FF]/.test(prev)) return false;
   } else if (AUTO_PAIRS[text]) {
@@ -833,7 +836,7 @@ function autoPair(editorView, from, to, text) {
   } else {
     return false;
   }
-  const close = AUTO_QUOTES[text] || AUTO_PAIRS[text];
+  const close = AUTO_QUOTES[text] || AUTO_MARKDOWN[text] || AUTO_PAIRS[text];
   editorView.dispatch({ changes: { from, insert: text + close }, selection: { anchor: from + 1 } });
   return true;
 }
@@ -1178,7 +1181,7 @@ function makeExtensions(options, instance) {
       ...defaultKeymap,
       ...historyKeymap,
     ]),
-    ...(autoPairs ? [EditorView.inputHandler.of((view, from, to, text) => autoPair(view, from, to, text))] : []),
+    ...(autoPairs ? [EditorView.inputHandler.of((view, from, to, text) => autoPair(view, from, to, text, options))] : []),
     makeDecorations(options.imageUrl),
     EditorView.contentAttributes.of({ spellcheck: "false", autocapitalize: "off", autocorrect: "off" }),
     EditorView.domEventHandlers({
