@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=127";
-import { initCanvas } from "./canvas.js?v=127";
-import { initCollab } from "./collab.js?v=127";
-import { initPlugins } from "./plugins.js?v=127";
-import { exportPdfFile } from "./pdf.js?v=127";
-import { initLive } from "./live.js?v=127";
-import { initDaily } from "./daily.js?v=127";
-import { initRecorder } from "./recorder.js?v=127";
-import { initPdfViewer } from "./pdfviewer.js?v=127";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=127";
+import { initGraph } from "./graph.js?v=128";
+import { initCanvas } from "./canvas.js?v=128";
+import { initCollab } from "./collab.js?v=128";
+import { initPlugins } from "./plugins.js?v=128";
+import { exportPdfFile } from "./pdf.js?v=128";
+import { initLive } from "./live.js?v=128";
+import { initDaily } from "./daily.js?v=128";
+import { initRecorder } from "./recorder.js?v=128";
+import { initPdfViewer } from "./pdfviewer.js?v=128";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=128";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v127";
+const BUILD = "v128";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -2548,6 +2548,19 @@ async function uploadImage(file) {
   insertAtCursor("\n![[" + name + "]]\n");
   await loadTree();
   setState("картинку вставлено", "ok");
+  toast("+" + name);
+  return name;
+}
+
+async function uploadFile(file) {
+  const folder = attachmentFolder();
+  const name = (folder ? folder + "/" : "") + Date.now() + "-" + file.name.replace(/[^\w.\-]+/g, "_");
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  setState("завантажую файл…");
+  await ghPutRaw(name, b64encode(buffer), null, "upload " + name);
+  state.pending.add(name);
+  await loadTree();
+  setState("файл додано", "ok");
   toast("+" + name);
   return name;
 }
@@ -6363,7 +6376,7 @@ export const Vault = {
   contentsPath, loadAttachment, showCtx, hideCtx, openNote, openCanvas, openGraph, toast, setState, currentFile,
   saveNote, ensureIndex, registerCommand, addRibbonButton, on, emit, loadTree, listAll,
   renderTree, renderTabs, paint, renderPreview, renderRightPanels, renderTags, showPane, showSwitcher,
-  moveFile, uploadImage, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote, openInSecond, closeSecond,
+  moveFile, uploadImage, uploadFile, insertAtCursor, openModal, closeModals, setView, exportPdf, printNote, openInSecond, closeSecond,
   exportPdfFile: (opts = {}) => exportPdfFile($("preview"), (currentFile()?.path || "note").split("/").pop().replace(/\.md$/, ""), opts),
   get files() { return state.files; },
   get index() { return state.index; },

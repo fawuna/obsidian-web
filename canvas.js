@@ -28,6 +28,10 @@ function snapValue(value) {
   return snapEnabled ? Math.round(value / SNAP_SIZE) * SNAP_SIZE : Math.round(value);
 }
 const excerpts = new Map();
+const mediaUrls = new Map();
+const MEDIA_IMAGE_RE = /\.(svg|png|jpe?g|gif|webp|bmp|avif)$/i;
+const MEDIA_AUDIO_RE = /\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i;
+const MEDIA_VIDEO_RE = /\.(mp4|webm|ogv|mov|mkv|m4v)$/i;
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -470,14 +474,50 @@ function render() {
       ta.onmousedown = (e) => e.stopPropagation();
       body.appendChild(ta);
     } else {
-      const text = excerpts.get(n.file);
-      if (text === undefined) {
-        body.textContent = "завантажую…";
-        Vault.ghGet(n.file).then(({ text }) => { excerpts.set(n.file, text.slice(0, 600)); render(); }).catch(() => { excerpts.set(n.file, ""); render(); });
+      const file = n.file || "";
+      const isImage = MEDIA_IMAGE_RE.test(file);
+      const isAudio = MEDIA_AUDIO_RE.test(file);
+      const isVideo = MEDIA_VIDEO_RE.test(file);
+      const isPdf = /\.pdf$/i.test(file);
+      if (isImage || isAudio || isVideo || isPdf) {
+        body.classList.add("cv-media-body");
+        const url = mediaUrls.get(file);
+        if (!url) {
+          body.textContent = "завантажую…";
+          Vault.loadAttachment(file).then((href) => { mediaUrls.set(file, href); render(); }).catch(() => { body.textContent = "(не завантажилось)"; });
+        } else if (isImage) {
+          const img = document.createElement("img");
+          img.className = "cv-media";
+          img.src = url;
+          img.loading = "lazy";
+          img.draggable = false;
+          body.appendChild(img);
+        } else if (isAudio) {
+          const player = document.createElement("audio");
+          player.controls = true;
+          player.src = url;
+          body.appendChild(player);
+        } else if (isVideo) {
+          const player = document.createElement("video");
+          player.controls = true;
+          player.src = url;
+          body.appendChild(player);
+        } else {
+          const frame = document.createElement("iframe");
+          frame.className = "cv-media";
+          frame.src = url;
+          body.appendChild(frame);
+        }
       } else {
-        body.textContent = text.slice(0, 600) || "(порожньо)";
+        const text = excerpts.get(file);
+        if (text === undefined) {
+          body.textContent = "завантажую…";
+          Vault.ghGet(file).then(({ text }) => { excerpts.set(file, text.slice(0, 600)); render(); }).catch(() => { excerpts.set(file, ""); render(); });
+        } else {
+          body.textContent = text.slice(0, 600) || "(порожньо)";
+        }
       }
-      body.ondblclick = () => { Vault.openNote(n.file); };
+      body.ondblclick = () => { Vault.openNote(file); };
     }
     node.appendChild(body);
 
@@ -1022,6 +1062,31 @@ export function initCanvas(vault) {
     pushHistory();
     dirty = true;
     render();
+  };
+
+  document.getElementById("cvAddMedia").onclick = () => {
+    if (Vault.state.view !== "canvas") return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*,audio/*,video/*,application/pdf";
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) return;
+      try {
+        const name = await Vault.uploadFile(file);
+        const rect = board.getBoundingClientRect();
+        const w = toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        model.nodes.push({ id: uid(), type: "file", file: name, x: Math.round(w.x - 160), y: Math.round(w.y - 110), width: 320, height: 220 });
+        pushHistory();
+        dirty = true;
+        render();
+      } catch (error) {
+        Vault.toast("Медіа: " + error.message);
+      }
+    };
+    document.body.appendChild(input);
+    input.click();
   };
 
   document.getElementById("cvAddNote").onclick = () => {
