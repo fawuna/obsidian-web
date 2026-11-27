@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=123";
-import { initCanvas } from "./canvas.js?v=123";
-import { initCollab } from "./collab.js?v=123";
-import { initPlugins } from "./plugins.js?v=123";
-import { exportPdfFile } from "./pdf.js?v=123";
-import { initLive } from "./live.js?v=123";
-import { initDaily } from "./daily.js?v=123";
-import { initRecorder } from "./recorder.js?v=123";
-import { initPdfViewer } from "./pdfviewer.js?v=123";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=123";
+import { initGraph } from "./graph.js?v=124";
+import { initCanvas } from "./canvas.js?v=124";
+import { initCollab } from "./collab.js?v=124";
+import { initPlugins } from "./plugins.js?v=124";
+import { exportPdfFile } from "./pdf.js?v=124";
+import { initLive } from "./live.js?v=124";
+import { initDaily } from "./daily.js?v=124";
+import { initRecorder } from "./recorder.js?v=124";
+import { initPdfViewer } from "./pdfviewer.js?v=124";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=124";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v123";
+const BUILD = "v124";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -70,6 +70,18 @@ function recordRecent(path) {
 
 function githubFileUrl(path) {
   return "https://github.com/" + state.repo + "/blob/" + state.branch + "/" + encodeURI(String(path || "").replace(/^\/+/, ""));
+}
+
+function appUrlFor(path, anchor) {
+  const url = new URL(location.origin + location.pathname);
+  if (path) url.searchParams.set("file", path);
+  const hash = String(anchor || "").replace(/^#/, "");
+  if (hash) url.hash = hash;
+  return url.toString();
+}
+
+function syncAppUrl(path, anchor) {
+  try { history.replaceState(null, "", appUrlFor(path, anchor)); } catch { /* ignore */ }
 }
 
 /* ---------------- core plugins ---------------- */
@@ -1335,6 +1347,8 @@ function fileContext(event, path) {
     { label: "Перемістити…", run: () => moveFilePrompt(path) },
     { label: "Дублювати", run: () => duplicateNote(path) },
     { label: "Копіювати шлях", run: () => copyText(path) },
+    { label: "Відкрити в новій вкладці браузера", run: () => window.open(appUrlFor(path), "_blank", "noopener") },
+    { label: "Копіювати URL нотатки", run: () => copyText(appUrlFor(path)) },
     { sep: true },
     { label: state.bookmarks.includes(path) ? "Зняти із закладок" : "У закладки", run: () => toggleBookmark(path) },
     { sep: true },
@@ -1352,6 +1366,8 @@ function tabContext(event, groupIndex, path) {
     { label: "Перемістити в першу панель", disabled: groupIndex === 0, run: () => moveTabBetweenGroups(groupIndex, path, 0) },
     { sep: true },
     { label: "Копіювати шлях", run: () => copyText(path) },
+    { label: "Відкрити в новій вкладці браузера", run: () => window.open(appUrlFor(path), "_blank", "noopener") },
+    { label: "Копіювати URL нотатки", run: () => copyText(appUrlFor(path)) },
     { label: state.groups[groupIndex] && state.groups[groupIndex].stacked ? "Розкласти вкладки" : "Скласти вкладки", run: () => toggleStackedTabs(groupIndex) },
     { label: state.bookmarks.includes(path) ? "Зняти із закладок" : "У закладки", run: () => toggleBookmark(path) },
   ]);
@@ -1991,6 +2007,7 @@ function setView(view) {
 }
 
 async function openNote(path, pushHistory = true) {
+  syncAppUrl(path);
   if (path.endsWith(".base")) { openBase(path); return; }
   if (path.endsWith(".canvas")) { openCanvas(path); return; }
   if (path.endsWith(".pdf")) { if (pdfApi) await pdfApi.open(path); return; }
@@ -7684,6 +7701,12 @@ async function connect(repo, branch, token, remember) {
       if (first) await openNote(first);
       applyMobilePane();
     }
+    const deep = new URLSearchParams(location.search).get("file");
+    if (deep) {
+      let target = deep.trim();
+      if (target && !/\.(md|canvas|base|pdf)$/i.test(target) && !isMediaPath(target)) target += ".md";
+      if (target && state.files.includes(target)) await openNote(target);
+    }
     showPane("files");
     ensureIndex().then(() => { renderTags(); renderRightPanels(); emit("index"); }).catch(() => {});
     initGraph(Vault);
@@ -7735,6 +7758,8 @@ registerCommand({ id: "bookmark-group", label: "Bookmarks: нова група",
 registerCommand({ id: "reveal-active", label: "Показати активний файл у навігації", run: revealActiveFile });
 registerCommand({ id: "copy-path", label: "Копіювати шлях у волті", hint: "Copy path", run: copyActivePath });
 registerCommand({ id: "copy-url", label: "Копіювати URL файлу", hint: "Copy URL", run: copyActiveUrl });
+registerCommand({ id: "copy-note-url", label: "Копіювати URL нотатки", run: () => { const file = currentFile(); if (!file) { toast("Спочатку відкрий нотатку"); return; } copyText(appUrlFor(file.path)); } });
+registerCommand({ id: "open-browser-tab", label: "Відкрити нотатку в новій вкладці браузера", run: () => { const file = currentFile(); if (!file) { toast("Спочатку відкрий нотатку"); return; } window.open(appUrlFor(file.path), "_blank", "noopener"); } });
 registerCommand({ id: "split", label: "Друга панель (розділити екран)", run: () => { if (state.active) addPane(state.active); else toast("відкрий нотатку"); } });
 registerCommand({ id: "new-folder", label: "Нова тека", run: newFolder });
 registerCommand({ id: "task", label: "Вставити чекбокс", hint: "- [ ]", run: () => insertAtCursor("\n- [ ] ") });
@@ -7890,4 +7915,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }) };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor };
