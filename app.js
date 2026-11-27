@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=125";
-import { initCanvas } from "./canvas.js?v=125";
-import { initCollab } from "./collab.js?v=125";
-import { initPlugins } from "./plugins.js?v=125";
-import { exportPdfFile } from "./pdf.js?v=125";
-import { initLive } from "./live.js?v=125";
-import { initDaily } from "./daily.js?v=125";
-import { initRecorder } from "./recorder.js?v=125";
-import { initPdfViewer } from "./pdfviewer.js?v=125";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=125";
+import { initGraph } from "./graph.js?v=126";
+import { initCanvas } from "./canvas.js?v=126";
+import { initCollab } from "./collab.js?v=126";
+import { initPlugins } from "./plugins.js?v=126";
+import { exportPdfFile } from "./pdf.js?v=126";
+import { initLive } from "./live.js?v=126";
+import { initDaily } from "./daily.js?v=126";
+import { initRecorder } from "./recorder.js?v=126";
+import { initPdfViewer } from "./pdfviewer.js?v=126";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=126";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v125";
+const BUILD = "v126";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -61,6 +61,8 @@ try {
   const savedRecent = JSON.parse(store.get("recentFiles", "[]"));
   if (Array.isArray(savedRecent)) recentFiles = savedRecent.filter((path) => typeof path === "string");
 } catch { recentFiles = []; }
+
+const pathRenames = new Map();
 
 function recordRecent(path) {
   if (!path) return;
@@ -892,9 +894,9 @@ async function loadTree() {
   for (const p of all) {
     if (p.endsWith("/.gitkeep")) state.folders.add(p.slice(0, -"/.gitkeep".length));
   }
-  const remote = all
+  const remote = [...new Set(all
     .filter((p) => p.endsWith(".md") || p.endsWith(".canvas") || p.endsWith(".base") || p.endsWith(".pdf") || isMediaPath(p))
-    .map((p) => p);
+    .map((p) => pathRenames.get(p) || p))];
   const remoteSet = new Set(remote);
   for (const p of [...state.pending]) { if (remoteSet.has(p)) state.pending.delete(p); }
   for (const p of state.pending) if (!remoteSet.has(p)) remote.push(p);
@@ -1038,6 +1040,7 @@ async function moveFile(path, folder) {
     syncSecond();
     if (state.index.has(path)) { state.index.set(target, state.index.get(path)); state.index.delete(path); }
     renameBookmarkPath(path, target);
+    pathRenames.set(path, target);
     state.pending.delete(path);
     await loadTree();
     renderTabs(); paint();
@@ -1499,6 +1502,7 @@ async function renameFolder(folder) {
       const moved = target + "/" + path.slice(prefix.length);
       await ghPut(moved, text, null, "rename " + path + " → " + moved);
       await ghDelete(path, sha);
+      pathRenames.set(path, moved);
     }
     for (const file of state.open) {
       if (file.path.startsWith(prefix)) file.path = target + "/" + file.path.slice(prefix.length);
@@ -2406,10 +2410,10 @@ function openRecovery() {
   openModal("recoveryModal");
 }
 
-async function renameNote(path) {
-  const next = prompt("Нове імʼя:", path);
-  if (!next || next === path) return;
-  let target = next.trim().replace(/^\/+/, "");
+async function renameNoteTo(path, next) {
+  if (!next) return false;
+  let target = String(next).trim().replace(/^\/+/, "");
+  if (!target || target === path) return false;
   if (!/\.(md|canvas|base)$/.test(target)) target += path.endsWith(".canvas") ? ".canvas" : path.endsWith(".base") ? ".base" : ".md";
   try {
     const { text, sha } = await ghGet(path);
@@ -2417,6 +2421,7 @@ async function renameNote(path) {
     state.pending.add(target);
     state.pending.delete(path);
     await ghDelete(path, sha);
+    pathRenames.set(path, target);
     const openFile = state.open.find((f) => f.path === path);
     if (openFile) openFile.path = target;
     if (state.active === path) state.active = target;
@@ -2424,13 +2429,28 @@ async function renameNote(path) {
       group.tabs = group.tabs.map((item) => (item === path ? target : item));
       if (group.active === path) group.active = target;
     }
+    if (state.index.has(path)) { state.index.set(target, state.index.get(path)); state.index.delete(path); }
+    state.files = state.files.map((item) => (item === path ? target : item));
+    if (!state.files.includes(target)) state.files.push(target);
     state.active = group1().active;
     syncSecond();
-    await loadTree(); renderTabs(); paint();
+    await loadTree();
+    if (!state.files.includes(target)) state.files.push(target);
+    renderTabs(); paint();
     renameBookmarkPath(path, target);
     emit("rename", { from: path, to: target });
     toast("перейменовано");
-  } catch (error) { toast("Не вийшло: " + error.message); }
+    return true;
+  } catch (error) {
+    toast("Не вийшло: " + error.message);
+    return false;
+  }
+}
+
+async function renameNote(path) {
+  const next = prompt("Нове імʼя:", path);
+  if (!next || next === path) return;
+  await renameNoteTo(path, next);
 }
 
 async function deleteNote(path) {
@@ -2798,9 +2818,22 @@ function highlightYaml(raw) {
 function buildReadingHeader(file, parsed) {
   const header = el("div", "mod-header mod-ui");
   const title = el("div", "inline-title", file.path.split("/").pop().replace(/\.md$/, ""));
-  title.contentEditable = "false";
+  title.contentEditable = "true";
   title.spellcheck = true;
-  title.tabIndex = -1;
+  title.tabIndex = 0;
+  const titleName = () => String(file.path || "").split("/").pop().replace(/\.(md|canvas|base)$/i, "");
+  title.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); title.blur(); }
+    if (event.key === "Escape") { event.preventDefault(); title.textContent = titleName(); title.blur(); }
+  });
+  title.addEventListener("blur", async () => {
+    const current = titleName();
+    const next = title.textContent.replace(/\s+/g, " ").trim();
+    if (!next || next === current) { title.textContent = current; return; }
+    const folder = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/") + 1) : "";
+    const ok = await renameNoteTo(file.path, folder + next);
+    if (!ok) title.textContent = current;
+  });
   header.appendChild(title);
   if (appCfg.propertiesInDocument === "hidden") return header;
   if (!parsed) return header;
@@ -7730,7 +7763,16 @@ async function connect(repo, branch, token, remember) {
     if (deep) {
       let target = deep.trim();
       if (target && !/\.(md|canvas|base|pdf)$/i.test(target) && !isMediaPath(target)) target += ".md";
-      if (target && state.files.includes(target)) await openNote(target);
+      const anchor = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
+      if (target && state.files.includes(target)) {
+        await openNote(target);
+        if (anchor) {
+          setTimeout(() => {
+            jumpToAnchor(anchor);
+            syncAppUrl(target, anchor);
+          }, 500);
+        }
+      }
     }
     showPane("files");
     ensureIndex().then(() => { renderTags(); renderRightPanels(); emit("index"); }).catch(() => {});
@@ -7942,4 +7984,4 @@ $("connect").onclick = () => connect($("repo").value, $("branch").value, $("toke
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect").click(); });
 $("forget").onclick = () => { store.del("token"); $("token").value = ""; toast("токен видалено"); };
 if (state.token) connect(state.repo, state.branch, state.token, false);
-window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor };
+window.__vaultDebug = { markdownToHtml, renderMathIn, renderMermaidIn, parseProps, extractSection, anchorLine, scrollToAnchor, wireRendered, baseBuild, baseRowsFromDocs, baseFilterMatch, renderBasePreview, liveApi, live2Api, snapshotWorkspace, toggleStackedTabs, htmlToMarkdown, importFiles, saveWorkspaceNamed, loadWorkspaceNamed, applyWorkspaceLayout, readWorkspaces, openWorkspacesModal, openRandomNote, setCoreEnabled, startSlides, stopSlides, slideStep, splitSlides, slidesState: () => ({ open: slides.open, index: slides.index, count: slides.items.length, path: slides.path }), openWebViewer, closeWebViewer, webNavigate, webBack, webForward, webState: () => ({ url: webView.url, index: webView.index, history: [...webView.history], view: state.view }), openPdf: (p) => pdfApi && pdfApi.open(p), closePdf: () => pdfApi && pdfApi.close(), pdfState: () => (pdfApi ? pdfApi.state() : null), openMedia: (p) => mediaApi && mediaApi.open(p), closeMedia: () => mediaApi && mediaApi.close(), mediaState: () => (mediaApi ? mediaApi.state() : null), createNoteNamed, appConfig: () => ({ ...appCfg }), loadAppConfig, listThemes, applyThemeByName, loadAppearanceConfig, activeTheme: () => activeThemeName, bookmarkItems: () => JSON.parse(JSON.stringify(bookmarkItems)), toggleBookmark, bookmarkCurrentHeading, bookmarkCurrentSearch, createBookmarkGroup, renderBookmarks, openBookmark, addFolderBookmark, removeBookmarkItem, recentFiles: () => recentFiles.slice(), revealActiveFile, copyActivePath, copyActiveUrl, githubFileUrl, baseState: () => ({ index: baseViewIndex, views: JSON.parse(JSON.stringify((baseConfig && baseConfig.views) || [])), config: JSON.parse(JSON.stringify(baseConfig || {})) }), appUrlFor, renameNoteTo };
