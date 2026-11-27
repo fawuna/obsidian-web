@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=113";
-import { initCanvas } from "./canvas.js?v=113";
-import { initCollab } from "./collab.js?v=113";
-import { initPlugins } from "./plugins.js?v=113";
-import { exportPdfFile } from "./pdf.js?v=113";
-import { initLive } from "./live.js?v=113";
-import { initDaily } from "./daily.js?v=113";
-import { initRecorder } from "./recorder.js?v=113";
-import { initPdfViewer } from "./pdfviewer.js?v=113";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=113";
+import { initGraph } from "./graph.js?v=114";
+import { initCanvas } from "./canvas.js?v=114";
+import { initCollab } from "./collab.js?v=114";
+import { initPlugins } from "./plugins.js?v=114";
+import { exportPdfFile } from "./pdf.js?v=114";
+import { initLive } from "./live.js?v=114";
+import { initDaily } from "./daily.js?v=114";
+import { initRecorder } from "./recorder.js?v=114";
+import { initPdfViewer } from "./pdfviewer.js?v=114";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=114";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v113";
+const BUILD = "v114";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -133,8 +133,20 @@ let recorderApi = null;
 let pdfApi = null;
 let mediaApi = null;
 let pluginsApi = null;
-let appCfg = { newFileLocation: "root", newFileFolderPath: "", attachmentFolderPath: "" };
+let appCfg = {
+  newFileLocation: "root",
+  newFileFolderPath: "",
+  attachmentFolderPath: "",
+  useTab: false,
+  tabSize: 4,
+  strictLineBreaks: false,
+  propertiesInDocument: "visible",
+};
 let propertyTypes = {};
+
+function editorIndentUnit() {
+  return appCfg.useTab === true ? "\t" : " ".repeat(Math.max(1, Number(appCfg.tabSize) || 4));
+}
 
 /* ---------------- events ---------------- */
 function on(event, fn) {
@@ -2156,6 +2168,10 @@ async function loadAppConfig() {
         newFileLocation: raw.newFileLocation || "root",
         newFileFolderPath: raw.newFileFolderPath || "",
         attachmentFolderPath: raw.attachmentFolderPath || "",
+        useTab: raw.useTab === true,
+        tabSize: Number(raw.tabSize) > 0 ? Number(raw.tabSize) : 4,
+        strictLineBreaks: raw.strictLineBreaks === true,
+        propertiesInDocument: ["visible", "hidden", "source"].includes(raw.propertiesInDocument) ? raw.propertiesInDocument : "visible",
       };
     }
   } catch { /* defaults */ }
@@ -2447,7 +2463,19 @@ function buildReadingHeader(file, parsed) {
   title.spellcheck = true;
   title.tabIndex = -1;
   header.appendChild(title);
+  if (appCfg.propertiesInDocument === "hidden") return header;
   if (!parsed) return header;
+  if (appCfg.propertiesInDocument === "source") {
+    const wrap = el("div", "el-pre mod-frontmatter mod-ui");
+    const pre = el("pre", "frontmatter language-yaml");
+    const code = document.createElement("code");
+    code.className = "language-yaml is-loaded";
+    code.innerHTML = highlightYaml(parsed.raw);
+    pre.appendChild(code);
+    wrap.appendChild(pre);
+    header.appendChild(wrap);
+    return header;
+  }
   const container = el("div", "metadata-container");
   container.tabIndex = -1;
   container.dataset.propertyCount = String(parsed.props.length);
@@ -2648,18 +2676,6 @@ function renderPreview() {
   pusher.style.marginBottom = "0px";
   host.appendChild(pusher);
   host.appendChild(buildReadingHeader(file, parsed));
-  if (parsed) {
-    const frontmatter = el("div", "el-pre mod-frontmatter mod-ui");
-    const pre = document.createElement("pre");
-    pre.className = "frontmatter language-yaml";
-    pre.style.display = "none";
-    const code = document.createElement("code");
-    code.className = "language-yaml is-loaded";
-    code.innerHTML = highlightYaml(parsed.raw);
-    pre.appendChild(code);
-    frontmatter.appendChild(pre);
-    host.appendChild(frontmatter);
-  }
 
   const tmp = document.createElement("div");
   tmp.innerHTML = markdownToHtml(body);
@@ -2813,7 +2829,7 @@ function markdownToHtml(body) {
       'Markdown-рушій не завантажився. Онови сторінку з Ctrl+Shift+R.</div>' +
       "<pre>" + escapeHtml(src) + "</pre>";
   } else {
-    html = marked.parse(src, { breaks: true, mangle: false, headerIds: false });
+    html = marked.parse(src, { breaks: appCfg.strictLineBreaks !== true, mangle: false, headerIds: false });
   }
   html = html.replace(/\u0000R(\d+):(\d+)\u0000/g, (m, index, count) => {
     const id = footnoteOrder[Number(index)];
@@ -2875,7 +2891,7 @@ async function htmlToMarkdown(html) {
 }
 
 function markdownToHtmlSource(md) {
-  return window.marked ? window.marked.parse(md, { breaks: true, mangle: false, headerIds: false }) : escapeHtml(md);
+  return window.marked ? window.marked.parse(md, { breaks: appCfg.strictLineBreaks !== true, mangle: false, headerIds: false }) : escapeHtml(md);
 }
 
 function replaceNoteSource(text) {
@@ -5702,9 +5718,36 @@ $("editor").addEventListener("keydown", (e) => {
 
   if (e.key === "Tab") {
     e.preventDefault();
+    const unit = editorIndentUnit();
     const s = ed.selectionStart;
-    ed.value = ed.value.slice(0, s) + "  " + ed.value.slice(ed.selectionEnd);
-    ed.selectionStart = ed.selectionEnd = s + 2;
+    const t = ed.selectionEnd;
+    if (e.shiftKey) {
+      const start = ed.value.lastIndexOf("\n", s - 1) + 1;
+      let end = ed.value.indexOf("\n", t);
+      if (end === -1) end = ed.value.length;
+      const block = ed.value.slice(start, end);
+      const next = block.split("\n").map((line) => line.replace(/^(\t| {1,4})/, "")).join("\n");
+      if (next !== block) {
+        ed.value = ed.value.slice(0, start) + next + ed.value.slice(end);
+        ed.selectionStart = start;
+        ed.selectionEnd = start + next.length;
+        ed.dispatchEvent(new Event("input"));
+      }
+      return;
+    }
+    if (s !== t && ed.value.slice(s, t).includes("\n")) {
+      const start = ed.value.lastIndexOf("\n", s - 1) + 1;
+      let end = ed.value.indexOf("\n", t);
+      if (end === -1) end = ed.value.length;
+      const block = ed.value.slice(start, end);
+      const next = block.split("\n").map((line) => unit + line).join("\n");
+      ed.value = ed.value.slice(0, start) + next + ed.value.slice(end);
+      ed.selectionStart = start;
+      ed.selectionEnd = start + next.length;
+    } else {
+      ed.value = ed.value.slice(0, s) + unit + ed.value.slice(t);
+      ed.selectionStart = ed.selectionEnd = s + unit.length;
+    }
     ed.dispatchEvent(new Event("input"));
     return;
   }
@@ -6659,6 +6702,10 @@ function openSettings() {
   $("setWebLinks").checked = store.get("webLinks", "0") === "1";
   $("setAutoPairs").checked = store.get("autoPairs", "1") !== "0";
   $("setSmartLists").checked = store.get("smartLists", "1") !== "0";
+  $("setStrictBreaks").checked = appCfg.strictLineBreaks === true;
+  $("setUseTabs").checked = appCfg.useTab === true;
+  $("setTabSize").value = String(appCfg.tabSize || 4);
+  $("setPropertiesInDocument").value = appCfg.propertiesInDocument || "visible";
   $("setRecorderFolder").value = recorderApi && recorderApi.config ? recorderApi.config.folder || "" : "";
   $("setNewFileLocation").value = appCfg.newFileLocation || "root";
   $("setNewFileFolder").value = appCfg.newFileFolderPath || "";
@@ -6735,6 +6782,10 @@ $("saveSettings").onclick = async () => {
   store.set("webLinks", $("setWebLinks").checked ? "1" : "0");
   store.set("autoPairs", $("setAutoPairs").checked ? "1" : "0");
   store.set("smartLists", $("setSmartLists").checked ? "1" : "0");
+  appCfg.strictLineBreaks = $("setStrictBreaks").checked;
+  appCfg.useTab = $("setUseTabs").checked;
+  appCfg.tabSize = Number($("setTabSize").value) || 4;
+  appCfg.propertiesInDocument = $("setPropertiesInDocument").value;
   store.set("hotkeys", JSON.stringify(hotkeys));
   try {
     await writeVaultJson(".obsidian/daily-notes.json", {
@@ -6764,6 +6815,10 @@ $("saveSettings").onclick = async () => {
     appRaw.newFileLocation = $("setNewFileLocation").value;
     appRaw.newFileFolderPath = $("setNewFileFolder").value.trim();
     appRaw.attachmentFolderPath = $("setAttachmentFolder").value.trim();
+    appRaw.strictLineBreaks = appCfg.strictLineBreaks;
+    appRaw.useTab = appCfg.useTab;
+    appRaw.tabSize = appCfg.tabSize;
+    appRaw.propertiesInDocument = appCfg.propertiesInDocument;
     await writeVaultJson(".obsidian/app.json", appRaw);
     let appearanceRaw = {};
     try {
@@ -6973,6 +7028,7 @@ liveApi = initLive({
   imageUrl: (name) => "https://raw.githubusercontent.com/" + state.repo + "/" + state.branch + "/" + encodeURI(name.replace(/^\.?\//, "")),
   autoPairs: store.get("autoPairs", "1") !== "0",
   smartLists: store.get("smartLists", "1") !== "0",
+  indentUnit: editorIndentUnit(),
   onLinkTrigger: (pos) => { linkPane = 1; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 1; },
   onFollowLink: followLinkUnderCursor,
@@ -7007,6 +7063,7 @@ live2Api = initLive({
   imageUrl: imageUrlFor,
   autoPairs: store.get("autoPairs", "1") !== "0",
   smartLists: store.get("smartLists", "1") !== "0",
+  indentUnit: editorIndentUnit(),
   onLinkTrigger: (pos) => { linkPane = 2; showSwitcher("link"); linkPos = pos; },
   onFocus: () => { activePane = 2; },
 });

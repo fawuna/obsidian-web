@@ -166,11 +166,23 @@ async function insertTemplate(path) {
   }
 }
 
+function insertCurrentDate() {
+  if (!Vault.currentFile()) { Vault.toast("Спочатку відкрий нотатку"); return; }
+  Vault.insertAtCursor(formatDate(new Date(), tplCfg.dateFormat || "YYYY-MM-DD"));
+}
+
+function insertCurrentTime() {
+  if (!Vault.currentFile()) { Vault.toast("Спочатку відкрий нотатку"); return; }
+  Vault.insertAtCursor(formatDate(new Date(), tplCfg.timeFormat || "HH:mm"));
+}
+
 export async function initDaily(vault) {
   Vault = vault;
   await loadConfigs();
   Vault.registerCommand({ id: "daily", label: "Щоденна нотатка: сьогодні", hint: "daily", plugin: "daily-notes", run: openDailyNote });
   Vault.registerCommand({ id: "template", label: "Вставити шаблон", hint: "template", plugin: "templates", run: () => Vault.showSwitcher("template") });
+  Vault.registerCommand({ id: "template-date", label: "Templates: вставити поточну дату", plugin: "templates", run: insertCurrentDate });
+  Vault.registerCommand({ id: "template-time", label: "Templates: вставити поточний час", plugin: "templates", run: insertCurrentTime });
   Vault.registerCommand({ id: "unique-note", label: "Створити унікальну нотатку", hint: "unique", plugin: "unique-note", run: openUniqueNote });
   Vault.addRibbonButton({ id: "daily", icon: "📅", title: "Щоденна нотатка (сьогодні)", run: openDailyNote });
   Vault.addRibbonButton({ id: "template", icon: "🧾", title: "Вставити шаблон", run: () => Vault.showSwitcher("template") });
@@ -178,6 +190,8 @@ export async function initDaily(vault) {
     openDailyNote,
     openUniqueNote,
     insertTemplate,
+    insertCurrentDate,
+    insertCurrentTime,
     templateFiles,
     loadConfigs,
     get config() { return { daily: { ...dailyCfg }, templates: { ...tplCfg }, unique: { ...uniqueCfg } }; },

@@ -775,21 +775,32 @@ function continueList(editorView) {
   return true;
 }
 
-function indentList(editorView, outdent) {
+function indentList(editorView, outdent, unit) {
   const state = editorView.state;
+  const indent = unit || "  ";
   const changes = [];
   for (const range of state.selection.ranges) {
     const line = state.doc.lineAt(range.from);
     if (!/^\s*(?:[-*+]|\d+[.)])\s+/.test(line.text)) continue;
     if (outdent) {
-      const remove = line.text.match(/^(\t| {1,4})/);
-      if (remove) changes.push({ from: line.from, to: line.from + remove[1].length, insert: "" });
+      const remove = line.text.match(/^(\t| {1,8})/);
+      if (remove) changes.push({ from: line.from, to: line.from + Math.min(remove[1].length, indent.length), insert: "" });
     } else {
-      changes.push({ from: line.from, insert: "  " });
+      changes.push({ from: line.from, insert: indent });
     }
   }
   if (!changes.length) return false;
   editorView.dispatch({ changes });
+  return true;
+}
+
+function insertIndentAtCursor(editorView, unit) {
+  const indent = unit || "  ";
+  const changes = [];
+  for (const range of editorView.state.selection.ranges) {
+    changes.push({ from: range.from, to: range.to, insert: indent });
+  }
+  editorView.dispatch({ changes, selection: { anchor: editorView.state.selection.main.head + indent.length } });
   return true;
 }
 
@@ -1100,9 +1111,11 @@ function makeExtensions(options, instance) {
     keymap.of([
       ...(smartLists ? [
         { key: "Enter", run: continueList },
-        { key: "Tab", run: (v) => indentList(v, false) },
-        { key: "Shift-Tab", run: (v) => indentList(v, true) },
+        { key: "Tab", run: (v) => indentList(v, false, options.indentUnit) },
+        { key: "Shift-Tab", run: (v) => indentList(v, true, options.indentUnit) },
       ] : []),
+      { key: "Tab", run: (v) => insertIndentAtCursor(v, options.indentUnit) },
+      { key: "Shift-Tab", run: (v) => indentList(v, true, options.indentUnit) },
       { key: "Mod-b", run: (v) => wrapSelection(v, "**", "**") },
       { key: "Mod-i", run: (v) => wrapSelection(v, "*", "*") },
       { key: "Mod-k", run: (v) => wrapSelection(v, "[[", "]]") },
