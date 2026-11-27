@@ -1,18 +1,18 @@
 // Vault — core app. Feature modules (graph/canvas/collab/plugins) get this API via init().
-import { initGraph } from "./graph.js?v=132";
-import { initCanvas } from "./canvas.js?v=132";
-import { initCollab } from "./collab.js?v=132";
-import { initPlugins } from "./plugins.js?v=132";
-import { exportPdfFile } from "./pdf.js?v=132";
-import { initLive } from "./live.js?v=132";
-import { initDaily } from "./daily.js?v=132";
-import { initRecorder } from "./recorder.js?v=132";
-import { initPdfViewer } from "./pdfviewer.js?v=132";
-import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=132";
+import { initGraph } from "./graph.js?v=133";
+import { initCanvas } from "./canvas.js?v=133";
+import { initCollab } from "./collab.js?v=133";
+import { initPlugins } from "./plugins.js?v=133";
+import { exportPdfFile } from "./pdf.js?v=133";
+import { initLive } from "./live.js?v=133";
+import { initDaily } from "./daily.js?v=133";
+import { initRecorder } from "./recorder.js?v=133";
+import { initPdfViewer } from "./pdfviewer.js?v=133";
+import { initMediaViewer, isMediaPath } from "./mediaviewer.js?v=133";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
-const BUILD = "v132";
+const BUILD = "v133";
 const dbg = (...args) => { if (window.__DBG_ON) (window.__dbg = window.__dbg || []).push(args.join(" | ")); };
 window.__dbg = window.__dbg || [];
 
@@ -1404,6 +1404,38 @@ function closeAllTabs(groupIndex) {
   const group = state.groups[groupIndex];
   if (!group) return;
   for (const path of group.tabs.slice()) closeTab(path, groupIndex);
+}
+
+function closeActiveTab() {
+  const index = activeGroupIndex();
+  const group = state.groups[index];
+  if (!group || !group.active) { toast("Немає активної вкладки"); return; }
+  closeTab(group.active, index);
+}
+
+function cycleActiveTab(delta) {
+  const index = activeGroupIndex();
+  const group = state.groups[index];
+  if (!group || group.tabs.length < 2) return;
+  const at = group.tabs.indexOf(group.active);
+  const next = group.tabs[(at + delta + group.tabs.length) % group.tabs.length];
+  group.active = next;
+  recordTabUse(index, next);
+  if (index === 0) {
+    state.active = next;
+    setView("note");
+    pushHistoryState(next);
+    renderTabs(); renderTree(); paint();
+  } else {
+    activePane = index + 1;
+    if (index === 1) syncSecond();
+    paintGroup(index);
+    renderTabs();
+  }
+}
+
+function newTab() {
+  showSwitcher("open");
 }
 
 async function moveFilePrompt(path) {
@@ -8115,6 +8147,10 @@ registerCommand({ id: "format-md-html", label: "Форматування: Markdo
 registerCommand({ id: "import-files", label: "Імпортувати файли", plugin: "importer", run: openImportPicker });
 registerCommand({ id: "stack-tabs", label: "Скласти / розкласти вкладки", hint: "Stack tabs", run: () => toggleStackedTabs() });
 registerCommand({ id: "tab-switcher", label: "Перемикач вкладок", run: openTabSwitcher });
+registerCommand({ id: "new-tab", label: "Нова вкладка", run: newTab });
+registerCommand({ id: "close-tab", label: "Закрити активну вкладку", run: closeActiveTab });
+registerCommand({ id: "next-tab", label: "Наступна вкладка", run: () => cycleActiveTab(1) });
+registerCommand({ id: "prev-tab", label: "Попередня вкладка", run: () => cycleActiveTab(-1) });
 registerCommand({ id: "graph", label: "Graph view", hint: "Ctrl+G", plugin: "graph", run: () => {
   const localToggle = $("graphLocal");
   if (state.view === "graph") { setView("note"); return; }
